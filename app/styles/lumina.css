@@ -1,0 +1,149 @@
+/* ============================================================
+   Stitch 設計系統「Lumina Kinetic」套用層（最後載入）
+   來源：Stitch 專案 2242100647705384623。
+   做法：覆寫 app.css 既有 CSS 變數 + 關鍵元件 → 全站升級為
+   Premium 健身×遊戲化（Glassmorphism + Cyber-Minimalism）。
+   不更動功能、引擎或 DOM 結構。
+   ============================================================ */
+
+/* —— 字體（離線 vendor，latin 子集；中文用系統字）—— */
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; font-display: swap; src: url('../../vendor/fonts/inter-400.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 600; font-display: swap; src: url('../../vendor/fonts/inter-600.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 700; font-display: swap; src: url('../../vendor/fonts/inter-700.woff2') format('woff2'); }
+@font-face { font-family: 'Montserrat'; font-style: normal; font-weight: 700; font-display: swap; src: url('../../vendor/fonts/montserrat-700.woff2') format('woff2'); }
+@font-face { font-family: 'Montserrat'; font-style: normal; font-weight: 800; font-display: swap; src: url('../../vendor/fonts/montserrat-800.woff2') format('woff2'); }
+
+:root {
+  /* —— 背景 / 表面（Ebony + 透明 Charcoal 玻璃）—— */
+  --bg-0: #08090b;
+  --bg-1: #101214;
+  --bg-2: #16181b;
+  --surface: rgba(22, 24, 28, 0.72);
+  --surface-2: rgba(255, 255, 255, 0.06);
+  --glass-blur: 20px;
+
+  /* —— 霓虹邊 / 描邊（Primary 15%）—— */
+  --stroke: rgba(34, 224, 161, 0.16);
+  --stroke-strong: rgba(34, 224, 161, 0.34);
+
+  /* —— 文字 —— */
+  --text: #f3f6f5;
+  --muted: rgba(255, 255, 255, 0.66);
+  --faint: rgba(255, 255, 255, 0.42);
+
+  /* —— 品牌色 —— */
+  --green: #22e0a1;            /* Primary / Go */
+  --teal: #22e0a1;
+  --mint-bright: #51fdbc;
+  --coral: #ff7a59;           /* Secondary / 遊戲化 */
+  --gold: #ffd23f;
+  --yellow: #ffd23f;
+  --red: #ff5d6c;
+
+  /* Slice3 校準 P1：取景/站位階段專用色（與訓練紅黃綠語意分離）——青=已就位、橘=需調整、灰=尚未偵測(用 --faint) */
+  --frame-ok: #3aa8ff;
+  --frame-adjust: #ff9f43;
+
+  --grad-accent: linear-gradient(135deg, #22e0a1, #51fdbc);  /* 主 CTA：薄荷 */
+  --grad-teal: linear-gradient(135deg, #22e0a1, #14c98e);
+  --grad-card: linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.015));
+
+  /* —— 形狀 / 光 —— */
+  --radius: 24px;
+  --radius-sm: 16px;
+  --shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
+  --glow-primary: 0 0 24px rgba(34, 224, 161, 0.30);
+
+  /* —— 字族 —— */
+  --font-body: 'Inter', 'PingFang TC', 'Noto Sans TC', -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Montserrat', 'PingFang TC', 'Noto Sans TC', -apple-system, system-ui, sans-serif;
+}
+
+body {
+  font-family: var(--font-body);
+  background:
+    radial-gradient(1100px 640px at 82% -12%, rgba(255, 122, 89, 0.16), transparent 60%),
+    radial-gradient(900px 600px at -8% 8%, rgba(34, 224, 161, 0.14), transparent 55%),
+    linear-gradient(180deg, var(--bg-1), var(--bg-0));
+}
+
+/* —— 標題 / 數據用 Montserrat（幾何運動感）—— */
+.h1, .loader-title, .wordmark,
+h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.01em; }
+
+/* 大數據字（HUD、結算、金幣、評級）—— display metrics 風 */
+.m-v, .wk-res .rv, .wk-grade-ring, .tb-coins,
+.trk-stat-v, .trk-big, .set-stat-v {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+/* —— 玻璃卡（backdrop blur + 霓虹邊 + 頂部高光 + 柔影）—— */
+.card {
+  background: var(--surface);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* —— 按鈕：主要薄荷實心黑字、pill；次要玻璃 —— */
+.btn {
+  border-radius: 999px;
+  font-weight: 700;
+  background: var(--grad-accent);
+  color: #04231a;
+  box-shadow: var(--glow-primary);
+}
+.btn:hover { filter: brightness(1.05); }
+.btn.secondary {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  border: 1px solid var(--stroke-strong);
+  box-shadow: none;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+}
+.btn.ghost { background: none; color: var(--muted); box-shadow: none; }
+
+/* —— 頂部狀態列 / 底部 Tab：玻璃化 —— */
+.topbar { backdrop-filter: blur(14px); }
+.tabbar {
+  background: rgba(12, 13, 15, 0.7);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+  border-top: 1px solid var(--stroke);
+}
+.tb-coins {
+  background: var(--surface);
+  border: 1px solid var(--stroke);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+}
+.tab.active { color: var(--green); }
+.tab.active::before { background: radial-gradient(circle, rgba(34, 224, 161, 0.28), transparent 70%); }
+
+/* —— 訓練 HUD 玻璃磚 + 數據字 —— */
+.lv-metric {
+  background: rgba(16, 18, 21, 0.62);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-sm);
+}
+.lv-btn, .lv-exit, .lv-coach { border: 1px solid var(--stroke); }
+.lv-pause { background: var(--grad-accent); color: #04231a; box-shadow: var(--glow-primary); }
+
+/* —— chips / pill（動作分類、群組）—— */
+.wk-chip.on { background: var(--grad-accent); color: #04231a; }
+.pill { background: var(--surface); border: 1px solid var(--stroke); }
+
+/* —— 評級環光暈用主色 —— */
+.wk-grade-ring { box-shadow: 0 0 40px color-mix(in srgb, var(--gc) 45%, transparent); }
+
+/* —— 島嶼左側圓鈕 / 右側縮放：玻璃 + 霓虹邊 —— */
+.isl-ic, .isl-right, .isl-badge, .isl-sheet, .isl-place-bar, .isl-item {
+  border-color: var(--stroke);
+}
+.isl-ic.on { background: var(--grad-accent); }
+
+/* —— 載入畫面標誌光暈 —— */
+.loader-logo { filter: drop-shadow(0 0 24px rgba(34, 224, 161, 0.4)); }

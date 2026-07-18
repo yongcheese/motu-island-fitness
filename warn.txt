@@ -1,0 +1,1 @@
+⚠️  cross-model-review: 已連續攔截 2 次仍未通過互審，暫時放行以免卡死。請手動檢查：/tmp/cmr_test.Srkzul/plans/checkout.md

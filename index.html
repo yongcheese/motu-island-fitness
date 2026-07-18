@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#081820" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🏝️%3C/text%3E%3C/svg%3E" />
+  <title>Island Fitness AI · AI 健身辨識與島嶼建設連動系統</title>
+  <link rel="stylesheet" href="./app/styles/app.css" />
+  <link rel="stylesheet" href="./app/features/workout/workout.css" />
+  <link rel="stylesheet" href="./app/features/island/island.css" />
+  <link rel="stylesheet" href="./app/features/tracking/tracking.css" />
+  <link rel="stylesheet" href="./app/features/settings/settings.css" />
+  <link rel="stylesheet" href="./app/features/today/today.css" />
+  <link rel="stylesheet" href="./app/styles/lumina.css" />
+  <script src="./vendor/lib/chart.umd.min.js" defer></script>
+</head>
+<body>
+  <div id="loader">
+    <div class="loader-inner">
+      <div class="loader-logo">🏝️</div>
+      <div class="loader-title">Island Fitness AI</div>
+      <div class="loader-sub">AI 健身辨識與島嶼建設連動系統</div>
+      <div class="loader-bar"><i></i></div>
+    </div>
+  </div>
+
+  <div id="app">
+    <header class="topbar" id="topbar"></header>
+    <main id="view"></main>
+    <nav class="tabbar" id="tabbar"></nav>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script type="module" src="./app/main.js"></script>
+</body>
+</html>

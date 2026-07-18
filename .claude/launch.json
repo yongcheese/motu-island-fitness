@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ifai",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["serve.py", "8080"],
+      "port": 8080
+    },
+    {
+      "name": "minibook",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["/Users/yongcheese/Documents/code/claude/facebook-clone/app.py"],
+      "port": 8090
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "island-fitness-ai",
+  "version": "1.0.0",
+  "description": "AI 健身辨識與島嶼建設連動系統 — 育秀盃創意獎 (AI 應用類)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node tests/run.js",
+    "serve": "python3 -m http.server 8080"
+  }
+}

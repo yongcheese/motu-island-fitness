@@ -1,0 +1,110 @@
+/* ===== Tracking (Tab3 健康) ===== */
+
+/* 總覽卡片 */
+.trk-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin: 6px 0 4px;
+}
+.trk-card {
+  padding: 14px 14px 12px;
+  border-radius: var(--radius);
+  text-align: left;
+}
+.trk-card-ic {
+  width: 36px; height: 36px; border-radius: 11px;
+  display: grid; place-items: center; font-size: 19px;
+  background: var(--surface-2); margin-bottom: 8px;
+}
+.trk-card-ic.trk-teal { background: rgba(47,214,198,.16); }
+.trk-card-ic.trk-green { background: rgba(34,224,161,.16); }
+.trk-card-ic.trk-coral { background: rgba(255,122,89,.16); }
+.trk-card-ic.trk-gold { background: rgba(255,210,63,.16); }
+.trk-card-v { font-weight: 800; font-size: 26px; line-height: 1.1; letter-spacing: -.01em; }
+.trk-card-k { color: var(--muted); font-size: 12px; margin-top: 3px; }
+
+/* 本週 vs 上週 — delta pills */
+.trk-deltas {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 2px 0 10px;
+}
+.trk-delta {
+  background: var(--grad-card);
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  padding: 11px 10px;
+  text-align: center;
+}
+.trk-delta-k { color: var(--muted); font-size: 11.5px; }
+.trk-delta-v { font-weight: 800; font-size: 20px; margin-top: 4px; }
+.trk-delta-u { font-size: 11px; color: var(--faint); font-weight: 600; margin-left: 2px; }
+.trk-delta-d {
+  font-size: 12px; font-weight: 700; margin-top: 4px;
+  display: inline-flex; align-items: center; gap: 3px;
+}
+.trk-delta-d.up { color: var(--green); }
+.trk-delta-d.down { color: var(--red); }
+.trk-delta-d.flat { color: var(--faint); }
+
+/* 圖表卡片 + 固定高度包裹 */
+.trk-chart-card { padding: 14px; border-radius: var(--radius); margin-bottom: 4px; }
+.trk-chart-wrap { position: relative; width: 100%; }
+.trk-h-220 { height: 220px; }
+.trk-h-200 { height: 200px; }
+
+/* 兩欄（達標率 + 錯誤分布），手機單欄 */
+.trk-two { display: grid; grid-template-columns: 1fr; gap: 0; }
+
+/* 圖表載入失敗 / 空狀態提示 */
+.trk-nochart {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  text-align: center; color: var(--muted); font-weight: 700; font-size: 14px; line-height: 1.6;
+}
+.trk-nochart span { color: var(--faint); font-weight: 500; font-size: 12.5px; }
+
+/* 最近訓練紀錄 */
+.trk-recent { padding: 6px 14px; border-radius: var(--radius); margin-bottom: 8px; }
+.trk-rec-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 0; border-top: 1px solid var(--stroke);
+}
+.trk-rec-row:first-child { border-top: 0; }
+.trk-rec-grade {
+  width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+  display: grid; place-items: center; font-weight: 900; font-size: 16px;
+  color: var(--gc, var(--teal));
+  border: 1.5px solid var(--gc, var(--teal));
+  background: color-mix(in srgb, var(--gc, var(--teal)) 14%, transparent);
+}
+.trk-rec-body { flex: 1; min-width: 0; }
+.trk-rec-name { font-weight: 700; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trk-rec-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.trk-rec-kcal { color: var(--coral); font-weight: 700; font-size: 13px; flex-shrink: 0; }
+
+/* 空狀態 */
+.trk-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; min-height: 70vh; padding: 0 16px;
+}
+.trk-empty-art {
+  font-size: 72px; margin-bottom: 8px;
+  filter: drop-shadow(0 8px 24px rgba(255,122,89,.3));
+  animation: trk-bob 3s var(--ease) infinite;
+}
+@keyframes trk-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+.trk-empty-cta { margin-top: 14px; padding-left: 30px; padding-right: 30px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .trk-empty-art { animation: none; }
+}
+
+/* 桌機 / 較寬螢幕 */
+@media (min-width: 620px) {
+  .trk-cards { grid-template-columns: repeat(4, 1fr); }
+  .trk-two { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .trk-h-220 { height: 240px; }
+}

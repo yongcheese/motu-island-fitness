@@ -1,0 +1,52 @@
+/* 今日層（Slice 1 第一輪）— 樣式只用 Lumina tokens，零硬編碼色票 */
+
+.today { display: flex; flex-direction: column; gap: 14px; padding-top: 6px; }
+
+.td-greet .sub { margin-bottom: 0; }
+.td-sec { margin: 0 0 10px; }
+
+/* 今日任務卡（Design System 元件 #3 Mission Card） */
+.td-mission { padding: 20px; }
+.td-mission-row { display: flex; align-items: center; gap: 16px; }
+.td-mission-info { flex: 1; min-width: 0; }
+.td-mission-t { font-size: 19px; font-weight: 800; letter-spacing: -.01em; }
+.td-mission-s { color: var(--muted); font-size: 13px; margin: 6px 0 12px; line-height: 1.5; }
+.td-streak { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 40%, transparent); }
+
+.td-ring { width: 96px; height: 96px; flex: none; }
+.td-ring-n { fill: var(--text); font-size: 17px; font-weight: 800; font-family: var(--font-display, inherit); }
+.td-ring-k { fill: var(--muted); font-size: 9px; }
+
+/* 島嶼入口卡 */
+.td-island { padding: 16px 20px; display: flex; align-items: center; gap: 14px;
+  background:
+    radial-gradient(circle at 88% 20%, color-mix(in srgb, var(--teal) 18%, transparent), transparent 55%),
+    var(--grad-card); }
+.td-island-info { flex: 1; min-width: 0; }
+.td-island-t { font-size: 16px; font-weight: 700; }
+.td-island-t b { color: var(--green); font-size: 20px; }
+.td-island-s { color: var(--muted); font-size: 12px; margin-top: 3px; }
+
+/* 本週目標（靜態佔位） */
+.td-week { padding: 16px 20px; }
+.td-week-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.td-soon { color: var(--faint); border-style: dashed; }
+.td-week-bar { height: 10px; border-radius: 99px; background: rgba(255, 255, 255, .08);
+  border: 1px solid var(--stroke); overflow: hidden; margin: 12px 0 8px; }
+.td-week-bar i { display: block; height: 100%; border-radius: 99px; background: var(--grad-teal); }
+.td-week-s { color: var(--muted); font-size: 12px; }
+
+/* 唯一 Primary CTA */
+.td-cta { width: 100%; min-height: 54px; font-size: 16px;
+  box-shadow: var(--glow-primary), 0 10px 26px rgba(0, 0, 0, .35); }
+
+/* 桌機：任務卡與島嶼卡並排 */
+@media (min-width: 920px) {
+  .today { display: grid; grid-template-columns: 1.25fr 1fr; gap: 16px; align-items: stretch; }
+  .td-greet { grid-column: 1 / -1; }
+  .td-mission { grid-row: 2; }
+  .td-island { grid-row: 2; flex-direction: column; align-items: flex-start; justify-content: center; }
+  .td-island .btn { align-self: flex-start; }
+  .td-week { grid-column: 1 / -1; }
+  .td-cta { grid-column: 1 / -1; justify-self: center; width: min(420px, 100%); }
+}

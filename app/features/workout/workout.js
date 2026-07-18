@@ -1,0 +1,1190 @@
+// Tab2 訓練（核心）：分類 → 清單 → 簡介 → 即時偵測 → 結算。
+import { EXERCISES, PLANNED, GROUPS } from '../../core/exercises/index.js';
+import { createDetector } from '../../core/engine.js';
+import { createPose, startCamera } from '../../core/pose.js';
+import { drawSkeleton, drawCountdownRing, drawProgressRing, COLOR } from '../../ui/feedback.js';
+import { makeSequence } from '../../core/synth.js';
+import { createAvatar3D } from '../../ui/avatar3d.js';
+import { pose3d, EX_VIEW } from '../../ui/pose3d.js';
+import { estimateCalories } from '../../core/calories.js';
+import { nextGoal } from '../island/goals.js';   // Slice4 R3：結算第二幕與島嶼目標條共用（純函式、零依賴）
+import { coachPolicy } from '../../core/coach-policy.js';   // Slice3 修復 F3：誠實回饋決策（純函式）
+
+let CTX = null;
+let root = null;
+let live = null;        // 即時偵測 runtime
+let demoRaf = null;     // intro 動畫
+let introAv = null;     // 簡介頁 3D 人偶（Three.js renderer，需顯式 dispose 釋放 GL context）
+let cardAv = null;      // 訓練卡片共用離屏 3D renderer
+let bgmCtx = null, bgmNodes = null;   // 背景音樂 (WebAudio)
+
+function disposeIntroAv() { try { introAv?.dispose(); } catch { } introAv = null; }
+function disposeCardAv() { try { cardAv?.dispose(); } catch { } cardAv = null; }
+
+// Slice3 R3（六-補決策）：SET_SECONDS(60s 時間制) 退役 → 次數為主、SAFETY_SECONDS=單組 90 秒安全網（防站著不動卡死）。
+const SAFETY_SECONDS = 90;
+
+// 柔和環境背景音樂（WebAudio，免音檔）。點擊為使用者手勢，可合法啟動。
+function toggleBgm(on) {
+  try {
+    if (on) {
+      bgmCtx = bgmCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (bgmCtx.state === 'suspended') bgmCtx.resume();
+      if (bgmNodes) return;
+      const master = bgmCtx.createGain(); master.gain.value = 0.05; master.connect(bgmCtx.destination);
+      const lfo = bgmCtx.createOscillator(); lfo.frequency.value = 0.16;
+      const lfoGain = bgmCtx.createGain(); lfoGain.gain.value = 0.025;
+      lfo.connect(lfoGain); lfoGain.connect(master.gain); lfo.start();
+      const oscs = [220, 277.18, 329.63].map((f) => {
+        const o = bgmCtx.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+        const g = bgmCtx.createGain(); g.gain.value = 0.5; o.connect(g); g.connect(master); o.start(); return o;
+      });
+      bgmNodes = { master, lfo, oscs };
+    } else if (bgmNodes) {
+      try { bgmNodes.oscs.forEach(o => o.stop()); bgmNodes.lfo.stop(); bgmNodes.master.disconnect(); } catch { }
+      bgmNodes = null;
+    }
+  } catch { /* WebAudio 不支援則靜默 */ }
+}
+
+// 在使用者手勢（點「立即開始」）當下解鎖音訊，之後倒數嗶聲/結束提示才能發聲。
+function ensureAudio() {
+  try {
+    bgmCtx = bgmCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (bgmCtx.state === 'suspended') bgmCtx.resume();
+  } catch { /* noop */ }
+}
+
+// 短促提示音（倒數、最後三秒）。與語音是不同通道，不會打斷口語說明。
+function beep(freq = 640, dur = 0.12, vol = 0.2) {
+  try {
+    ensureAudio();
+    if (!bgmCtx) return;
+    const t = bgmCtx.currentTime;
+    const o = bgmCtx.createOscillator(); const g = bgmCtx.createGain();
+    o.type = 'sine'; o.frequency.value = freq;
+    o.connect(g); g.connect(bgmCtx.destination);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.start(t); o.stop(t + dur + 0.03);
+  } catch { /* noop */ }
+}
+
+export default {
+  id: 'workout', label: '訓練', icon: '🏋️',
+  mount(el, ctx) { CTX = ctx; root = el; renderMenu(); },
+  unmount() { stopLive(); cancelAnimationFrame(demoRaf); disposeIntroAv(); stopCardAnims(); disposeCardAv(); CTX?.setChrome(true); },
+};
+
+/* ---------------- 選單 ---------------- */
+function renderMenu(activeGroup = 'all') {
+  CTX.setChrome(true);
+  cancelAnimationFrame(demoRaf);
+  disposeIntroAv();
+  const groups = ['all', ...Object.keys(GROUPS)];
+  const groupName = (g) => g === 'all' ? '全部' : GROUPS[g];
+  const all = [
+    ...Object.values(EXERCISES).map(e => ({ ...e, ready: true })),
+    ...PLANNED.map(e => ({ ...e, ready: false })),
+  ];
+  const list = activeGroup === 'all' ? all : all.filter(e => e.group === activeGroup);
+
+  root.innerHTML = `
+    <div class="fade-in">
+      <h1 class="h1">開始訓練</h1>
+      <p class="sub">✨ AI 即時判定動作品質 — 只有正確動作才換得到金幣 🪙</p>
+      ${recCardHtml(EXERCISES[REC_ID])}
+      <div class="wk-filters">
+        <div class="wk-search">
+          <span class="wk-search-ic">🔍</span>
+          <input id="wk-q" class="wk-input" placeholder="搜尋動作（深蹲、開合跳…）" />
+        </div>
+        <div class="wk-groups">
+          ${groups.map(g => `<button class="wk-chip ${g === activeGroup ? 'on' : ''}" data-g="${g}">${groupName(g)}</button>`).join('')}
+        </div>
+      </div>
+      <div class="wk-grid stagger" id="wk-list"></div>
+    </div>
+    <button class="wk-fab" id="wk-fab">🚀 <span>快速開始 AI 訓練</span></button>`;
+
+  const listEl = root.querySelector('#wk-list');
+  const renderCards = (items) => {
+    listEl.innerHTML = items.map(e => cardHtml(e)).join('') ||
+      `<p class="sub" style="grid-column:1/-1">找不到符合的動作</p>`;
+    listEl.querySelectorAll('[data-id]').forEach(c => {
+      c.onclick = () => {
+        const ex = EXERCISES[c.dataset.id];
+        if (ex) renderIntro(ex); else CTX.toast('此動作開發中，敬請期待 🛠️');
+      };
+    });
+    listEl.querySelectorAll('[data-soon]').forEach(c => {
+      c.onclick = () => CTX.toast('此動作開發中，敬請期待 🛠️');
+    });
+    startCardAnims();
+  };
+  renderCards(list);
+
+  root.querySelectorAll('.wk-chip').forEach(b => b.onclick = () => renderMenu(b.dataset.g));
+  const q = root.querySelector('#wk-q');
+  q.oninput = () => {
+    const kw = q.value.trim().toLowerCase();
+    const filtered = (activeGroup === 'all' ? all : list).filter(e =>
+      !kw || e.name.includes(kw) || e.id.includes(kw));
+    renderCards(filtered);
+  };
+  const fab = root.querySelector('#wk-fab');
+  if (fab) fab.onclick = () => { const ex = Object.values(EXERCISES)[0]; if (ex) renderIntro(ex); };
+
+  // 推薦卡：hook 只用 data-rec-id（與型錄卡 [data-id]/.wk2 完全隔離）；innerHTML 後綁定＋null-guard
+  const recEl = root.querySelector('[data-rec-id]');
+  if (recEl) {
+    const goRec = () => { const ex = EXERCISES[recEl.dataset.recId]; if (ex) renderIntro(ex); };
+    recEl.onclick = goRec;
+    recEl.onkeydown = (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); goRec(); }
+    };
+  }
+}
+
+const ACCENT = { lower: '#22e0a1', cardio: '#2fd6c6', upper: '#ff7a59', core: '#ffd23f', glute: '#c792ff' };
+// Slice2 R1：今日推薦寫死深蹲（Demo 取景最穩、對應今日任務動作）。
+// TODO(R3): 接 store 任務欄位——推薦讀今日任務、無任務時退化為預設深蹲；FAB 一併接推薦。
+const REC_ID = 'squat';
+
+/* ---------------- 卡片元件（純模板：吃資料回字串，不碰 DOM／事件／store） ---------------- */
+// 難度三點 dots。只吃已算好的數字——fallback 語義留在各呼叫端（cardHtml 與 recCardHtml 不同，不得統一）。
+function diffDots(d) { return [1, 2, 3].map(i => `<i class="${i <= d ? 'on' : ''}"></i>`).join(''); }
+// 🪙/🔥 獎勵雙徽章（估算值，真值以結算 commitSession 為準）；prefix 輸出各卡既有 class。
+function rewardBadges(e, p) {
+  return `<span class="${p}-coin">🪙 ≈${e.baseCoinPerRep * 10}</span>
+          <span class="${p}-kcal">🔥 ${Math.round(e.met * 3)}<small> kcal/分</small></span>`;
+}
+// 課表句（R4 簡介文案一致化的單一來源）。
+function planText(meta) { return `${meta.sets} 組 × ${meta.repsPerSet} 下 · 組間休息 ${meta.restSec} 秒`; }
+// 推薦理由 caption。TODO(R3): 改讀 store 任務欄位（無任務→預設推薦文案）。
+function recWhyText() { return '🎯 今天練下肢 · 完成今日任務：20 個有效深蹲'; }
+// Demo 取景提示：深蹲只需到膝、最易成功(預設推薦)；開合跳需腳踝＋橫向空間。
+const RECOMMEND = { squat: '⭐ Demo 推薦' };
+const SPACE_NOTE = { jumpingjack: '⚠️ 需較大空間' };
+const TAGLINE = {
+  squat: '持續專注於重心平穩', jumpingjack: '燃燒全身脂肪', highknees: '提高瞬發爆發力',
+  pushup: '強化胸大肌與核心', lunge: '精準雕塑臀部線條', burpee: '極速燃脂之王',
+  situp: '雕塑腹部核心', crunch: '集中訓練上腹', glutebridge: '啟動臀部與後鏈', sidelunge: '強化側向穩定',
+};
+
+/* Slice2 R1 今日推薦大卡：純模板函式。金幣/kcal 公式凍結為與 cardHtml 相同（估算值，真值以結算為準）；
+   hero 用圖示＋分類色光暈、不掛 3D canvas（避免共用離屏 renderer 每幀重設尺寸）。 */
+function recCardHtml(e) {
+  if (!e) return '';
+  const d = e.meta?.difficulty || e.difficulty || 1;
+  return `
+    <div class="wk-rec card" data-rec-id="${e.id}" role="button" tabindex="0"
+      aria-label="今日推薦：${e.name}" style="--accent:${ACCENT[e.group] || 'var(--green)'}">
+      <div class="wk-rec-hero">${exIcon(e.id)}</div>
+      <div class="wk-rec-body">
+        <div class="wk-rec-head">
+          <span class="pill wk-rec-badge">☀️ 今日推薦</span>
+          <span class="wk-rec-diff" title="難度 ${d}/3">${diffDots(d)}</span>
+        </div>
+        <h3 class="wk-rec-name">${e.name}</h3>
+        <p class="wk-rec-why">${recWhyText()}</p>
+        <p class="wk-rec-plan">${planText(e.meta)}</p>
+        <div class="wk-rec-stats">
+          ${rewardBadges(e, 'wk-rec')}
+          <span class="wk-rec-go">›</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+function cardHtml(e) {
+  const d = e.difficulty || 1;   // 注意：與 recCardHtml 的 fallback 語義不同，屬既有行為（見 R2 計畫二節），不得統一
+  const grp = GROUPS[e.group] || '';
+  const tag = TAGLINE[e.id] || '';
+  if (!e.ready) {
+    return `
+    <div class="wk2 locked" data-soon="1">
+      <div class="wk2-hero"><span class="wk2-lock">🔒</span><span class="wk2-badge soon">規劃中</span></div>
+      <div class="wk2-body">
+        <div class="wk2-top"><h3 class="wk2-name">${exIcon(e.id)} ${e.name}</h3><span class="wk2-soon">即將推出</span></div>
+        <p class="wk2-tag">${grp}${tag ? ' · ' + tag : ''}</p>
+        <div class="wk2-stats dim"><span>🪙 --</span><span>🔥 --</span></div>
+      </div>
+    </div>`;
+  }
+  return `
+    <div class="wk2" data-id="${e.id}" style="--accent:${ACCENT[e.group] || 'var(--green)'}">
+      <div class="wk2-hero">
+        <canvas class="wk2-canvas" data-ex="${e.id}"></canvas>
+        <span class="wk2-badge">${grp}</span>
+      </div>
+      <div class="wk2-body">
+        <div class="wk2-top">
+          <h3 class="wk2-name">${e.name}</h3>
+          <span class="wk2-diff" title="難度 ${d}/3">${diffDots(d)}</span>
+        </div>
+        <p class="wk2-tag">${grp}${tag ? ' · ' + tag : ''}${[RECOMMEND[e.id], SPACE_NOTE[e.id]].filter(Boolean).map(x => ' · ' + x).join('')}</p>
+        <div class="wk2-stats">
+          ${rewardBadges(e, 'wk2')}
+          <span class="wk2-go">›</span>
+        </div>
+      </div>
+    </div>`;
+}
+function exIcon(id) {
+  return { squat: '🦵', jumpingjack: '🤸', highknees: '🏃', pushup: '💪',
+    lunge: '🚶', burpee: '🔥', situp: '🧎', crunch: '🌀', glutebridge: '🌉', sidelunge: '↔️' }[id] || '🏋️';
+}
+
+/* ---------------- 簡介 ---------------- */
+function renderIntro(ex) {
+  CTX.setChrome(true);
+  stopCardAnims();
+  const s = CTX.store.getState();
+  const warm = s.prefs.warmup;
+  root.innerHTML = `
+    <div class="fade-in wk-intro">
+      <button class="wk-back" id="wk-back">‹ 返回</button>
+      <div class="wk-hero card">
+        <div id="wk-demo" class="wk-demo3d"></div>
+        <div class="wk-hero-badge">${exIcon(ex.id)} ${ex.name}</div>
+      </div>
+      <h1 class="h1">${ex.name}</h1>
+      <p class="sub">${ex.meta.desc}</p>
+      <div class="wk-stats stagger">
+        ${stat('🎯 部位', ex.meta.target)}
+        ${stat('🔁 組數', `${ex.meta.sets} 組 × ${ex.meta.repsPerSet} 下`)}
+        ${stat('⏱️ 組間休息', `${ex.meta.restSec} 秒`)}
+        ${stat('🪙 預估金幣', `${ex.baseCoinPerRep} / 有效次`)}
+        ${stat('🔥 強度', `${ex.met} MET`)}
+        ${stat('📷 鏡頭', ex.id === 'pushup' ? '側面' : ex.id === 'jumpingjack' ? '正面 · 需全身入鏡' : '正面')}
+      </div>
+      <div class="wk-judge card">
+        <div class="wk-judge-t">✅ 判定關鍵</div>
+        <div class="wk-judge-d">${judgeText(ex.id)}</div>
+      </div>
+      <label class="wk-toggle">
+        <span>🔥 開始前先暖身（約 1 分鐘）</span>
+        <input type="checkbox" id="wk-warm" ${warm ? 'checked' : ''}/>
+        <i></i>
+      </label>
+      <div class="wk-cta">
+        <button class="btn" id="wk-start" style="flex:1">立即開始</button>
+      </div>
+    </div>`;
+
+  root.querySelector('#wk-back').onclick = () => renderMenu();
+  root.querySelector('#wk-warm').onchange = (e) => CTX.store.updatePrefs({ warmup: e.target.checked });
+  root.querySelector('#wk-start').onclick = () => startLive(ex, root.querySelector('#wk-warm').checked);
+  animDemo(ex.id, root.querySelector('#wk-demo'));
+}
+function stat(k, v) { return `<div class="wk-stat card"><div class="k">${k}</div><div class="v">${v}</div></div>`; }
+function judgeText(id) {
+  return {
+    squat: '髖部需低於膝蓋高度、起身回穩；排除只彎腰、半蹲。',
+    jumpingjack: '雙手過肩且雙腳張開超過肩寬；排除只揮手或只張腳。',
+    highknees: '膝蓋抬到髖部高度、左右交替；排除坐著抬腿、不交替。',
+    pushup: '手肘下壓達標、身體保持一直線；排除半程、塌腰。',
+  }[id] || '';
+}
+
+// —— 示範動畫的「物理節奏」——
+// 真實動作不是對稱等速：離心（下降）慢而受控 → 底部短暫停頓 → 向心（起身/推起）爆發較快 → 頂部休息。
+// 開合跳/高抬腿則是快節奏彈性動作。回傳 {d, side} 供卡片與簡介動畫共用。
+const MOTION = {
+  squat: { T: 2100, down: 0.44, hold: 0.10, up: 0.28 },     // 其餘 0.18 為頂部休息
+  pushup: { T: 2000, down: 0.42, hold: 0.10, up: 0.26 },
+  jumpingjack: { T: 1000, down: 0.40, hold: 0.06, up: 0.38 }, // down=展開、up=收回
+  highknees: { T: 800, down: 0.46, hold: 0.04, up: 0.42 },
+};
+const easeIO = (t) => t * t * (3 - 2 * t);       // 平滑進出（離心受控）
+const easeOut = (t) => 1 - (1 - t) * (1 - t);    // 快出慢收（向心爆發）
+function demoMotion(id, now, t0) {
+  const m = MOTION[id] || MOTION.squat;
+  const cyc = Math.floor((now - t0) / m.T);
+  const ph = ((((now - t0) % m.T) + m.T) % m.T) / m.T;
+  let d;
+  if (ph < m.down) d = easeIO(ph / m.down);
+  else if (ph < m.down + m.hold) d = 1;
+  else if (ph < m.down + m.hold + m.up) d = 1 - easeOut((ph - m.down - m.hold) / m.up);
+  else d = 0;                                    // 頂部休息
+  return { d, side: cyc % 2 === 0 ? 'L' : 'R' };
+}
+
+function animDemo(id, el) {
+  if (!el) return;
+  cancelAnimationFrame(demoRaf);
+  disposeIntroAv();
+  introAv = createAvatar3D(el);              // 真 3D 模型（光影 + 每動作專屬視角）
+  introAv.setView(EX_VIEW[id]);
+  const t0 = performance.now();
+  const loop = (now) => {
+    const { d, side } = demoMotion(id, now, t0);
+    introAv?.render(pose3d(id, d, side));
+    demoRaf = requestAnimationFrame(loop);
+  };
+  demoRaf = requestAnimationFrame(loop);
+}
+
+/* 訓練清單卡片：每張用 Q 版人偶循環示範該動作。用世代計數停掉舊動畫。 */
+let cardGen = 0;
+function stopCardAnims() { cardGen++; }
+function startCardAnims() {
+  const gen = ++cardGen;
+  const items = [...root.querySelectorAll('canvas.wk2-canvas[data-ex]')].map((cv) => {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = cv.getBoundingClientRect();
+    cv.width = Math.max(180, Math.round((rect.width || 240) * dpr));
+    cv.height = Math.max(120, Math.round((rect.height || 132) * dpr));
+    return { cv, ctx: cv.getContext('2d'), id: cv.dataset.ex, t0: performance.now() + Math.random() * 900 };
+  });
+  if (!items.length) return;
+  // 所有卡片共用一個離屏 3D renderer（blit 到各卡 2D canvas）：一個 GL context 服務全部卡片
+  if (!cardAv) cardAv = createAvatar3D(null, { headless: true });
+  let curW = 0, curH = 0;
+  const loop = (now) => {
+    if (gen !== cardGen) return;               // 已被新一輪取代 → 自我終止
+    for (const it of items) {
+      if (it.cv.width !== curW || it.cv.height !== curH) { curW = it.cv.width; curH = it.cv.height; cardAv.setSize(curW, curH); }
+      const { d, side } = demoMotion(it.id, now, it.t0);   // 物理節奏：離心慢/停頓/向心快
+      cardAv.setView(EX_VIEW[it.id]);
+      cardAv.render(pose3d(it.id, d, side));
+      it.ctx.clearRect(0, 0, it.cv.width, it.cv.height);
+      it.ctx.drawImage(cardAv.canvas, 0, 0, it.cv.width, it.cv.height);
+    }
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+}
+
+/* ---------------- 即時偵測 ---------------- */
+async function startLive(ex, doWarmup) {
+  cancelAnimationFrame(demoRaf);
+  disposeIntroAv();
+  stopCardAnims();
+  ensureAudio();               // 趁點擊手勢解鎖音訊
+  CTX.setChrome(false);
+  root.innerHTML = liveShell(ex);
+  const canvas = root.querySelector('#lv-canvas');
+  const ctx = canvas.getContext('2d');
+  const statusEl = root.querySelector('#lv-status');
+  // Coach HUD 元素快取（每幀更新，避免重複 querySelector）
+  const hud = {
+    track: root.querySelector('#lv-track'),
+    stages: [...root.querySelectorAll('#lv-stages span')],
+    gfill: root.querySelector('#lv-gfill'),
+    flash: root.querySelector('#lv-repflash'),
+  };
+  // 達標線：直接標在深度量表上，使用者知道「要做到哪裡」
+  root.querySelector('#lv-gtarget').style.bottom = (ex.thresholds.targetEnter * 100) + '%';
+
+  live = {
+    ex, ctx, canvas, raf: null, pose: null, cam: null, demo: null, hud,
+    detector: createDetector(ex),
+    paused: false, startTs: 0, elapsedMs: 0, lastResult: null, mode: 'camera',
+    voice: CTX.store.getState().prefs.voice, bgm: CTX.store.getState().prefs.bgm,
+    finished: false, started: false,
+    // Slice3 R3：組數狀態機（進迴圈時由 initSetState 建立）＋統一時鐘＋跳過休息旗標
+    set: null, lastFrameTs: 0, skipRest: false,
+    // Slice3 修復：gate 逃生旗標＋F3 誠實回饋進度資料
+    skipGate: false, lastValidAt: 0, lastMoveAt: 0,
+  };
+  const run = live;            // 本次訓練 token：每個 await 後確認仍是同一場，避免舊流程污染新訓練
+  bindLiveControls();
+
+  const video = root.querySelector('#lv-video');
+  // 階段一：相機
+  try {
+    statusEl.innerHTML = '<div class="lv-loading">📷 啟動相機中…<br><span>瀏覽器跳出詢問時請按「允許」</span></div>';
+    const cam = await startCamera({ video, width: 1280, height: 960 });   // 4:3：垂直視野較大，全身較易入鏡
+    if (live !== run) { cam.stop(); return; }   // 等待期間已離開/重開 → 關掉 stream 退出
+    live.cam = cam;
+    bindZoom(cam);
+  } catch (e) {
+    if (live !== run) return;                   // 頁面已換 → 不要把錯誤 UI 寫到新畫面
+    console.warn('camera failed', e);
+    return offerDemo(ex, statusEl, e);
+  }
+  // 階段二：AI 模型
+  try {
+    statusEl.innerHTML = '<div class="lv-loading">🧠 載入 AI 模型中…</div>';
+    const pose = await createPose({ model: 'full' });
+    if (live !== run) { try { pose.close(); } catch { } run.cam?.stop(); return; }   // 已過期 → 釋放模型與相機,避免 GPU/相機洩漏
+    live.pose = pose;
+  } catch (e) {
+    if (live !== run) return;
+    console.warn('model failed', e);
+    return offerDemo(ex, statusEl, { name: 'ModelError', message: e?.message });
+  }
+  statusEl.innerHTML = '';
+  resizeCanvas();
+  if (doWarmup) await runWarmup(run);
+  if (live !== run) return;
+  const ready = await preStart(statusEl, run);   // 說明 + 3、2、1、開始
+  if (live !== run || !ready) return;
+  runCameraLoop(run);
+}
+
+// 開始前：顯示＋朗讀動作說明，再做 3、2、1 倒數，給使用者明確「開始」訊號。
+async function preStart(statusEl, run) {
+  const ex = run.ex;
+  statusEl.innerHTML = `
+    <div class="lv-prestart">
+      <div class="lv-ps-name">${exIcon(ex.id)} ${ex.name}</div>
+      <p>${ex.meta.voiceIntro || ex.meta.desc}</p>
+      <div class="lv-ps-tip">請站到鏡頭中、全身入鏡，準備開始</div>
+    </div>`;
+  if (run.voice && ex.meta.voiceIntro) CTX.coach.say(ex.meta.voiceIntro, 'mid');
+  await sleep(2600);             // 讓使用者讀說明、就定位
+  if (live !== run) return false;
+  // Slice3 R3 取景關卡（僅 camera 路徑；demo 合成幀永遠可見故跳過——已申報）
+  if (run.mode !== 'demo' && run.pose) {
+    statusEl.innerHTML = '';
+    const g = await waitForFraming(run);
+    if (live !== run || !g.ok) return false;   // gate 後、倒數前的二次 token 檢查（檢查點 #9）
+  }
+  return await runCountdown(statusEl, run);
+}
+
+/* Slice3 R3 取景就緒判定（呈現層純函式：只讀 spec 欄位與 landmark 可見度，不碰 engine/detector） */
+// Slice3 校準 P1：取景骨架全段用青藍 frame 色（與訓練 res.segments 紅黃綠語意分離；不改 drawSkeleton 訓練預設）。
+const ALL_FRAME = { torso: 'frame', leftArm: 'frame', rightArm: 'frame', leftLeg: 'frame', rightLeg: 'frame' };
+// Slice3 實機修復 F1：landmark 索引 → 人話部位群（檢查燈與缺件語音同源，不再固定三列）。
+const LM_GROUP = [
+  { label: '肩膀', idx: [11, 12] },
+  { label: '手臂', idx: [13, 14, 15, 16] },
+  { label: '髖部', idx: [23, 24] },
+  { label: '膝蓋', idx: [25, 26] },
+  { label: '腳踝', idx: [27, 28] },
+];
+// 依 spec 實際要求的 gate 索引，動態產出「需要檢查的部位群」（只保留 spec 有涵蓋的群）。
+function gateGroups(spec) {
+  const need = new Set(spec.gateLandmarks || spec.requiredLandmarks || []);
+  const groups = LM_GROUP.filter(g => g.idx.some(i => need.has(i)));
+  return groups.length ? groups : LM_GROUP.slice(0, 3);   // 保底：無 spec 時退肩/臂/髖
+}
+// 取景就緒判定（呈現層純函式：只讀可見度，不碰 engine/detector）。門檻對齊引擎 visMin=0.4（互審：gate 不得嚴於實際判定）。
+// groups 每項的 _need = 該部位群在 spec 內實際要求的索引；全可見才亮該列燈。
+function framingReady(lm, groups) {
+  if (!lm) return { rows: groups.map(() => false), all: false };
+  const ok = (i) => (lm[i]?.visibility ?? 0) >= 0.4;
+  const rows = groups.map(g => (g._need || g.idx).every(ok));
+  return { rows, all: rows.every(Boolean) };
+}
+
+/* Slice3 R3 取景關卡等待（實機修復 F1 增強）。契約（互審 #1）：Promise 必定 settle——
+   全綠連續 2000ms → {ok:true}；token 失效 / 跳過 → {ok}。
+   看得見（骨架 dim 疊圖）＋缺件同源（燈與語音讀同一組 spec 群）＋語音引導＋10 秒逃生鈕（永不軟鎖）。
+   paused 幀不累積且歸零。每幀頂部即 run-token 檢查點 #8；nudge 掛此 tick（gate 階段語音卡死也救得到）。 */
+function waitForFraming(run) {
+  return new Promise((resolve) => {
+    const gate = root?.querySelector('#lv-gate');
+    const video = root?.querySelector('#lv-video');
+    if (!gate || !video) return resolve({ ok: true });   // 版型缺失不擋流程（保守放行）
+    const groups = gateGroups(run.ex);
+    groups.forEach(g => { g._need = g.idx.filter(i => (run.ex.gateLandmarks || run.ex.requiredLandmarks || []).includes(i)); if (!g._need.length) g._need = g.idx; });
+    // 依 spec 動態填充檢查燈（R1 靜態三列僅預設殼）
+    const checksWrap = gate.querySelector('.lv-gate-checks');
+    if (checksWrap) checksWrap.innerHTML = groups.map(g => `<span class="lv-gate-chk">○ ${g.label}</span>`).join('');
+    const checks = [...gate.querySelectorAll('.lv-gate-chk')];
+    const skip = gate.querySelector('.lv-gate-skip');
+    if (skip) { skip.hidden = true; skip.onclick = () => { if (live !== run) return; run.skipGate = true; }; }
+    gate.hidden = false;
+    run.skipGate = false;
+    if (run.voice) CTX.coach.say('請站進畫面中，讓我看到全身', 'high');
+    let readyMs = 0, gateMs = 0, last = performance.now();
+    const done = (ok) => { try { gate.hidden = true; } catch { } resolve({ ok }); };
+    const tick = (now) => {
+      if (live !== run) return done(false);   // 檢查點 #8
+      if (run.skipGate) return done(true);    // 逃生口：只由本 tick 消費（互審 #3）
+      CTX.coach.nudge(Date.now());            // 語音 watchdog 覆蓋 gate（互審 #5）
+      const dt = now - last; last = now;
+      if (!run.paused) {
+        gateMs += dt;
+        const lm = run.pose.detect(video, now);
+        // 骨架 dim 疊圖：讓使用者立刻看到「AI 看得到我」（不引入 detector/update）
+        live.ctx.clearRect(0, 0, live.canvas.width, live.canvas.height);
+        if (lm) {
+          const r = containRect(video, live.canvas.width, live.canvas.height);
+          live.ctx.save(); live.ctx.translate(r.x, r.y);
+          drawSkeleton(live.ctx, lm, ALL_FRAME, { w: r.w, h: r.h, mirror: CTX.store.getState().prefs.mirror });   // 青藍取景骨架（非訓練綠）
+          live.ctx.restore();
+        }
+        const st = framingReady(lm, groups);
+        checks.forEach((el, i) => { el.classList.toggle('ok', st.rows[i]); el.textContent = `${st.rows[i] ? '✓' : '○'} ${groups[i].label}`; });
+        if (live.hud) {
+          const miss = groups.filter((g, i) => !st.rows[i]).map(g => g.label);
+          // 取景專屬 state（不沿用訓練共用的 ok/seek/warn）：frame-ok 青／frame-adjust 橘／frame-wait 灰
+          live.hud.track.dataset.s = st.all ? 'frame-ok' : (miss.length ? 'frame-adjust' : 'frame-wait');
+          live.hud.track.textContent = st.all ? '📍 已就位，準備開始' : (miss.length ? `🔍 看不到：${miss.join('、')}` : '🔍 尋找人體…');
+          if (!st.all && miss.length && run.voice) CTX.coach.say(`看不到你的${miss[0]}，請調整位置`, 'mid');
+        }
+        readyMs = st.all ? readyMs + dt : 0;
+        if (readyMs >= 2000) return done(true);
+        if (skip && skip.hidden && gateMs >= 10000) skip.hidden = false;   // 逃生鈕 10 秒現身
+      } else { readyMs = 0; }   // 暫停凍結且歸零
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+async function runCountdown(statusEl, run) {
+  for (const n of [3, 2, 1]) {
+    if (live !== run) return false;
+    statusEl.innerHTML = `<div class="lv-count">${n}</div>`;
+    beep(620, 0.12);
+    await sleep(680);
+  }
+  if (live !== run) return false;
+  statusEl.innerHTML = `<div class="lv-count go">開始！</div>`;
+  beep(880, 0.24, 0.24);
+  if (run.voice) CTX.coach.say('開始', 'high');
+  await sleep(620);
+  if (live !== run) return false;
+  if (statusEl) statusEl.innerHTML = '';
+  return true;
+}
+
+function cameraErrorMsg(err) {
+  const n = err && err.name || '';
+  switch (n) {
+    case 'SecurityError':
+      return '相機被瀏覽器封鎖：目前不是<b>安全連線</b>。<br>請改用 <b>http://localhost:8080</b> 開啟（不要用 IP 位址、或直接雙擊開檔）。';
+    case 'NotAllowedError': case 'PermissionDeniedError':
+      return '<b>相機權限被拒</b>。<br>請點網址列左側的鎖頭／相機圖示，把相機改成「允許」，再按下方重試。<br>（Mac 也請確認「系統設定 → 隱私權與安全性 → 相機」已開放給瀏覽器）';
+    case 'NotFoundError': case 'DevicesNotFoundError': case 'OverconstrainedError':
+      return '<b>找不到可用的相機</b>，請確認鏡頭已連接且未被停用。';
+    case 'NotReadableError': case 'TrackStartError':
+      return '<b>相機正被其他程式使用中</b>（如視訊會議、相機 App），請關閉後重試。';
+    case 'NotSupportedError':
+      return '此瀏覽器不支援相機功能，建議改用最新版 <b>Chrome</b> 或 <b>Safari</b>。';
+    case 'ModelError':
+      return 'AI 模型載入失敗，請重新整理頁面再試一次。';
+    default:
+      return '相機啟動失敗（' + (err && (err.message || err.name) || '未知原因') + '）。可先用示範模式體驗。';
+  }
+}
+
+/* ---------------- Live 版型元件（Slice3 R2：純模板，吃資料回字串；接線歸 R3） ---------------- */
+// 取景檢查關卡（R3 接 gateLandmarks 後由 framingReady 驅動檢查燈；R2 為 R1 靜態內容原樣）
+function gateHtml() {
+  return `<div class="lv-gate" id="lv-gate" hidden>
+        <div class="lv-gate-inner">
+          <div class="lv-gate-t">站進畫面中，讓 AI 看見你 👀</div>
+          <div class="lv-gate-frame"></div>
+          <div class="lv-gate-checks">
+            <span class="lv-gate-chk ok">✓ 肩膀</span>
+            <span class="lv-gate-chk ok">✓ 髖部</span>
+            <span class="lv-gate-chk">○ 膝蓋</span>
+          </div>
+          <div class="lv-gate-s">全部亮起並保持 2 秒，訓練自動開始</div>
+          <button class="btn secondary lv-gate-skip" type="button" hidden>跳過檢查，直接開始 ›</button>
+        </div>
+      </div>`;
+}
+// 組間休息卡（R3 以真資料呼叫：組序＋ planText(meta) 同源的次數/休息秒；totalSets 供 R3 備用）
+function restHtml({ setIdx, totalSets, restSec, nextReps }) {
+  return `<div class="lv-rest" id="lv-rest" hidden>
+        <div class="lv-rest-card">
+          <div class="lv-rest-t">第 ${setIdx} 組完成 💪</div>
+          <div class="lv-rest-ring"><b>${restSec}</b><span>秒</span></div>
+          <div class="lv-rest-next">下一組：第 ${setIdx + 1} 組 · ${nextReps} 下</div>
+          <div class="lv-rest-s">深呼吸，放鬆一下</div>
+          <button class="btn secondary lv-rest-skip" type="button">跳過休息</button>
+        </div>
+      </div>`;
+}
+
+function liveShell(ex) {
+  return `
+    <div class="lv-wrap" id="lv-wrap">
+      <video id="lv-video" playsinline muted></video>
+      <canvas id="lv-canvas"></canvas>
+      <div class="lv-top">
+        <button class="lv-exit" id="lv-exit">‹ 結束</button>
+        <span class="lv-title">${exIcon(ex.id)} ${ex.name}</span>
+        <span class="lv-mode" id="lv-modebadge"></span>
+      </div>
+      <div class="lv-zoom" id="lv-zoom" hidden>
+        <span class="lv-zoom-ic" title="拉到最左＝最廣（全身入鏡）">🔍</span>
+        <input type="range" id="lv-zoom-range" />
+        <span class="lv-zoom-lbl">廣</span>
+      </div>
+      <div class="lv-hudtop">
+        <span class="lv-track" id="lv-track" data-s="seek">🔍 尋找人體…</span>
+        <div class="lv-stages" id="lv-stages" title="動作週期：完整走完才計次">
+          <span>起始</span><span>進行</span><span>達標</span><span>回復</span>
+        </div>
+      </div>
+      <div class="lv-gauge">
+        <div class="lv-gauge-track"><i id="lv-gfill"></i><b id="lv-gtarget"></b></div>
+        <span>深度</span>
+      </div>
+      <div class="lv-repflash" id="lv-repflash"></div>
+      <div class="lv-status" id="lv-status"></div>
+      <div class="lv-coach" id="lv-coach"></div>
+      <!-- Slice3 R1 靜態版型（預設 hidden、零邏輯；gate 判定/組數切換歸 R3 接線輪） -->
+      ${gateHtml()}
+      ${restHtml({ setIdx: 1, totalSets: 3, restSec: 45, nextReps: 12 })}
+      <div class="lv-hud">
+        <div class="lv-metric"><div class="m-v" id="m-reps">0</div><div class="m-k">有效次數</div></div>
+        <div class="lv-metric"><div class="m-v" id="m-time">0:00</div><div class="m-k">時間</div></div>
+        <div class="lv-metric"><div class="m-v" id="m-kcal">0</div><div class="m-k">kcal</div></div>
+        <div class="lv-metric lv-cdmetric">
+          <div class="m-v" id="m-cd" hidden>${ex.meta.restSec}</div><div class="m-k" hidden>倒數</div>
+          <div class="m-v lv-set-progress">0/${ex.meta.repsPerSet}</div><div class="m-k lv-set-label">本組次數</div>
+        </div>
+      </div>
+      <div class="lv-ctrls">
+        <button class="lv-btn" id="lv-voice">🔊</button>
+        <button class="lv-btn" id="lv-bgm">🎵</button>
+        <button class="lv-btn lv-pause" id="lv-pause">⏸ 暫停</button>
+      </div>
+    </div>`;
+}
+
+function resizeCanvas() {
+  const wrap = root.querySelector('#lv-wrap'); if (!wrap || !live) return;
+  live.canvas.width = wrap.clientWidth; live.canvas.height = wrap.clientHeight;
+}
+
+// 視野縮放滑桿：直接控制相機變焦（拉左＝最廣、全身入鏡）。相機不支援變焦則不顯示。
+function bindZoom(cam) {
+  const wrap = root.querySelector('#lv-zoom');
+  const range = root.querySelector('#lv-zoom-range');
+  if (!wrap || !range) return;
+  if (!cam || !cam.zoom || !cam.track) { wrap.hidden = true; return; }
+  const { min, max, step } = cam.zoom;
+  range.min = min; range.max = max; range.step = step; range.value = min;   // 預設最廣
+  wrap.hidden = false;
+  range.oninput = async () => {
+    try { await cam.track.applyConstraints({ advanced: [{ zoom: Number(range.value) }] }); } catch { /* 忽略 */ }
+  };
+}
+
+function bindLiveControls() {
+  root.querySelector('#lv-exit').onclick = () => finishLive();
+  root.querySelector('#lv-pause').onclick = (e) => {
+    live.paused = !live.paused;
+    e.target.textContent = live.paused ? '▶ 繼續' : '⏸ 暫停';
+    if (!live.paused) live.lastFrameTs = performance.now();   // Slice3 R3 申報：累加制時鐘下 resume 重設 lastFrameTs（原 startTs 平移語義失效）
+  };
+  root.querySelector('#lv-voice').onclick = (e) => {
+    live.voice = !live.voice; CTX.coach.setEnabled(live.voice);
+    if (!live.voice) CTX.coach.stop();
+    const b = e.currentTarget;
+    b.textContent = live.voice ? '🔊' : '🔇';
+    b.classList.toggle('muted', !live.voice);
+    CTX.toast(live.voice ? '語音已開啟' : '語音已靜音');
+  };
+  root.querySelector('#lv-bgm').onclick = (e) => {
+    live.bgm = !live.bgm; toggleBgm(live.bgm);
+    const b = e.currentTarget;
+    b.textContent = live.bgm ? '🎵' : '🔈';
+    b.classList.toggle('muted', !live.bgm);
+    CTX.toast(live.bgm ? '背景音樂開啟' : '背景音樂關閉');
+  };
+  // 初始按鈕狀態反映目前設定
+  const vb = root.querySelector('#lv-voice'); vb.textContent = live.voice ? '🔊' : '🔇'; vb.classList.toggle('muted', !live.voice);
+  const bb = root.querySelector('#lv-bgm'); bb.textContent = live.bgm ? '🎵' : '🔈'; bb.classList.toggle('muted', !live.bgm);
+  if (live.bgm) toggleBgm(true);
+  window.addEventListener('resize', resizeCanvas);
+}
+
+async function runWarmup(run) {
+  const statusEl = root.querySelector('#lv-status');
+  const coachEl = root.querySelector('#lv-coach');
+  coachEl.textContent = '暖身：原地踏步、活動關節 🤸';
+  CTX.coach.say('開始暖身，原地踏步活動一下關節', 'mid');
+  statusEl.innerHTML = `
+    <div class="lv-loading">🤸 暖身：原地踏步、活動關節<br>
+      <span id="lv-warm-cd">暖身倒數 10 秒</span>
+      <div class="lv-demo-actions"><button class="btn secondary" id="lv-skipwarm">跳過暖身 ›</button></div>
+    </div>`;
+  await new Promise((resolve) => {
+    let s = 10, done = false, timer = null;
+    const finish = () => { if (done) return; done = true; if (timer) clearInterval(timer); resolve(); };
+    statusEl.querySelector('#lv-skipwarm')?.addEventListener('click', finish);
+    const cd = statusEl.querySelector('#lv-warm-cd');
+    timer = setInterval(() => {
+      s--;
+      if (live !== run) return finish();
+      if (cd) cd.textContent = `暖身倒數 ${s} 秒`;
+      if (s <= 0) finish();
+    }, 1000);
+  });
+  statusEl.innerHTML = ''; coachEl.textContent = '';
+}
+
+// 影片以 object-fit:contain 顯示時，計算它在畫布內實際佔的矩形（置中、留黑邊）。
+function containRect(video, cw, ch) {
+  const vw = video.videoWidth || 16, vh = video.videoHeight || 9;
+  const scale = Math.min(cw / vw, ch / vh);
+  const w = vw * scale, h = vh * scale;
+  return { x: (cw - w) / 2, y: (ch - h) / 2, w, h };
+}
+
+/* ---------------- Slice3 R3 組數狀態機（六-補：次數為主／90s 安全網／倒數環雙語意） ---------------- */
+// 建立組狀態＋統一時鐘起點。時鐘契約：每幀無條件 dt=now−lastFrameTs 貼緊；僅 WORK && !paused 把 dt 累進 elapsedMs。
+function initSetState(run) {
+  const m = run.ex.meta;
+  run.set = { idx: 1, total: m.sets, target: m.repsPerSet, baseValid: 0, lastValid: 0, setEndValid: 0, phase: 'WORK', workMs: 0, restMs: 0, restSec: m.restSec };
+  run.lastFrameTs = performance.now();
+  run.skipRest = false;
+  setCdMode('count');
+}
+// 倒數欄雙態成對切換（R1 版型：時間態=#m-cd+倒數標籤／次數態=lv-set-progress+lv-set-label，互斥）
+function setCdMode(mode) {
+  const cell = root?.querySelector('.lv-cdmetric'); if (!cell) return;
+  const timeEls = [cell.querySelector('#m-cd'), cell.querySelector('.m-k:not(.lv-set-label)')];
+  const countEls = [cell.querySelector('.lv-set-progress'), cell.querySelector('.lv-set-label')];
+  timeEls.forEach((el) => { if (el) el.hidden = mode !== 'time'; });
+  countEls.forEach((el) => { if (el) el.hidden = mode !== 'count'; });
+}
+// WORK → REST：snapshot setEndValid（互審 #2——不依賴當幀 res）；休息卡以真資料重繪（restHtml/planText 同源）
+function enterRest(run) {
+  const set = run.set;
+  set.phase = 'REST'; set.restMs = 0; set.setEndValid = set.lastValid;
+  run.skipRest = false; run.warn10 = false; run.lastBeepSec = null;   // 每相位 cue 重置
+  const rest = root.querySelector('#lv-rest');
+  if (rest) {
+    rest.outerHTML = restHtml({ setIdx: set.idx, totalSets: set.total, restSec: set.restSec, nextReps: set.target });
+    const el = root.querySelector('#lv-rest');
+    el.hidden = false;
+    // 跳過休息 token 契約（互審 #4）：只設當前 run 的旗標，消費在迴圈內（檢查點 #10）
+    el.querySelector('.lv-rest-skip').onclick = () => { if (live !== run) return; run.skipRest = true; };
+  }
+  setCdMode('time');
+  beep(720, 0.16);
+  if (run.voice) CTX.coach.say(`第 ${set.idx} 組完成，休息 ${set.restSec} 秒`, 'mid');
+}
+// REST → WORK：baseValid 固定用 snapshot
+function enterWork(run) {
+  const set = run.set;
+  set.idx += 1; set.phase = 'WORK'; set.workMs = 0;
+  set.baseValid = set.setEndValid; set.lastValid = set.setEndValid;
+  run.skipRest = false; run.warn10 = false; run.lastBeepSec = null;
+  const rest = root.querySelector('#lv-rest'); if (rest) rest.hidden = true;
+  setCdMode('count');
+  beep(880, 0.2, 0.24);
+  if (run.voice) CTX.coach.say(`第 ${set.idx} 組，開始！`, 'high');
+}
+// 每幀相位推進（兩迴圈共用）。回傳 'finish' 表示課表完成。
+function advanceSetPhase(run, dt) {
+  const set = run.set;
+  if (set.phase === 'WORK') {
+    set.workMs += dt;
+    const setValid = set.lastValid - set.baseValid;
+    if (setValid >= set.target || set.workMs >= SAFETY_SECONDS * 1000) {
+      if (set.idx >= set.total) return 'finish';
+      enterRest(run);
+    }
+  } else {
+    set.restMs += dt;
+    const remain = Math.max(0, set.restSec * 1000 - set.restMs);
+    const b = root.querySelector('#lv-rest .lv-rest-ring b'); if (b) b.textContent = Math.ceil(remain / 1000);
+    if (remain <= 0 || run.skipRest) enterWork(run);
+  }
+  return null;
+}
+
+function runCameraLoop(run) {
+  live.mode = 'camera';
+  live.started = true;             // 已進入計數階段：之後結束才結算入帳
+  root.querySelector('#lv-modebadge').textContent = '● 即時偵測';
+  initSetState(run);
+  const video = root.querySelector('#lv-video');
+  const mirror = CTX.store.getState().prefs.mirror;
+  const loop = () => {
+    if (live !== run) return;
+    const now = performance.now();
+    const dt = now - live.lastFrameTs; live.lastFrameTs = now;   // 時鐘契約：無條件貼緊（含 paused/REST 幀）
+    CTX.coach.nudge(Date.now());   // Slice3 修復 F2：語音卡死 watchdog（每幀）
+    if (!live.paused) {
+      if (live.set.phase === 'WORK') {
+        live.elapsedMs += dt;      // 累計 WORK 時間＝durationSec 來源（不含休息）
+        const lm = live.pose.detect(video, now);
+        live.ctx.clearRect(0, 0, live.canvas.width, live.canvas.height);
+        if (lm) {
+          const res = live.detector.update(lm, now);
+          live.lastResult = res;
+          live.set.lastValid = res.reps.valid;
+          // 對齊 contain 後的相機矩形：骨架疊在「實際顯示的影像」上，不被黑邊拉歪
+          const r = containRect(video, live.canvas.width, live.canvas.height);
+          live.ctx.save(); live.ctx.translate(r.x, r.y);
+          // Slice3 補修：站著準備（看得到人+IDLE/READY）用取景藍，做動作才用訓練 res.segments 紅黃綠
+          drawSkeleton(live.ctx, lm, framingPose(res) ? ALL_FRAME : res.segments, { w: r.w, h: r.h, mirror });
+          live.ctx.restore();
+          handleResult(res, now, lm);
+        } else {
+          setCoach('找不到人，請站到鏡頭中、保持全身入鏡 🧍', 'mid');
+          if (live.hud) { live.hud.track.dataset.s = 'seek'; live.hud.track.textContent = '🔍 尋找人體…'; }
+        }
+      } else {
+        live.ctx.clearRect(0, 0, live.canvas.width, live.canvas.height);   // REST：清畫布防環殘影
+      }
+      drawRingAndHud();
+      if (advanceSetPhase(run, dt) === 'finish') return finishLive();
+    }
+    live.raf = requestAnimationFrame(loop);
+  };
+  live.raf = requestAnimationFrame(loop);
+}
+
+function offerDemo(ex, statusEl, err) {
+  try { live?.cam?.stop(); } catch { }
+  if (live) live.cam = null;
+  statusEl.innerHTML = `
+    <div class="lv-demo-prompt">
+      <div style="font-size:34px">📷</div>
+      <p>${cameraErrorMsg(err)}</p>
+      <div class="lv-demo-actions">
+        <button class="btn" id="lv-retry">🔄 重新嘗試相機</button>
+        <button class="btn secondary" id="lv-demo-go">▶ 改用示範模式</button>
+      </div>
+    </div>`;
+  root.querySelector('#lv-demo-go').onclick = () => { statusEl.innerHTML = ''; runDemoLoop(ex); };
+  root.querySelector('#lv-retry').onclick = () => {
+    const warm = CTX.store.getState().prefs.warmup;
+    live = null;                 // 讓 startLive 重建
+    startLive(ex, warm);
+  };
+}
+
+// 示範模式：用合成序列（含偶發作弊）餵入同一引擎，眼見為憑。
+async function runDemoLoop(ex) {
+  const run = live;                // 本次訓練 token（同 startLive）
+  live.mode = 'demo';
+  root.querySelector('#lv-modebadge').textContent = '● 示範模式';
+  root.querySelector('#lv-video').style.display = 'none';
+  const ready = await preStart(root.querySelector('#lv-status'), run);   // 說明 + 3、2、1
+  if (live !== run || !ready) return;
+  live.started = true;             // 已進入計數階段：之後結束才結算入帳
+  resizeCanvas();
+  // 3D 人偶舞台（插在 2D canvas 之下：倒數環/HUD 仍畫在上層）
+  const wrap = root.querySelector('#lv-wrap');
+  const stage = document.createElement('div');
+  stage.className = 'lv-avatar3d';
+  wrap.insertBefore(stage, root.querySelector('#lv-canvas'));
+  live.avatarEl = stage;
+  live.avatar = createAvatar3D(stage);
+  live.avatar.setView(EX_VIEW[ex.id]);   // 每動作專屬視角（伏地挺身=側面）
+  live.avatar.resize();
+  // 組合序列：clean ×4 + 一次作弊 + clean ×4 …
+  const cheat = { squat: 'half', jumpingjack: 'armsonly', highknees: 'sitting', pushup: 'sag' }[ex.id] || 'half';
+  const build = () => {
+    const a = makeSequence(ex.id, { reps: 4, variant: 'clean', framesPerRep: 26 });
+    const b = makeSequence(ex.id, { reps: 1, variant: cheat, framesPerRep: 26 });
+    return { frames: a.frames.concat(b.frames), meta: a.meta.concat(b.meta) };
+  };
+  // 時間驅動 + 追補：playback 速度與 rAF 幀率脫鉤，引擎拿到確定性合成時間戳，
+  // 故不論瀏覽器是否節流 rAF（背景分頁等），計次都與測試一致。
+  const FRAME_MS = 33;            // 合成幀間隔（~30fps）
+  ({ frames: live.frames, meta: live.meta } = build());
+  live.fed = 0;                   // 已餵入引擎的合成幀數
+  initSetState(run);
+  const loop = () => {
+    if (live !== run) return;
+    const now = performance.now();
+    const dt = now - live.lastFrameTs; live.lastFrameTs = now;   // 時鐘契約：無條件貼緊（含 paused/REST 幀）
+    CTX.coach.nudge(Date.now());   // Slice3 修復 F2：語音卡死 watchdog（每幀）
+    if (!live.paused) {
+      if (live.set.phase === 'WORK') {
+        live.elapsedMs += dt;      // 累計 WORK 時間；demo 追補 target 派生於此 → 休息/暫停零 catch-up（互審 #3）
+        const target = Math.floor(live.elapsedMs / FRAME_MS);
+        let countedThisBatch = false;
+        while (live.fed < target) {
+          const idx = live.fed % live.frames.length;
+          const lm = live.frames[idx];
+          const res = live.detector.update(lm, live.fed * FRAME_MS); // 確定性時間戳
+          live.lastResult = res;
+          live.set.lastValid = res.reps.valid;
+          if (res.repCountedThisFrame && res.repValidThisFrame) countedThisBatch = true;
+          live.fed++;
+          if (live.fed % live.frames.length === 0) ({ frames: live.frames, meta: live.meta } = build()); // 每輪換一批（含作弊）
+        }
+        const idx = ((live.fed - 1) % live.frames.length + live.frames.length) % live.frames.length;
+        const lm = live.frames[idx];
+        const m = live.meta[idx];
+        live.ctx.clearRect(0, 0, live.canvas.width, live.canvas.height);
+        live.avatar.render(pose3d(ex.id, m.d, m.side));   // 3D 公仔以「真 3D 編排姿勢」重現同一時間軸
+        if (live.lastResult) { handleResult(live.lastResult, now, lm); if (countedThisBatch) flashRep(); }
+      } else {
+        live.ctx.clearRect(0, 0, live.canvas.width, live.canvas.height);   // REST：不餵幀、清畫布防環殘影（公仔停格）
+      }
+      drawRingAndHud();
+      if (advanceSetPhase(run, dt) === 'finish') return finishLive();
+    }
+    live.raf = requestAnimationFrame(loop);
+  };
+  live.raf = requestAnimationFrame(loop);
+}
+
+function setCoach(text, p) {
+  const el = root.querySelector('#lv-coach'); if (!el) return;
+  el.textContent = text; if (p) el.dataset.p = p;
+}
+
+// 沒有錯誤時輪播的正向回饋（節流），讓畫面隨時都有「該怎麼做」的訊息。
+const GOOD_TIPS = ['很好，保持這個節奏 👍', '動作很標準，繼續！', '核心收緊、呼吸放鬆', '很棒，再多幾下！'];
+let _tipIdx = 0, _tipTs = 0;
+function positiveTip(now) {
+  if (now - _tipTs > 3000) { _tipTs = now; _tipIdx = (_tipIdx + 1) % GOOD_TIPS.length; }
+  return GOOD_TIPS[_tipIdx];
+}
+
+const STAGE_OF = { READY: 0, CONCENTRIC: 1, TARGET: 2, ECCENTRIC: 3 };  // 企劃 2.3：起始→發力→達標→回復
+// Slice3 補修：站著準備態＝看得到人且未做動作（IDLE/READY）。此時顏色用取景藍，非訓練紅黃綠——
+// 「顏色只在有動作可評估時才代表姿勢品質」。加 visible guard：看不到人維持 warn/coach，不被藍色蓋。
+function framingPose(res) {
+  return res.visible !== false && (res.phase === 'IDLE' || res.phase === 'READY');
+}
+
+function handleResult(res, now, lm) {
+  const hud = live.hud;
+
+  // —— Coach HUD：把引擎每幀的內部狀態翻譯給使用者 ——
+  if (hud) {
+    // 1) 追蹤狀態膠囊（永遠可見：使用者隨時知道「系統看不看得到我」）
+    if (res.visible === false) {
+      hud.track.dataset.s = 'warn'; hud.track.textContent = '⚠️ 入鏡不完整';
+    } else {
+      hud.track.dataset.s = 'ok'; hud.track.textContent = '● 追蹤中 · 33 點';
+    }
+    // 2) 動作週期燈：READY→發力→達標→回復（Slice3 補修：準備態不亮綠，只在真正做動作時亮）
+    const st = (res.visible !== false && !framingPose(res)) ? STAGE_OF[res.phase] : undefined;
+    hud.stages.forEach((el, i) => el.classList.toggle('on', i === st));
+    // 3) 深度量表：訊號即時填充 + 三色（Slice3 補修：準備態=取景藍 frame，動作態才三色）
+    hud.gfill.style.height = Math.round(Math.max(0, Math.min(1, res.signal)) * 100) + '%';
+    hud.gfill.dataset.c = framingPose(res) ? 'frame' : res.color;
+    // 4) 計次即時判定：✓ +1 / ✗ 原因
+    if (res.repCountedThisFrame) {
+      const okRep = res.repValidThisFrame;
+      hud.flash.textContent = okRep ? '✓ +1' : '✗ ' + (faultName(res.faults[0]) || '半程未達標');
+      hud.flash.className = 'lv-repflash pop ' + (okRep ? 'ok' : 'bad');
+      void hud.flash.offsetWidth;  // 重觸發動畫
+    }
+  }
+
+  // —— 教練訊息（語音 + 字幕）——
+  if (res.visible === false) {
+    setCoach(res.cue?.text || '請站到鏡頭中、保持全身入鏡 🧍', 'mid');
+    return;
+  }
+  // Slice3 修復 F3：追蹤進度資料（誠實回饋用）
+  if (res.repCountedThisFrame && res.repValidThisFrame) live.lastValidAt = Date.now();
+  if (res.visible !== false && res.signal >= (live.ex.thresholds.attemptEnter ?? 0.3)) live.lastMoveAt = Date.now();
+
+  if (res.cue) {
+    if (live.voice) CTX.coach.cue(res.cue, Date.now());   // 修正口令（時基統一 epoch——F2-1）
+    setCoach(res.cue.text, res.cue.priority);
+  } else {
+    // F3：用純函式決策「稱讚 vs 指導」，避免沒計次卻誇「動作很標準」
+    const nowMs = Date.now();
+    const secsSinceValid = (nowMs - (live.lastValidAt || 0)) / 1000;
+    const movingButNotTarget = (nowMs - (live.lastMoveAt || 0)) < 12000;
+    const pol = coachPolicy({ visible: res.visible !== false, hasCue: false, secsSinceValid, movingButNotTarget });
+    if (pol.kind === 'guide') { setCoach(pol.text, 'mid'); if (live.voice) CTX.coach.say(pol.text, 'mid', nowMs); }
+    else if (pol.kind === 'framing') {
+      const hint = lm && live.mode === 'camera' ? framingHint(lm) : null;
+      setCoach(hint || positiveTip(now), hint ? 'mid' : 'good');
+      if (hint && live.voice) CTX.coach.say(hint, 'mid', nowMs);
+    } else {   // praise
+      setCoach(positiveTip(now), 'good');
+    }
+  }
+  if (res.repCountedThisFrame && res.repValidThisFrame) { flashRep(); positiveRepFeedback(); }
+}
+
+// Demo 前最小補強：一次有效動作成立時的正向回饋（短音效＋輪播語音）。
+// 只在「有效計次成立瞬間」由 handleResult 呼叫；1.8 秒冷卻避免連續狂播。不碰計次/判定/門檻。
+let _lastRepFbAt = 0, _repFbIdx = 0;
+const REP_PRAISE = ['做得好', '這一下有效', '姿勢正確', '很好，繼續'];
+function positiveRepFeedback() {
+  const now = Date.now();
+  if (now - _lastRepFbAt < 1800) return;   // 冷卻：1.8 秒內不重複
+  _lastRepFbAt = now;
+  beep(880, 0.09, 0.18); beep(1180, 0.11, 0.18);   // 兩顆上行短音（成功感）
+  if (live?.voice) {
+    _repFbIdx = (_repFbIdx + 1) % REP_PRAISE.length;
+    CTX.coach.say(REP_PRAISE[_repFbIdx], 'low', now);   // 低優先，不搶修正口令通道
+  }
+}
+
+// 由 landmark 佔畫面高度給取景建議；置中合適則回 null
+function framingHint(lm) {
+  let minY = 1, maxY = 0;
+  for (const p of lm) { if ((p.visibility ?? 0) < 0.5) continue; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; }
+  const h = maxY - minY;
+  if (h > 0 && h < 0.45) return '離鏡頭有點遠，請往前一步 📷';
+  if (h > 0.97) return '太近了，請往後半步讓全身入鏡';
+  return null;
+}
+
+// Slice3 R3 倒數環雙語意（六-補）：WORK=本組次數進度環（teal 漸進）／REST=休息倒數環（隨時間消退）。
+function drawRingAndHud() {
+  const set = live.set;
+  const s = live.detector.summary();
+  if (set.phase === 'WORK') {
+    const setValid = Math.max(0, set.lastValid - set.baseValid);
+    drawProgressRing(live.ctx, setValid / set.target, { w: live.canvas.width, h: live.canvas.height, lineWidth: 8 });
+    const sp = root.querySelector('.lv-set-progress'); if (sp) sp.textContent = `${setValid}/${set.target}`;
+    checkEndingCues(Math.max(0, SAFETY_SECONDS * 1000 - set.workMs));   // 安全網提示（cue 旗標於相位轉換時重置）
+  } else {
+    const remain = Math.max(0, set.restSec * 1000 - set.restMs);
+    drawCountdownRing(live.ctx, remain / (set.restSec * 1000), { w: live.canvas.width, h: live.canvas.height, color: COLOR.green, lineWidth: 8 });
+    setText('m-cd', Math.ceil(remain / 1000));
+    checkEndingCues(remain);
+  }
+  const kcal = estimateCalories({ met: live.ex.met, weightKg: CTX.store.getState().profile.weight_kg, durationSec: live.elapsedMs / 1000, targetRate: s.targetRate || 1 });
+  setText('m-reps', s.validReps);
+  setText('m-time', fmtTime(live.elapsedMs / 1000));
+  setText('m-kcal', Math.round(kcal));
+}
+
+// 接近結束時提醒：最後 10 秒語音＋提示、最後 3 秒每秒嗶聲、倒數欄轉紅。
+function checkEndingCues(remainMs) {
+  const r = remainMs / 1000;
+  const cd = root.querySelector('#m-cd'); if (cd) cd.classList.toggle('low', r <= 10);
+  if (!live.warn10 && r <= 10 && r > 3) {
+    live.warn10 = true;
+    if (live.voice) CTX.coach.say('最後十秒，加油！', 'high');
+    CTX.toast('⏳ 最後 10 秒，全力衝刺！');
+  }
+  const sec = Math.ceil(r);
+  if (sec >= 1 && sec <= 3 && live.lastBeepSec !== sec) { live.lastBeepSec = sec; beep(660, 0.1); }
+}
+
+function flashRep() {
+  const el = root.querySelector('#m-reps');
+  if (!el) return;
+  el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+}
+
+/* ---------------- 結算 ---------------- */
+function finishLive() {
+  if (!live || live.finished) return;
+  // 還沒真正開始計數（卡在啟動相機／暖身／倒數／示範提示就退出）→ 不結算、不記紀錄
+  if (!live.started) { stopLive(); CTX.setChrome(true); renderMenu(); return; }
+  live.finished = true;
+  const ex = live.ex;
+  const wasVoice = live.voice;
+  const summary = live.detector.summary();
+  const durationSec = Math.max(1, live.elapsedMs / 1000);
+  stopLive();
+
+  const session = CTX.store.commitSession({
+    exercise: ex.id, exerciseName: ex.name, durationSec,
+    validReps: summary.validReps, invalidReps: summary.invalidReps,
+    met: ex.met, baseCoinPerRep: ex.baseCoinPerRep, faultCounts: summary.faultCounts,
+  });
+  renderResult(ex, summary, session);
+  if (wasVoice) CTX.coach.say('時間到，這組完成，做得很好！', 'high');
+}
+
+function renderResult(ex, summary, session) {
+  CTX.setChrome(true);
+  const total = summary.validReps + summary.invalidReps;
+  const tr = total ? Math.round(summary.validReps / total * 100) : 0;
+  const faults = Object.entries(session.faults || {}).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const gColor = { S: 'var(--gold)', A: 'var(--green)', B: 'var(--teal)', C: 'var(--muted)' }[session.grade];
+  root.innerHTML = `
+    <div class="fade-in wk-result">
+      <div class="wk-grade" style="--gc:${gColor}">
+        <div class="wk-grade-ring">${session.grade}</div>
+        <div class="wk-grade-t">訓練完成！</div>
+        <div class="wk-grade-s">${ex.name} · ${fmtTime(session.durationSec)}</div>
+      </div>
+      <div class="wk-res-grid stagger">
+        ${resCell('🪙 獲得金幣', '+' + session.coinsEarned, 'gold')}
+        ${resCell('✅ 有效次數', summary.validReps)}
+        ${resCell('⚠️ 無效次數', summary.invalidReps)}
+        ${resCell('🎯 達標率', tr + '%')}
+        ${resCell('🔥 消耗熱量', session.calories + ' kcal')}
+        ${resCell('⏱️ 時長', fmtTime(session.durationSec))}
+      </div>
+      ${faults.length ? `<div class="wk-faults card">
+        <div class="wk-judge-t">常見問題</div>
+        ${faults.map(([f, n]) => `<div class="wk-fault-row"><span>${faultName(f)}</span><span class="pill">${n} 次</span></div>`).join('')}
+      </div>` : `<div class="wk-faults card"><div class="wk-judge-t">👏 動作品質很棒，沒有明顯錯誤！</div></div>`}
+      <div class="wk-cta">
+        <button class="btn secondary" id="wk-again" style="flex:1">再一次</button>
+        <button class="btn" id="wk-done" style="flex:1">領取獎勵 ›</button>
+      </div>
+    </div>`;
+  root.querySelector('#wk-again').onclick = () => renderIntro(ex);
+  root.querySelector('#wk-done').onclick = () => renderReward(ex, session);
+}
+
+/* Slice4 R3 第二幕島嶼行：與島嶼目標條共用 nextGoal——同一函式、同一數字。三態文案，皆非死路。 */
+function rewardIslandLine(s) {
+  const n = s.island.placed.length;
+  const g = nextGoal(s);
+  if (g.kind === 'save') {
+    const cheer = g.gap <= 100 ? '快到了！再練一輪衝刺 💪' : '';
+    return `🏠 已建 <b>${n}</b> 棟 · 下一個目標：${g.item.icon} ${g.item.name} <b style="color:var(--gold)">差 ${g.gap}🪙</b>${cheer ? ' · ' + cheer : ''}`;
+  }
+  if (g.kind === 'unlock') return `🏠 已建 <b>${n}</b> 棟 · ${g.item.icon} ${g.item.name}：${g.hint}`;
+  return `🏠 已建 <b>${n}</b> 棟 · 島嶼全部解鎖 🎉`;
+}
+
+/* Slice4 R1 結算第二幕：獎勵畫面。純表現層——先 commit 後演出，數字以 store 為準（金幣=session.coinsEarned）。
+   儀式動畫（飛行/滾動/落袋音）歸 R4。 */
+function renderReward(ex, session) {
+  CTX.setChrome(true);
+  const s = CTX.store.getState();
+  const xp = CTX.store.derived.xpProgress();
+  const ratio = Math.max(0, Math.min(1, xp.ratio || 0));   // clamp 防異常值破版
+  const xpGain = session.validReps * 5;   // 依 commitSession 現行契約推導的顯示值（session 未回傳 xpGain；store 公式改動需同步）
+  const empty = session.coinsEarned === 0;
+  root.innerHTML = `
+    <div class="fade-in wk-rw stagger">
+      <div class="card wk-rw-card">
+        <div class="wk-rw-isl">${empty ? '💪' : '🏝️'}</div>
+        ${empty ? `
+        <div class="wk-rw-title">這次沒有獲得金幣</div>
+        <p class="wk-rw-s">只有有效動作才換得到金幣，再試一次！</p>` : `
+        <div class="wk-rw-title">獎勵入袋！</div>
+        <div class="wk-rw-coins">+${session.coinsEarned}<span class="ico"> 🪙</span></div>
+        <p class="wk-rw-s">金幣已存入錢包 · 去島上蓋新建築吧</p>`}
+      </div>
+      <div class="card wk-rw-xp">
+        <div class="wk-rw-xp-head"><span class="pill">⭐ Lv.${s.wallet.level}</span><span class="wk-rw-xpgain">+${xpGain} XP</span></div>
+        <div class="wk-rw-bar"><i style="width:${Math.round(ratio * 100)}%"></i></div>
+        <div class="wk-rw-xp-s">再 ${Math.max(0, xp.need - xp.cur)} XP 升級</div>
+      </div>
+      <div class="card wk-rw-island">${empty ? `🏠 我的島嶼 · 已建 <b>${s.island.placed.length}</b> 棟建築` : rewardIslandLine(s)}</div>
+      <div class="wk-cta">
+        ${empty
+          ? `<button class="btn" id="wk-rw-retry" style="flex:1">再一次</button>`
+          : `<button class="btn" id="wk-rw-go" style="flex:1">🏝️ 去蓋房子</button>`}
+        <button class="btn secondary" id="wk-rw-done" style="flex:1">完成</button>
+      </div>
+    </div>`;
+  const go = root.querySelector('#wk-rw-go'); if (go) go.onclick = () => CTX.navigate('island');
+  const rt = root.querySelector('#wk-rw-retry'); if (rt) rt.onclick = () => renderIntro(ex);
+  root.querySelector('#wk-rw-done').onclick = () => renderMenu();
+}
+function resCell(k, v, cls = '') { return `<div class="wk-res card ${cls}"><div class="rv">${v}</div><div class="rk">${k}</div></div>`; }
+function faultName(f) {
+  return { torso_lean: '彎腰／軀幹前傾', half_rep: '動作半程未達標', limb_desync: '手腳不同步',
+    no_support: '坐姿／支撐不穩', no_alternation: '未左右交替', sag: '塌腰', form: '深度／姿勢不足' }[f] || f;
+}
+
+/* ---------------- 共用 ---------------- */
+function stopLive() {
+  if (!live) return;
+  cancelAnimationFrame(live.raf);
+  window.removeEventListener('resize', resizeCanvas);
+  try { live.cam?.stop(); } catch { }
+  try { live.pose?.close(); } catch { }
+  try { live.avatar?.dispose(); live.avatarEl?.remove(); } catch { }
+  CTX.coach.stop();
+  toggleBgm(false);
+  live = null;
+}
+function setText(id, v) { const e = root.querySelector('#' + id); if (e) e.textContent = v; }
+function fmtTime(sec) { const m = Math.floor(sec / 60), s = Math.floor(sec % 60); return `${m}:${String(s).padStart(2, '0')}`; }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }

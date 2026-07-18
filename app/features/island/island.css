@@ -1,0 +1,102 @@
+/* ===== 島嶼 Island — 3D 低多邊形場景 ===== */
+/* class 以 isl- 前綴，使用全域設計 token */
+
+#view.isl-host { padding: 0; overflow: hidden; position: relative; }
+
+.isl-stage { position: absolute; inset: 0; overflow: hidden; }
+#isl-canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+
+/* 提示橫幅 */
+.isl-hint {
+  position: absolute; top: 64px;   /* Slice4 R3: 讓位給頂部目標條 */ left: 50%; transform: translateX(-50%);
+  background: rgba(8, 22, 28, .8); border: 1px solid var(--stroke); color: var(--text);
+  padding: 8px 16px; border-radius: 99px; font-size: 13px; font-weight: 600;
+  opacity: 0; transition: opacity .3s var(--ease); pointer-events: none; z-index: 5; max-width: 90%; text-align: center;
+}
+.isl-hint.show { opacity: 1; }
+
+/* 左側功能列 */
+.isl-left { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 12px; z-index: 5; }
+.isl-ic {
+  width: 50px; height: 50px; border-radius: 16px; border: 1px solid var(--stroke);
+  background: rgba(8, 22, 28, .6); backdrop-filter: blur(10px); color: #fff; font-size: 22px;
+  display: grid; place-items: center; box-shadow: var(--shadow); transition: transform .15s var(--ease), background .2s;
+}
+.isl-ic:active { transform: scale(.92); }
+.isl-ic.on { background: var(--grad-accent); border-color: transparent; }
+
+/* 右側縮放 */
+.isl-right { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; background: rgba(8, 22, 28, .6); backdrop-filter: blur(10px); border: 1px solid var(--stroke); border-radius: 18px; padding: 8px; z-index: 5; }
+.isl-zi { width: 40px; height: 40px; border-radius: 12px; border: 0; background: var(--surface-2); color: #fff; font-size: 22px; font-weight: 700; }
+.isl-zi:active { background: var(--surface); }
+.isl-zlvl { font-size: 11px; color: var(--muted); font-weight: 700; }
+
+/* 成就列 */
+.isl-ach { position: absolute; top: 14px; right: 14px; display: flex; gap: 8px; z-index: 5; }
+.isl-badge { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; font-size: 20px; background: rgba(8, 22, 28, .55); border: 1px solid var(--stroke); filter: grayscale(1) opacity(.5); }
+.isl-badge.on { filter: none; border-color: var(--gold); box-shadow: 0 0 16px rgba(255, 210, 63, .4); }
+
+/* 商店 bottom sheet */
+.isl-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 6;
+  background: rgba(8, 22, 28, .94); backdrop-filter: blur(20px); border-top: 1px solid var(--stroke-strong);
+  border-radius: 22px 22px 0 0; padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px);
+  transform: translateY(110%); transition: transform .35s var(--ease); max-height: 60%; overflow-y: auto;
+}
+.isl-sheet.open { transform: translateY(0); }
+.isl-sheet-head { display: flex; align-items: center; justify-content: space-between; font-weight: 800; font-size: 17px; margin-bottom: 12px; }
+.isl-sheet-x { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--stroke); background: var(--surface); color: #fff; font-size: 15px; }
+.isl-shop { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+.isl-item {
+  display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 14px 8px; border-radius: 16px;
+  background: var(--grad-card); border: 1px solid var(--stroke); color: var(--text); transition: transform .12s var(--ease), border-color .2s;
+}
+.isl-item:active { transform: scale(.95); }
+.isl-item-ic { font-size: 30px; }
+.isl-item-n { font-weight: 700; font-size: 13px; }
+.isl-item-c { font-size: 11px; color: var(--gold); font-weight: 700; }
+.isl-item.poor { opacity: .55; }
+.isl-item.poor .isl-item-c { color: var(--muted); }
+.isl-item.locked { opacity: .5; }
+.isl-item.locked .isl-item-c { color: var(--faint); font-size: 10px; }
+
+/* 放置 / 選取 操作列 */
+.isl-place-bar {
+  position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(120%);
+  display: flex; align-items: center; gap: 12px; z-index: 6;
+  background: rgba(8, 22, 28, .92); border: 1px solid var(--stroke-strong); border-radius: 99px;
+  padding: 8px 8px 8px 18px; box-shadow: var(--shadow); transition: transform .3s var(--ease); white-space: nowrap;
+}
+.isl-place-bar.show { transform: translateX(-50%) translateY(0); }
+.isl-place-bar span { font-weight: 600; font-size: 13.5px; }
+.isl-place-bar .btn { padding: 9px 16px; font-size: 13px; }
+
+@media (max-width: 480px) {
+  .isl-ic { width: 44px; height: 44px; font-size: 19px; }
+  .isl-place-bar { max-width: 92vw; overflow: hidden; }
+}
+
+/* ===== Slice4 R3：常駐「下一個目標」條（與結算第二幕共用 nextGoal） ===== */
+.isl-goal {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: rgba(8, 22, 28, .72); backdrop-filter: blur(10px);
+  border: 1px solid var(--stroke); border-radius: 99px; color: var(--text);
+  padding: 8px 16px 10px; font-size: 13px; font-weight: 600; z-index: 6;
+  cursor: pointer; transition: transform .15s var(--ease), border-color .2s;
+}
+.isl-goal:hover { border-color: var(--stroke-strong); }
+.isl-goal:active { transform: translateX(-50%) scale(.97); }
+.isl-goal-t b { color: var(--gold); }
+.isl-goal-bar {
+  display: block; height: 3px; border-radius: 99px; background: var(--surface-2);
+  overflow: hidden; margin-top: 6px;
+}
+.isl-goal-bar > b { display: block; height: 100%; background: var(--grad-teal); border-radius: 99px; }
+@media (max-width: 620px) {
+  /* 垂直三層避讓：goal（頂）→ 成就列 → hint，零重疊 */
+  .isl-goal { left: 14px; right: 14px; transform: none; max-width: none; }
+  .isl-goal:active { transform: scale(.97); }
+  .isl-ach { top: 62px; }
+  .isl-hint { top: 108px; }
+}
