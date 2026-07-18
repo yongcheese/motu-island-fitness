@@ -1,10 +1,19 @@
 // Tab0 今日（Slice 1 第一輪）：首屏靜態版——今日任務(假資料) + 島嶼入口 + streak + 唯一主 CTA。
 // 契約：只實作 { id, label, icon, mount, unmount } 五欄位（不含 onShow）。
 // store 一律唯讀（getState / subscribe）；unmount 必清 unsubscribe（生命週期鐵則）。
-// TODO(R3): 接 store 任務欄位——本輪任務為寫死常數，不做任務邏輯、不改 store schema。
 import { store } from '../../state/store.js';
 
-const TASK = { title: '完成 20 個有效深蹲', target: 20, done: 0, hint: '蹲到髖低於膝才算有效' };
+const TASK = { title: '完成 20 個有效深蹲', target: 20, hint: '蹲到髖低於膝才算有效' };
+
+// 今日任務進度（Demo 最終打磨 P0）：純呈現層由 history 唯讀推導，零 store schema 變更。
+// 「今日」判定與 store todayISO 同式（UTC 日期字串比對）；已知限制：台北 00:00–07:59 歸前一 UTC 日。
+export function todayValidSquats(history, todayStr = new Date().toISOString().slice(0, 10)) {
+  let n = 0;
+  for (const h of history || []) {
+    if (h.date === todayStr && h.exercise === 'squat' && Number.isFinite(h.validReps) && h.validReps > 0) n += h.validReps;
+  }
+  return Math.min(TASK.target, n);
+}
 
 let root = null, CTX = null, unsub = null;
 
@@ -18,7 +27,7 @@ function dateStr() {
   return `${d.getMonth() + 1} 月 ${d.getDate()} 日 · 週${'日一二三四五六'[d.getDay()]}`;
 }
 
-// 任務進度環（靜態；R3 接真資料後由 subscribe 更新）
+// 任務進度環（P0 起接真資料，由 subscribe 整卡重繪更新）
 function ringSvg(done, target) {
   const pct = target ? Math.min(1, done / target) : 0;
   const R = 34, C = 2 * Math.PI * R;
@@ -35,6 +44,7 @@ function ringSvg(done, target) {
 function render() {
   const s = store.getState();
   const first = s.history.length === 0;   // Empty 狀態：從未訓練 → 首訓引導（空＝下一步，不是死路）
+  const done = todayValidSquats(s.history);
   root.innerHTML = `
   <div class="fade-in today stagger">
     <header class="td-greet">
@@ -42,15 +52,15 @@ function render() {
       <p class="sub">${dateStr()} · 正確訓練 → 金幣 → 島嶼成長</p>
     </header>
 
-    <section class="card td-mission">
+    <section class="card td-mission${done >= TASK.target ? ' done' : ''}">
       <div class="section-title td-sec">📌 今日任務</div>
       <div class="td-mission-row">
         <div class="td-mission-info">
-          <div class="td-mission-t">${first ? '完成你的第一次訓練' : esc(TASK.title)}</div>
-          <div class="td-mission-s">${first ? '島上第一棟建築正等著你解鎖 🏝️' : `還差 ${TASK.target - TASK.done} 個 · ${esc(TASK.hint)}`}</div>
+          <div class="td-mission-t">${done >= TASK.target ? '✅ ' : ''}${first ? '完成你的第一次訓練' : esc(TASK.title)}</div>
+          <div class="td-mission-s">${done >= TASK.target ? '今日任務完成！' : first ? '島上第一棟建築正等著你解鎖 🏝️' : `還差 ${TASK.target - done} 個 · ${esc(TASK.hint)}`}</div>
           <span class="pill td-streak" id="td-streak">🔥 連續 ${s.streak.current} 天</span>
         </div>
-        ${ringSvg(TASK.done, TASK.target)}
+        ${ringSvg(done, TASK.target)}
       </div>
     </section>
 
@@ -84,13 +94,8 @@ export default {
   mount(el, ctx) {
     root = el; CTX = ctx;
     render();
-    // 唯讀訂閱：金幣/建築/連續天數變動時就地更新（不整頁重繪，避免打斷輸入焦點）
-    unsub = store.subscribe(() => {
-      if (!root) return;
-      const st = store.getState();
-      const a = root.querySelector('#td-streak'); if (a) a.textContent = `🔥 連續 ${st.streak.current} 天`;
-      const p = root.querySelector('#td-placed'); if (p) p.textContent = st.island.placed.length;
-    });
+    // 唯讀訂閱：任務環/建築數/連續天數任一變動 → 整頁重繪（P0 互審裁定：今日層無輸入框，重繪安全）
+    unsub = store.subscribe(() => { if (root) render(); });
   },
   unmount() {
     unsub?.(); unsub = null;      // 生命週期鐵則：清訂閱，防重複 render 疊加

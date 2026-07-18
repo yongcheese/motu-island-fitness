@@ -20,3 +20,18 @@ export function coachPolicy(state) {
   if (secsSinceValid <= 12) return { kind: 'praise' };  // 最近有計次 → 稱讚名副其實
   return { kind: 'framing' };                    // 其餘（靜止/剛進場）→ 中性取景提示，不亂稱讚
 }
+
+// Demo 最終打磨 P2：組內剩次語音決策（互審契約：精確數字觸發、旗標由呼叫端在 say 成功後才設）。
+// 輸入 set 快照：{ target, baseValid, lastValid, cue3, cue1 }；回傳 { text, priority, flag } 或 null。
+// 呼叫端契約：if (cue && run.voice && coach.say(cue.text, cue.priority)) set[cue.flag] = true;
+//   → say 失敗不設旗標，同狀態下一幀自然重試；remain 一變即停止重試，永不報錯數字。
+// 跳幀取捨：單幀 4→2 時 remain 不再===3，三下提示直接略過（不喊錯）；最後一下為 high 可搶佔。
+export function repCountdownCue(set) {
+  const { target, baseValid, lastValid, cue3, cue1 } = set || {};
+  const setValid = lastValid - baseValid;
+  if (!(setValid > 0)) return null;               // 開組即喊防護（含 target<=3）
+  const remain = target - setValid;
+  if (remain === 3 && !cue3) return { text: '還剩三下', priority: 'mid', flag: 'cue3' };
+  if (remain === 1 && !cue1) return { text: '最後一下，加油', priority: 'high', flag: 'cue1' };
+  return null;
+}

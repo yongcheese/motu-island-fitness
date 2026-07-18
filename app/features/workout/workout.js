@@ -8,7 +8,7 @@ import { createAvatar3D } from '../../ui/avatar3d.js';
 import { pose3d, EX_VIEW } from '../../ui/pose3d.js';
 import { estimateCalories } from '../../core/calories.js';
 import { nextGoal } from '../island/goals.js';   // Slice4 R3：結算第二幕與島嶼目標條共用（純函式、零依賴）
-import { coachPolicy } from '../../core/coach-policy.js';   // Slice3 修復 F3：誠實回饋決策（純函式）
+import { coachPolicy, repCountdownCue } from '../../core/coach-policy.js';   // Slice3 修復 F3：誠實回饋決策（純函式）
 
 let CTX = null;
 let root = null;
@@ -199,7 +199,7 @@ function recCardHtml(e) {
 }
 
 function cardHtml(e) {
-  const d = e.difficulty || 1;   // 注意：與 recCardHtml 的 fallback 語義不同，屬既有行為（見 R2 計畫二節），不得統一
+  const d = e.meta?.difficulty || e.difficulty || 1;   // Demo 打磨 P1-2 裁決：與 recCardHtml 同鏈（伏地挺身難度 3 曾恆顯 1）
   const grp = GROUPS[e.group] || '';
   const tag = TAGLINE[e.id] || '';
   if (!e.ready) {
@@ -730,7 +730,7 @@ function containRect(video, cw, ch) {
 // 建立組狀態＋統一時鐘起點。時鐘契約：每幀無條件 dt=now−lastFrameTs 貼緊；僅 WORK && !paused 把 dt 累進 elapsedMs。
 function initSetState(run) {
   const m = run.ex.meta;
-  run.set = { idx: 1, total: m.sets, target: m.repsPerSet, baseValid: 0, lastValid: 0, setEndValid: 0, phase: 'WORK', workMs: 0, restMs: 0, restSec: m.restSec };
+  run.set = { idx: 1, total: m.sets, target: m.repsPerSet, baseValid: 0, lastValid: 0, setEndValid: 0, phase: 'WORK', workMs: 0, restMs: 0, restSec: m.restSec, cue3: false, cue1: false };
   run.lastFrameTs = performance.now();
   run.skipRest = false;
   setCdMode('count');
@@ -765,6 +765,7 @@ function enterWork(run) {
   const set = run.set;
   set.idx += 1; set.phase = 'WORK'; set.workMs = 0;
   set.baseValid = set.setEndValid; set.lastValid = set.setEndValid;
+  set.cue3 = false; set.cue1 = false;                                // P2 剩次語音旗標每組重置
   run.skipRest = false; run.warn10 = false; run.lastBeepSec = null;
   const rest = root.querySelector('#lv-rest'); if (rest) rest.hidden = true;
   setCdMode('count');
@@ -777,6 +778,9 @@ function advanceSetPhase(run, dt) {
   if (set.phase === 'WORK') {
     set.workMs += dt;
     const setValid = set.lastValid - set.baseValid;
+    // P2 剩次語音旁路（互審契約）：say 成功才設旗標；失敗下一幀重試、remain 一變即停，永不報錯數字
+    const cue = repCountdownCue(set);
+    if (cue && run.voice && CTX.coach.say(cue.text, cue.priority)) set[cue.flag] = true;
     if (setValid >= set.target || set.workMs >= SAFETY_SECONDS * 1000) {
       if (set.idx >= set.total) return 'finish';
       enterRest(run);
@@ -1081,7 +1085,7 @@ function finishLive() {
     met: ex.met, baseCoinPerRep: ex.baseCoinPerRep, faultCounts: summary.faultCounts,
   });
   renderResult(ex, summary, session);
-  if (wasVoice) CTX.coach.say('時間到，這組完成，做得很好！', 'high');
+  if (wasVoice) CTX.coach.say('這組完成，做得很好！', 'high');
 }
 
 function renderResult(ex, summary, session) {

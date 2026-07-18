@@ -7,6 +7,8 @@
 
 /* 今日任務卡（Design System 元件 #3 Mission Card） */
 .td-mission { padding: 20px; }
+.td-mission.done { border-color: var(--green); }
+.td-mission.done .td-mission-s { color: var(--green); font-weight: 700; }
 .td-mission-row { display: flex; align-items: center; gap: 16px; }
 .td-mission-info { flex: 1; min-width: 0; }
 .td-mission-t { font-size: 19px; font-weight: 800; letter-spacing: -.01em; }
