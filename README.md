@@ -11,7 +11,7 @@
 ## 🚀 快速啟動（評審 / Demo）
 
 ```bash
-bash serve.sh            # 或: python3 -m http.server 8080
+bash serve.sh            # 或: python3 serve.py 8080；也可雙擊「啟動 Island Fitness AI.command」
 ```
 瀏覽器開啟 **http://localhost:8080** 。建議用 Chrome / Edge / Safari，允許相機權限。
 
@@ -24,14 +24,15 @@ bash serve.sh            # 或: python3 -m http.server 8080
 ```bash
 npm test                 # = node tests/run.js
 ```
-31 項確定性測試全綠：四項動作（深蹲／開合跳／高抬腿／伏地挺身）的計次、半程/代償/作弊判否、
+56 項確定性測試全綠：四項動作（深蹲／開合跳／高抬腿／伏地挺身）的計次、半程/代償/作弊判否、
 **鏡頭遠近與站位平移不變性**（標準化層）、防抖、遮擋暫停、計次冷卻、METs 熱量與 S/A/B/C 評級、
 以及混合正負樣本 **≥ 90% 判定準確率**。
 
-## 🧩 四大功能（底部 Tab）
+## 🧩 五大功能（底部 Tab）
 
 | Tab | 功能 | 重點 |
 |----|------|------|
+| ☀️ 今日 | 首屏：今日任務與推薦 | 接真實訓練資料；一鍵進入推薦訓練 |
 | 🏝️ 島嶼 | 用金幣建設等距島嶼 | 金幣只來自有效訓練（防刷）；成就解鎖主題建築 |
 | 🏋️ 訓練 | **核心**：AI 即時判定＋矯正＋結算 | 三色骨架、分級語音、倒數光環、結算評級 |
 | 📊 健康 | 訓練數據視覺化 | 本週 vs 上週對比、卡路里趨勢、達標率、常見錯誤 |
@@ -54,13 +55,16 @@ npm test                 # = node tests/run.js
 ## 📁 專案結構
 ```
 index.html              app shell
-app/core/               引擎：geometry / normalize / engine / exercises / calories / coach / pose / synth
-app/ui/feedback.js      三色骨架 + 倒數光環渲染
+serve.py                本機伺服器（no-cache＋正確 MIME；serve.sh 與 .command 都呼叫它）
+app/main.js             導覽外殼：掛載各 feature、topbar / tabbar / toast
+app/core/               純函式引擎：geometry / normalize / engine / exercises / calories / coach / pose / synth
+app/ui/                 渲染元件：feedback（三色骨架）/ pose3d / avatar3d / character
 app/state/store.js      單一狀態源 + localStorage（commitSession 為唯一加幣入口）
-app/features/           workout / island / tracking / settings 四大功能
-tests/                  Node 可跑的 eval 套件（合成 landmark）
-vendor/                 MediaPipe WASM/模型、Chart.js（離線）
-docs/                   SPEC / IMPACT / TASKS / CONTRACTS / REVIEW / TRACE
+app/features/           today / island / workout / tracking / settings 五大分頁
+tests/                  Node 可跑的 eval 套件（合成 landmark，npm test）
+vendor/                 MediaPipe WASM/模型、Chart.js、Three.js、字型（離線）
+docs/                   文件；先看 docs/README.md 文件地圖（現行 vs 歷史）
+企劃文件/                競賽企劃書、DEMO PPT 來源稿
 ```
 
 ## 📐 動作判定（首期 10 項，MVP 完整實作＋測試前 4 項）

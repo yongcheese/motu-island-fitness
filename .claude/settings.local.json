@@ -66,7 +66,20 @@
       "Bash(cp app/features/workout/workout.css __TRACKED_VAR__/workout.css.fix2.bak)",
       "Bash(awk '{print \"app/core:\", $6\"/\"$7, $8}')",
       "Bash(awk '{print $NF\": \"$6\"/\"$7, $8}')",
-      "Bash(git -C /Users/yongcheese/Documents/code/claude rev-parse --show-toplevel)"
+      "Bash(git -C /Users/yongcheese/Documents/code/claude rev-parse --show-toplevel)",
+      "Bash(git tag *)",
+      "Bash(npm install *)",
+      "Bash(codex --version)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(kill 65910)",
+      "Bash(kill 77581)",
+      "Bash(npm test *)",
+      "Bash(grep -rEo 'docs/[A-Za-z_\\\\.]+\\\\.md|docs/planning/[^\\)\\\\s`\"]+' --include='*.md' --include='*.js' --include='*.json' .)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(curl -s -o /dev/null -w \"index:%{http_code} \" http://localhost:8123/index.html)",
+      "Bash(curl -s -o /dev/null -w \"main.js:%{http_code}\\\\n\" http://localhost:8123/app/main.js)",
+      "Bash(kill %1)"
     ]
   }
 }

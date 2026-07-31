@@ -12,7 +12,7 @@ done
 URL="http://localhost:$PORT/index.html"
 if ! curl -s -o /dev/null "http://localhost:$PORT/index.html"; then
   echo "啟動本機伺服器於 $URL ..."
-  python3 -m http.server $PORT >/tmp/island-fitness-ai.log 2>&1 &
+  python3 serve.py $PORT >/tmp/island-fitness-ai.log 2>&1 &
   SERVER_PID=$!
   sleep 1
 fi
