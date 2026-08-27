@@ -191,4 +191,4 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
 - **依賴**：Slice 6（契約先定稿，實作才有依據）
 - **平行組**：獨立（碰共用檔 `main.js`，必經 slice-reviewer）
 
-<!-- cross-model-review: APPROVED reviewer=ollama-qwen2.5-coder-14b hash=641a84b6b1f08849 at=2026-08-27T17:01:16+08:00 -->
+<!-- cross-model-review: APPROVED reviewer=ollama-qwen2.5-coder-14b hash=465d85fa8747e027 at=2026-08-27T17:05:11+08:00 -->
