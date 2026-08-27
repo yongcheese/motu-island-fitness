@@ -9,13 +9,20 @@ const MODEL = {
 
 // ---- One-Euro 濾波：抑制 landmark 抖動但保留快速動作（低延遲），大幅降低誤判 ----
 function alphaOf(cutoff, dt) { const tau = 1 / (2 * Math.PI * cutoff); return 1 / (1 + tau / dt); }
-function makePoseSmoother({ minCutoff = 1.5, beta = 0.3, dCutoff = 1.0 } = {}) {
-  let xs = null, dxs = null, tPrev = 0;
+// minCutoff/beta 由 1.5/0.3 提高到 2.0/0.5：實測快節奏下濾波會吃掉峰值訊號
+// （2.5 rep/s 的峰值 progress 從 0.845 → ~0.94，2 rep/s 以下本來就幾乎無損），
+// 代價是靜止殘餘抖動 std 從 0.00112 → 0.00128（+14%，肉眼無感）。
+// 再往上（3.0/0.8）靜止時骨架就會開始看得出不穩，故停在這裡。
+// visSmooth：visibility 也做 EMA。原本只平滑 x/y，visibility 逐幀跳動會讓骨頭在
+// 繪製門檻附近閃爍（Bug2(a) 的視覺成因之一）。
+function makePoseSmoother({ minCutoff = 2.0, beta = 0.5, dCutoff = 1.0, visSmooth = 0.35 } = {}) {
+  let xs = null, dxs = null, vs = null, tPrev = 0;
   return {
-    reset() { xs = null; dxs = null; tPrev = 0; },
+    reset() { xs = null; dxs = null; vs = null; tPrev = 0; },
     apply(pts, tSec) {
       if (!xs) {
-        xs = pts.map(p => ({ x: p.x, y: p.y })); dxs = pts.map(() => ({ x: 0, y: 0 })); tPrev = tSec;
+        xs = pts.map(p => ({ x: p.x, y: p.y })); dxs = pts.map(() => ({ x: 0, y: 0 }));
+        vs = pts.map(p => p.visibility ?? 1); tPrev = tSec;
         return pts;
       }
       let dt = tSec - tPrev; if (!(dt > 1e-4)) dt = 1 / 30; tPrev = tSec;
@@ -29,6 +36,8 @@ function makePoseSmoother({ minCutoff = 1.5, beta = 0.3, dCutoff = 1.0 } = {}) {
           xs[i][ax] = a * p[ax] + (1 - a) * xs[i][ax];
           o[ax] = xs[i][ax];
         }
+        vs[i] = visSmooth * o.visibility + (1 - visSmooth) * vs[i];
+        o.visibility = vs[i];
         return o;
       });
     },
@@ -41,7 +50,9 @@ export async function createPose({ model = 'full', numPoses = 1, delegate = 'GPU
     runningMode: 'VIDEO', numPoses,
     // 0.5：偵測/追蹤更不易斷線（斷線→骨架消失→計次中斷，是實機「抓不到人」主因之一）。
     // 品質把關交給引擎層的 visMin + visStreak + 各動作 gate，這裡以「持續追得到」優先。
-    minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+    // minTrackingConfidence 0.5→0.3：快速動作有動態模糊，追蹤信心一低就整幀重新偵測（更慢更抖）。
+    // 只放寬「追蹤」，presence 維持 0.5 —— 降 presence 會讓人離開畫面時吐出鬼影骨架，反而更糟。
+    minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.3,
   };
   let landmarker;
   try {

@@ -1,6 +1,6 @@
 // 中央狀態（單一真實來源）+ localStorage 持久化 + 事件匯流排。
 // 防刷鐵則：只有 commitSession() 能增加金幣/XP/history；UI 任何按鈕都不能直接加幣。
-import { coinsFor, grade, estimateCalories } from '../core/calories.js';
+import { coinsFor, grade } from '../core/rewards.js';
 
 const KEY = 'island-fitness-ai/v1';
 const SCHEMA = 1;
@@ -67,8 +67,7 @@ export const store = {
 
     const total = validReps + invalidReps;
     const targetRate = total ? validReps / total : 0;
-    const streakDays = bumpStreak();
-    const calories = estimateCalories({ met, weightKg: state.profile.weight_kg, durationSec, targetRate });
+    const streakDays = bumpStreak(validReps);   // 只有當日有效次數達門檻才計入連續天數
     const coins = coinsFor({ validReps, baseCoinPerRep, targetRate, streakDays });
     const g = grade({ targetRate, validRate: targetRate });
     const xpGain = validReps * 5;
@@ -78,7 +77,7 @@ export const store = {
       exercise: result.exercise, exerciseName: result.exerciseName || result.exercise,
       durationSec: Math.round(durationSec),
       validReps, invalidReps,
-      targetRate: +targetRate.toFixed(3), calories: +calories.toFixed(1),
+      targetRate: +targetRate.toFixed(3),
       coinsEarned: coins, grade: g, faults: result.faultCounts || {},
     };
     state.history.push(session);
@@ -123,10 +122,29 @@ export const store = {
   },
 };
 
-function bumpStreak() {
+// 連續天數的門檻：當日累計「有效次數」需達此數，該日才算一天運動。
+// 沒有這道門檻的話，開著訓練站著不動、等時間到自動結算，連續天數照樣 +1 ——
+// 而遊戲端的簽到與輪盤獎勵都建立在這個欄位上，等於可以空轉刷獎勵。
+// 5 為工程判斷（非文獻值）：足以排除零有效次數的空轉，又遠低於今日任務的 20，
+// 不會誤傷「只做一點點但確實有動」的使用者。
+export const STREAK_MIN_VALID_REPS = 5;
+
+/** 當日累計有效次數（含本次尚未寫入 history 的 session）。 */
+function todayValidTotal(extraValidReps = 0) {
+  const today = todayISO();
+  let n = extraValidReps;
+  for (const h of state.history) {
+    if (h.date === today && Number.isFinite(h.validReps) && h.validReps > 0) n += h.validReps;
+  }
+  return n;
+}
+
+function bumpStreak(validRepsThisSession = 0) {
   const today = todayISO();
   const s = state.streak;
-  if (s.lastActiveDate === today) return s.current;
+  if (s.lastActiveDate === today) return s.current;      // 今日已計入，不重複累加
+  // 當日有效次數未達門檻 → 這一天還不算「有運動」，維持原連續天數不動
+  if (todayValidTotal(validRepsThisSession) < STREAK_MIN_VALID_REPS) return s.current;
   const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
   s.current = (s.lastActiveDate === yesterday) ? s.current + 1 : 1;
   s.lastActiveDate = today;

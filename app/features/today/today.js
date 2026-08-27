@@ -15,6 +15,33 @@ export function todayValidSquats(history, todayStr = new Date().toISOString().sl
   return Math.min(TASK.target, n);
 }
 
+/** 今日累計訓練分鐘數（含無效次的時間——人確實動了那麼久，這是「活動量」不是「成績」）。
+ *  對應設定頁的 dailyGoalMin。日期判定與 todayValidSquats 同式，同樣的時區限制。 */
+export function todayActiveMinutes(history, todayStr = new Date().toISOString().slice(0, 10)) {
+  let sec = 0;
+  for (const h of history || []) {
+    if (h.date === todayStr && Number.isFinite(h.durationSec) && h.durationSec > 0) sec += h.durationSec;
+  }
+  return Math.round(sec / 60);
+}
+
+/** 本週（週一起算）有訓練的「天數」，不是次數——同一天練三次仍只算一天。
+ *  對應設定頁的 weeklyGoalDays。回傳 { days, dates } 供進度條與日曆點同時使用。 */
+export function weekActiveDays(history, todayStr = new Date().toISOString().slice(0, 10)) {
+  const today = new Date(todayStr + 'T00:00:00Z');
+  if (Number.isNaN(today.getTime())) return { days: 0, dates: [] };
+  // getUTCDay(): 0=週日。轉成「距離本週一幾天」：週一=0 … 週日=6
+  const offset = (today.getUTCDay() + 6) % 7;
+  const monday = new Date(today.getTime() - offset * 86400000);
+  const weekStr = [];
+  for (let i = 0; i < 7; i++) weekStr.push(new Date(monday.getTime() + i * 86400000).toISOString().slice(0, 10));
+  const hit = new Set();
+  for (const h of history || []) {
+    if (h.date && weekStr.includes(h.date)) hit.add(h.date);
+  }
+  return { days: hit.size, dates: weekStr.map(d => ({ date: d, active: hit.has(d), isToday: d === todayStr })) };
+}
+
 let root = null, CTX = null, unsub = null;
 
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
@@ -45,6 +72,10 @@ function render() {
   const s = store.getState();
   const first = s.history.length === 0;   // Empty 狀態：從未訓練 → 首訓引導（空＝下一步，不是死路）
   const done = todayValidSquats(s.history);
+  const week = weekActiveDays(s.history);
+  const weekPct = Math.min(100, Math.round(week.days / Math.max(1, s.prefs.weeklyGoalDays) * 100));
+  const mins = todayActiveMinutes(s.history);
+  const goalMin = s.prefs.dailyGoalMin || 0;
   root.innerHTML = `
   <div class="fade-in today stagger">
     <header class="td-greet">
@@ -58,7 +89,10 @@ function render() {
         <div class="td-mission-info">
           <div class="td-mission-t">${done >= TASK.target ? '✅ ' : ''}${first ? '完成你的第一次訓練' : esc(TASK.title)}</div>
           <div class="td-mission-s">${done >= TASK.target ? '今日任務完成！' : first ? '島上第一棟建築正等著你解鎖 🏝️' : `還差 ${TASK.target - done} 個 · ${esc(TASK.hint)}`}</div>
-          <span class="pill td-streak" id="td-streak">🔥 連續 ${s.streak.current} 天</span>
+          <div class="td-mission-pills">
+            <span class="pill td-streak" id="td-streak">🔥 連續 ${s.streak.current} 天</span>
+            ${goalMin ? `<span class="pill td-mins${mins >= goalMin ? ' td-hit' : ''}">⏱️ ${mins} / ${goalMin} 分鐘</span>` : ''}
+          </div>
         </div>
         ${ringSvg(done, TASK.target)}
       </div>
@@ -73,13 +107,18 @@ function render() {
       <button class="btn secondary" id="td-go-island" type="button">去看看 ›</button>
     </section>
 
-    <section class="card td-week">
+    <section class="card td-week${week.days >= s.prefs.weeklyGoalDays ? ' done' : ''}">
       <div class="td-week-head">
         <span class="section-title td-sec">📅 本週目標</span>
-        <span class="pill td-soon">進度追蹤即將開通</span>
+        <span class="pill${week.days >= s.prefs.weeklyGoalDays ? ' td-hit' : ''}">${week.days} / ${s.prefs.weeklyGoalDays} 天</span>
       </div>
-      <div class="td-week-bar"><i style="width:0%"></i></div>
-      <div class="td-week-s">目標：每週運動 ${s.prefs.weeklyGoalDays} 天</div>
+      <div class="td-week-bar"><i style="width:${weekPct}%"></i></div>
+      <div class="td-week-days" aria-hidden="true">
+        ${week.dates.map((d, i) => `<span class="td-day${d.active ? ' on' : ''}${d.isToday ? ' now' : ''}">${'一二三四五六日'[i]}</span>`).join('')}
+      </div>
+      <div class="td-week-s">${week.days >= s.prefs.weeklyGoalDays
+        ? '本週目標已達成 🎉'
+        : `目標：每週運動 ${s.prefs.weeklyGoalDays} 天 · 還差 ${s.prefs.weeklyGoalDays - week.days} 天`}</div>
     </section>
 
     <button class="btn td-cta" id="td-start" type="button">🏋️ 開始訓練</button>

@@ -1,6 +1,7 @@
 // App shell：頂部狀態列、底部 Tab 導覽、掛載各 feature 模組。
 import { store } from './state/store.js';
 import { createCoach } from './core/coach.js';
+import { setPalette } from './ui/feedback.js';
 import today from './features/today/today.js';
 import workout from './features/workout/workout.js';
 import island from './features/island/island.js';
@@ -91,11 +92,21 @@ function show(id) {
 
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
-// 狀態變更 → 更新頂部
-store.subscribe(() => renderTopbar());
+// 顏色顯示模式（設定頁）：語意鍵不變，只換畫出來的顏色，判定邏輯完全不受影響。
+// 放在 main 而非 workout：設定頁一切換就要生效，不必等下次進訓練頁重新掛載。
+let appliedColorMode = null;
+function syncPalette(s) {
+  if (s.prefs.colorMode === appliedColorMode) return;
+  appliedColorMode = s.prefs.colorMode;
+  setPalette(appliedColorMode);
+}
+
+// 狀態變更 → 更新頂部 + 同步調色盤
+store.subscribe((s) => { syncPalette(s); renderTopbar(); });
 
 // 啟動
 function boot() {
+  syncPalette(store.getState());   // 開機即套用，不必等第一次狀態變更
   renderTopbar();
   renderTabbar();
   show('today');   // Slice 1：首屏＝今日層（僅首次載入預設；之後由使用者切換）

@@ -1,12 +1,8 @@
-// 熱量（METs 模型）與評級、金幣。pure。
-// kcal = MET × 體重(kg) × 時間(hr)，並依達標率加權避免高估半程動作。
-export function estimateCalories({ met, weightKg = 65, durationSec = 0, targetRate = 1 }) {
-  const hours = durationSec / 3600;
-  // 達標率加權：達標率低 → 動作強度折扣（下限 0.6 避免歸零）
-  const weight = 0.6 + 0.4 * clamp01(targetRate);
-  return met * weightKg * hours * weight;
-}
-
+// 結算獎勵：評級與金幣。pure。
+//
+// 原 calories.js。熱量估算（METs 模型）已於 2026-08-25 移除——該數字由公式推算，
+// 未納入個體代謝差異，亦無心率或攝氧量佐證，屬本系統無法驗證的量；
+// 對外量化資料一律改用系統可精確判定的項目（有效次數、達標率、錯誤分佈）。
 export function grade({ targetRate = 0, validRate = 0 }) {
   const score = (targetRate + validRate) / 2;
   if (score >= 0.9) return 'S';

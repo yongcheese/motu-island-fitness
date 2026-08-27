@@ -15,6 +15,13 @@ export const squat = {
     torso_lean: { text: '背部打直，不要彎腰，用臀部往後坐下', priority: 'high' },
     deeper: { text: '再往下蹲，讓髖部低於膝蓋', priority: 'mid' },
   },
+  // Bug2(b)：每一幀都告訴使用者「現在該做什麼」，不用等語音。
+  phaseCues: {
+    READY: '臀部往後坐，開始往下蹲',
+    CONCENTRIC: '繼續往下 —— 髖部要低於膝蓋',
+    TARGET: '夠低了！用力站起來',
+    ECCENTRIC: '站直站穩，準備下一下',
+  },
   meta: { desc: '雙腳與肩同寬，臀部後坐下蹲', target: '臀腿、股四頭肌', sets: 3, repsPerSet: 12, restSec: 30, difficulty: 1,
     voiceIntro: '開始深蹲。雙腳與肩同寬，腳尖微微朝外，臀部向後向下蹲，蹲到髖部低於膝蓋，再用力站起來。' },
   evaluate(f, s) {
@@ -31,8 +38,17 @@ export const squat = {
     const gatePass = depth >= -0.10;             // Demo 校準 -0.02→-0.10：允許髖到近膝(近平行蹲)，半蹲峰值 depth≈-0.33 仍被擋
     const torsoLean = vAngleFromVertical(shC, hipC); // 軀幹傾角
     const faults = [];
-    // 45°：真人深蹲自然前傾常達 40°+（尤其筆電低角度鏡頭），42° 誤殺率高；
-    // 合成「只彎腰」代償樣本傾角 ≈48° 仍會被擋（測試把關）。
+    // 門檻 45°。以下為 2026-08-22 實測值（跑合成序列逐幀量 vAngleFromVertical 取峰值）：
+    //   clean 0.00° ／ half 0.00° ／ compensation 46.42°
+    // ⚠️ 兩件事必須寫清楚，不要再被舊註解誤導：
+    //  (1) 判別餘裕只有 1.42°（46.42 − 45）。對照同檔的深度規則：clean 峰值 +0.129、
+    //      half −0.330，門檻 −0.10 落在兩者中間、兩側各約 0.23 的餘裕。本規則的餘裕遠小於它，
+    //      真人資料進來很容易翻。
+    //  (2) 合成器產生的正常深蹲軀幹「完全打直」（恆為 0°），根本不模擬真人的自然前傾。
+    //      因此「真人自然前傾常達 40°+、42° 會誤殺」這類說法在目前的測試裡得不到任何支持 ——
+    //      舊註解曾這樣寫，但那是工程判斷，不是實測結論，已刪除。
+    // 真人正常深蹲的前傾分佈仍未知；若其落在 45° 附近，就會與代償樣本的 46.42° 重疊而分不開。
+    // 這正是必須做真人測試的理由之一（見《現狀盤點與改善規劃》C-3、B-3）。在那之前不動此值。
     if (torsoLean > 45) faults.push('torso_lean');
     const legColor = gatePass ? 'green' : (progress > 0.3 ? 'yellow' : 'green');
     const segments = {

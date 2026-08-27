@@ -9,6 +9,10 @@ export const highknees = {
   requiredLandmarks: [LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE, LM.LEFT_ANKLE, LM.RIGHT_ANKLE],
   // 入鏡判定不含腳踝：核心訊號是膝抬到髖高（髖+膝）；腳踝僅用於支撐腳打直檢查
   gateLandmarks: [LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE],
+  // 高抬腿是原地彈跳的有氧動作，跟開合跳同類：騰空超過畫面高 0.12 時頭會衝出上緣，
+  // 逐幀的頭部把關就會讓整組計不到次（實測 0.12 → valid 0/4、112 幀中斷）。
+  // 在取景關卡先要求上緣留白，就不會發生。
+  needsHeadroom: true,
   // targetEnter 0.80：真人膝蓋接近髖高即達標（0.85 在實機常差一口氣不計次）；半程樣本(≈0.45)仍被拒
   thresholds: { attemptEnter: 0.30, targetEnter: 0.80, readyReturn: 0.25 },
   faultSeverity: { no_support: 'block' },
@@ -16,7 +20,14 @@ export const highknees = {
     no_support: { text: '請站直，支撐腳打直，不要坐著抬腿', priority: 'high' },
     deeper: { text: '把膝蓋抬高到髖部的高度，左右輪流', priority: 'mid' },
   },
+  phaseCues: {
+    READY: '開始原地交替抬膝',
+    CONCENTRIC: '膝蓋再抬高一點 —— 抬到髖部高度',
+    TARGET: '很好！換另一腳',
+    ECCENTRIC: '放下，換腳抬起',
+  },
   meta: { desc: '原地交替抬膝至髖部高度', target: '核心、髖屈肌', sets: 3, repsPerSet: 30, restSec: 20, difficulty: 2,
+    tempo: 'fast',              // 節奏快 → 抑制閒聊型語音，改以字卡提示（Bug2(c)）
     voiceIntro: '開始高抬腿。原地左右輪流，把膝蓋抬高到髖部的高度，上半身保持挺直。' },
   evaluate(f, s) {
     const hipC = midpoint(f[LM.LEFT_HIP], f[LM.RIGHT_HIP]);

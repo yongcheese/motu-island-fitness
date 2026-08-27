@@ -32,7 +32,24 @@
 /* 本週目標（靜態佔位） */
 .td-week { padding: 16px 20px; }
 .td-week-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.td-soon { color: var(--faint); border-style: dashed; }
+.td-soon { color: var(--faint); border-style: dashed; }   /* 保留：目前無使用處（週目標已接真資料） */
+
+/* 週目標：達成態 + 七日足跡 */
+.td-week.done { border-color: var(--stroke-strong); }
+.td-week.done .td-week-bar i { box-shadow: 0 0 12px rgba(34, 224, 161, .5); }
+.pill.td-hit { color: var(--green); border-color: var(--stroke-strong); }
+.td-week-days { display: flex; gap: 6px; margin: 0 0 8px; }
+.td-day { flex: 1; text-align: center; font-size: 11px; line-height: 22px; height: 22px;
+  border-radius: 8px; color: var(--faint); background: rgba(255, 255, 255, .04);
+  border: 1px solid transparent; transition: all .2s ease-out; }
+.td-day.on { color: #06201a; font-weight: 700; background: var(--grad-accent); }
+.td-day.now { border-color: var(--stroke-strong); }
+/* 今天且已完成：兩種樣式疊加時，外框仍要看得出來 */
+.td-day.on.now { box-shadow: 0 0 0 1px var(--stroke-strong); }
+
+/* 今日任務的兩顆膠囊（連續天數 / 分鐘目標） */
+.td-mission-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.td-mission-pills .pill { margin: 0; }
 .td-week-bar { height: 10px; border-radius: 99px; background: rgba(255, 255, 255, .08);
   border: 1px solid var(--stroke); overflow: hidden; margin: 12px 0 8px; }
 .td-week-bar i { display: block; height: 100%; border-radius: 99px; background: var(--grad-teal); }

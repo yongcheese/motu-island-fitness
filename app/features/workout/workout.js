@@ -6,9 +6,10 @@ import { drawSkeleton, drawCountdownRing, drawProgressRing, COLOR } from '../../
 import { makeSequence } from '../../core/synth.js';
 import { createAvatar3D } from '../../ui/avatar3d.js';
 import { pose3d, EX_VIEW } from '../../ui/pose3d.js';
-import { estimateCalories } from '../../core/calories.js';
 import { nextGoal } from '../island/goals.js';   // Slice4 R3：結算第二幕與島嶼目標條共用（純函式、零依賴）
 import { coachPolicy, repCountdownCue } from '../../core/coach-policy.js';   // Slice3 修復 F3：誠實回饋決策（純函式）
+import { framingReport, createStabilityTracker, landmarkOk, HEAD_LANDMARKS } from '../../core/framing.js';   // 取景判定：與 engine 共用同一份純函式
+import { ALL_FRAME, framingPose, displaySegments, gaugeColor, phaseCueText } from '../../ui/display-colors.js';   // 顏色語意（純函式，可單測）
 
 let CTX = null;
 let root = null;
@@ -74,7 +75,11 @@ function beep(freq = 640, dur = 0.12, vol = 0.2) {
 export default {
   id: 'workout', label: '訓練', icon: '🏋️',
   mount(el, ctx) { CTX = ctx; root = el; renderMenu(); },
-  unmount() { stopLive(); cancelAnimationFrame(demoRaf); disposeIntroAv(); stopCardAnims(); disposeCardAv(); CTX?.setChrome(true); },
+  unmount() { stopLive(); cancelAnimationFrame(demoRaf); disposeIntroAv(); stopCardAnims(); disposeCardAv();
+    // 獎勵儀式的 timer 與飛在 body 上的金幣都要清 —— 它們掛在 document.body，
+    // 不會隨 #view.innerHTML 一起消失，切頁後會變成畫面上擦不掉的殘影。
+    rwClear(); document.querySelectorAll('.wk-coin-fly').forEach(el => el.remove());
+    CTX?.setChrome(true); },
 };
 
 /* ---------------- 選單 ---------------- */
@@ -155,10 +160,12 @@ const REC_ID = 'squat';
 /* ---------------- 卡片元件（純模板：吃資料回字串，不碰 DOM／事件／store） ---------------- */
 // 難度三點 dots。只吃已算好的數字——fallback 語義留在各呼叫端（cardHtml 與 recCardHtml 不同，不得統一）。
 function diffDots(d) { return [1, 2, 3].map(i => `<i class="${i <= d ? 'on' : ''}"></i>`).join(''); }
-// 🪙/🔥 獎勵雙徽章（估算值，真值以結算 commitSession 為準）；prefix 輸出各卡既有 class。
+// 獎勵與部位雙徽章；prefix 輸出各卡既有 class。
+// 原本第二格顯示「kcal/分」，已移除——熱量由 MET 公式估算，未納入個體代謝差異，
+// 亦無心率或攝氧量佐證，屬本系統無法驗證的數字。改顯示訓練部位，資訊更確實也更實用。
 function rewardBadges(e, p) {
   return `<span class="${p}-coin">🪙 ≈${e.baseCoinPerRep * 10}</span>
-          <span class="${p}-kcal">🔥 ${Math.round(e.met * 3)}<small> kcal/分</small></span>`;
+          <span class="${p}-target">🎯 ${e.meta?.target || '全身'}</span>`;
 }
 // 課表句（R4 簡介文案一致化的單一來源）。
 function planText(meta) { return `${meta.sets} 組 × ${meta.repsPerSet} 下 · 組間休息 ${meta.restSec} 秒`; }
@@ -173,7 +180,7 @@ const TAGLINE = {
   situp: '雕塑腹部核心', crunch: '集中訓練上腹', glutebridge: '啟動臀部與後鏈', sidelunge: '強化側向穩定',
 };
 
-/* Slice2 R1 今日推薦大卡：純模板函式。金幣/kcal 公式凍結為與 cardHtml 相同（估算值，真值以結算為準）；
+/* Slice2 R1 今日推薦大卡：純模板函式。金幣估算與 cardHtml 同式（真值以結算為準）；
    hero 用圖示＋分類色光暈、不掛 3D canvas（避免共用離屏 renderer 每幀重設尺寸）。 */
 function recCardHtml(e) {
   if (!e) return '';
@@ -375,6 +382,7 @@ async function startLive(ex, doWarmup) {
     stages: [...root.querySelectorAll('#lv-stages span')],
     gfill: root.querySelector('#lv-gfill'),
     flash: root.querySelector('#lv-repflash'),
+    next: root.querySelector('#lv-next'),      // 即時動作指引（Bug2(b)）
   };
   // 達標線：直接標在深度量表上，使用者知道「要做到哪裡」
   root.querySelector('#lv-gtarget').style.bottom = (ex.thresholds.targetEnter * 100) + '%';
@@ -449,7 +457,6 @@ async function preStart(statusEl, run) {
 
 /* Slice3 R3 取景就緒判定（呈現層純函式：只讀 spec 欄位與 landmark 可見度，不碰 engine/detector） */
 // Slice3 校準 P1：取景骨架全段用青藍 frame 色（與訓練 res.segments 紅黃綠語意分離；不改 drawSkeleton 訓練預設）。
-const ALL_FRAME = { torso: 'frame', leftArm: 'frame', rightArm: 'frame', leftLeg: 'frame', rightLeg: 'frame' };
 // Slice3 實機修復 F1：landmark 索引 → 人話部位群（檢查燈與缺件語音同源，不再固定三列）。
 const LM_GROUP = [
   { label: '肩膀', idx: [11, 12] },
@@ -458,18 +465,25 @@ const LM_GROUP = [
   { label: '膝蓋', idx: [25, 26] },
   { label: '腳踝', idx: [27, 28] },
 ];
+// Bug1(a)：頭部從來不在任何 spec 的 gate 裡 → 抓不到頭也照樣放行。頭部改為所有動作的必檢列。
+// any:true —— 鼻或任一耳看得到即可（側面伏地挺身只看得到一隻耳朵）。
+const HEAD_GROUP = { label: '頭部', idx: HEAD_LANDMARKS, any: true };
 // 依 spec 實際要求的 gate 索引，動態產出「需要檢查的部位群」（只保留 spec 有涵蓋的群）。
 function gateGroups(spec) {
   const need = new Set(spec.gateLandmarks || spec.requiredLandmarks || []);
-  const groups = LM_GROUP.filter(g => g.idx.some(i => need.has(i)));
-  return groups.length ? groups : LM_GROUP.slice(0, 3);   // 保底：無 spec 時退肩/臂/髖
+  const paired = new Set((spec.gatePairs || []).flat());
+  const groups = LM_GROUP.filter(g => g.idx.some(i => need.has(i)))
+    // 成對關節（側面拍攝時遠側被擋住）→ 該列改成「至少一側看得見」就亮燈，與引擎判定一致
+    .map(g => (g.idx.every(i => paired.has(i)) ? { ...g, any: true } : { ...g }));
+  return [{ ...HEAD_GROUP }, ...(groups.length ? groups : LM_GROUP.slice(0, 3))];   // 保底：無 spec 時退肩/臂/髖
 }
-// 取景就緒判定（呈現層純函式：只讀可見度，不碰 engine/detector）。門檻對齊引擎 visMin=0.4（互審：gate 不得嚴於實際判定）。
-// groups 每項的 _need = 該部位群在 spec 內實際要求的索引；全可見才亮該列燈。
+// 取景就緒判定（呈現層純函式：不碰 engine/detector）。門檻對齊引擎 visMin=0.4（互審：gate 不得嚴於實際判定）。
+// 判定改用 framing.js 的 landmarkOk —— 除了可見度，還要求座標「真的在畫面內」。
+// 這是 Bug1 的關鍵：MediaPipe 對出框的點會外插座標並仍給不低的 visibility，只看可見度會放行太近的取景。
 function framingReady(lm, groups) {
   if (!lm) return { rows: groups.map(() => false), all: false };
-  const ok = (i) => (lm[i]?.visibility ?? 0) >= 0.4;
-  const rows = groups.map(g => (g._need || g.idx).every(ok));
+  const ok = (i) => landmarkOk(lm[i], 0.4);
+  const rows = groups.map(g => g.any ? (g._need || g.idx).some(ok) : (g._need || g.idx).every(ok));
   return { rows, all: rows.every(Boolean) };
 }
 
@@ -484,13 +498,25 @@ function waitForFraming(run) {
     if (!gate || !video) return resolve({ ok: true });   // 版型缺失不擋流程（保守放行）
     const groups = gateGroups(run.ex);
     groups.forEach(g => { g._need = g.idx.filter(i => (run.ex.gateLandmarks || run.ex.requiredLandmarks || []).includes(i)); if (!g._need.length) g._need = g.idx; });
+    // Bug1/Bug2(a)：多一列「距離穩定」——位置與距離抓好、軀幹尺度不再跳動，才開始辨識。
+    const labels = [...groups.map(g => g.label), '距離穩定'];
+    const stability = createStabilityTracker();
+    // 開始前的關卡刻意比逐幀判定嚴：這時人是靜態就位的，頭部本來就該看得到，
+    // 而且 needsHeadroom（跳躍留白）只有在站姿量才有意義 —— 逐幀量會把每個跳躍最高點都判失敗。
+    const framingOpts = {
+      gateLandmarks: run.ex.gateLandmarks || run.ex.requiredLandmarks || [],
+      gatePairs: run.ex.gatePairs || [],
+      requireHead: true,
+      needsHeadroom: !!run.ex.needsHeadroom,
+    };
     // 依 spec 動態填充檢查燈（R1 靜態三列僅預設殼）
     const checksWrap = gate.querySelector('.lv-gate-checks');
-    if (checksWrap) checksWrap.innerHTML = groups.map(g => `<span class="lv-gate-chk">○ ${g.label}</span>`).join('');
+    if (checksWrap) checksWrap.innerHTML = labels.map(l => `<span class="lv-gate-chk">○ ${l}</span>`).join('');
     const checks = [...gate.querySelectorAll('.lv-gate-chk')];
     const skip = gate.querySelector('.lv-gate-skip');
     if (skip) { skip.hidden = true; skip.onclick = () => { if (live !== run) return; run.skipGate = true; }; }
     gate.hidden = false;
+    if (live?.hud?.next) { live.hud.next.hidden = true; live.hud.next.textContent = ''; }   // 關卡期間不顯示動作指引，避免疊字
     run.skipGate = false;
     if (run.voice) CTX.coach.say('請站進畫面中，讓我看到全身', 'high');
     let readyMs = 0, gateMs = 0, last = performance.now();
@@ -512,15 +538,31 @@ function waitForFraming(run) {
           live.ctx.restore();
         }
         const st = framingReady(lm, groups);
-        checks.forEach((el, i) => { el.classList.toggle('ok', st.rows[i]); el.textContent = `${st.rows[i] ? '✓' : '○'} ${groups[i].label}`; });
+        // 位置/距離判定（與 engine 同一份 framingReport）＋ 軀幹尺度穩定度
+        const report = framingReport(lm, framingOpts);
+        const stab = stability.push(lm);
+        const settled = report.ok && stab.stable;
+        const rows = [...st.rows, settled];
+        const allOk = rows.every(Boolean);
+        checks.forEach((el, i) => { el.classList.toggle('ok', rows[i]); el.textContent = `${rows[i] ? '✓' : '○'} ${labels[i]}`; });
         if (live.hud) {
           const miss = groups.filter((g, i) => !st.rows[i]).map(g => g.label);
           // 取景專屬 state（不沿用訓練共用的 ok/seek/warn）：frame-ok 青／frame-adjust 橘／frame-wait 灰
-          live.hud.track.dataset.s = st.all ? 'frame-ok' : (miss.length ? 'frame-adjust' : 'frame-wait');
-          live.hud.track.textContent = st.all ? '📍 已就位，準備開始' : (miss.length ? `🔍 看不到：${miss.join('、')}` : '🔍 尋找人體…');
-          if (!st.all && miss.length && run.voice) CTX.coach.say(`看不到你的${miss[0]}，請調整位置`, 'mid');
+          live.hud.track.dataset.s = allOk ? 'frame-ok' : (lm ? 'frame-adjust' : 'frame-wait');
+          // 訊息優先序：完全沒人 → 缺件 → 距離/取景問題（太近/留白不足）→ 軀幹還在跳 → 已就位
+          const msg = !lm ? '🔍 尋找人體…'
+            : miss.length ? `🔍 看不到：${miss.join('、')}`
+              : !report.ok ? `📏 ${report.text}`
+                : !stab.stable ? '⏳ 請站穩不動，正在鎖定您的位置…'
+                  : '📍 已就位，準備開始';
+          live.hud.track.textContent = msg;
+          // 語音只講「怎麼改」，且以最高優先的那一項為準（不要三種問題輪播疊在一起）
+          if (run.voice && !allOk && lm) {
+            if (miss.length) CTX.coach.say(`看不到你的${miss[0]}，請調整位置`, 'mid');
+            else if (!report.ok && report.text) CTX.coach.say(report.text, 'mid');
+          }
         }
-        readyMs = st.all ? readyMs + dt : 0;
+        readyMs = allOk ? readyMs + dt : 0;
         if (readyMs >= 2000) return done(true);
         if (skip && skip.hidden && gateMs >= 10000) skip.hidden = false;   // 逃生鈕 10 秒現身
       } else { readyMs = 0; }   // 暫停凍結且歸零
@@ -622,6 +664,7 @@ function liveShell(ex) {
         <div class="lv-gauge-track"><i id="lv-gfill"></i><b id="lv-gtarget"></b></div>
         <span>深度</span>
       </div>
+      <div class="lv-next" id="lv-next" hidden></div>
       <div class="lv-repflash" id="lv-repflash"></div>
       <div class="lv-status" id="lv-status"></div>
       <div class="lv-coach" id="lv-coach"></div>
@@ -631,7 +674,7 @@ function liveShell(ex) {
       <div class="lv-hud">
         <div class="lv-metric"><div class="m-v" id="m-reps">0</div><div class="m-k">有效次數</div></div>
         <div class="lv-metric"><div class="m-v" id="m-time">0:00</div><div class="m-k">時間</div></div>
-        <div class="lv-metric"><div class="m-v" id="m-kcal">0</div><div class="m-k">kcal</div></div>
+        <div class="lv-metric"><div class="m-v" id="m-rate">—</div><div class="m-k">達標率</div></div>
         <div class="lv-metric lv-cdmetric">
           <div class="m-v" id="m-cd" hidden>${ex.meta.restSec}</div><div class="m-k" hidden>倒數</div>
           <div class="m-v lv-set-progress">0/${ex.meta.repsPerSet}</div><div class="m-k lv-set-label">本組次數</div>
@@ -818,13 +861,17 @@ function runCameraLoop(run) {
           // 對齊 contain 後的相機矩形：骨架疊在「實際顯示的影像」上，不被黑邊拉歪
           const r = containRect(video, live.canvas.width, live.canvas.height);
           live.ctx.save(); live.ctx.translate(r.x, r.y);
-          // Slice3 補修：站著準備（看得到人+IDLE/READY）用取景藍，做動作才用訓練 res.segments 紅黃綠
-          drawSkeleton(live.ctx, lm, framingPose(res) ? ALL_FRAME : res.segments, { w: r.w, h: r.h, mirror });
+          // 顏色語意：藍=取景/準備；做動作時直接用各關節的錯誤程度（綠/黃/紅），見 ui/display-colors.js
+          drawSkeleton(live.ctx, lm, displaySegments(res), { w: r.w, h: r.h, mirror });
           live.ctx.restore();
           handleResult(res, now, lm);
         } else {
           setCoach('找不到人，請站到鏡頭中、保持全身入鏡 🧍', 'mid');
-          if (live.hud) { live.hud.track.dataset.s = 'seek'; live.hud.track.textContent = '🔍 尋找人體…'; }
+          if (live.hud) {
+            live.hud.track.dataset.s = 'seek'; live.hud.track.textContent = '🔍 尋找人體…';
+            // 人不在畫面時清掉動作字卡，否則會停在上一句（例如「到位了！收回來」）與「找不到人」打架
+            if (live.hud.next) { live.hud.next.hidden = true; live.hud.next.textContent = ''; }
+          }
         }
       } else {
         live.ctx.clearRect(0, 0, live.canvas.width, live.canvas.height);   // REST：清畫布防環殘影
@@ -940,11 +987,18 @@ function positiveTip(now) {
 }
 
 const STAGE_OF = { READY: 0, CONCENTRIC: 1, TARGET: 2, ECCENTRIC: 3 };  // 企劃 2.3：起始→發力→達標→回復
-// Slice3 補修：站著準備態＝看得到人且未做動作（IDLE/READY）。此時顏色用取景藍，非訓練紅黃綠——
-// 「顏色只在有動作可評估時才代表姿勢品質」。加 visible guard：看不到人維持 warn/coach，不被藍色蓋。
-function framingPose(res) {
-  return res.visible !== false && (res.phase === 'IDLE' || res.phase === 'READY');
-}
+
+// 追蹤膠囊的短標籤（長句留給下方教練字幕，膠囊只給一眼看懂的原因）
+const TRACK_LABEL = {
+  too_close: '⚠️ 太近了，請後退',
+  no_head: '⚠️ 看不到頭部',
+  no_headroom: '⚠️ 頭頂空間不足',
+  no_footroom: '⚠️ 腳快出畫面了',
+  turned_away: '⚠️ 請正對鏡頭',
+  too_far: '⚠️ 太遠了，請往前',
+  missing: '⚠️ 入鏡不完整',
+  no_pose: '🔍 尋找人體…',
+};
 
 function handleResult(res, now, lm) {
   const hud = live.hud;
@@ -952,21 +1006,32 @@ function handleResult(res, now, lm) {
   // —— Coach HUD：把引擎每幀的內部狀態翻譯給使用者 ——
   if (hud) {
     // 1) 追蹤狀態膠囊（永遠可見：使用者隨時知道「系統看不看得到我」）
+    //    看不到人時直接講「為什麼」（太近／看不到頭／缺哪個部位），不再只寫「入鏡不完整」。
     if (res.visible === false) {
-      hud.track.dataset.s = 'warn'; hud.track.textContent = '⚠️ 入鏡不完整';
+      hud.track.dataset.s = 'warn';
+      hud.track.textContent = TRACK_LABEL[res.framing?.issue] || '⚠️ 入鏡不完整';
     } else {
       hud.track.dataset.s = 'ok'; hud.track.textContent = '● 追蹤中 · 33 點';
     }
     // 2) 動作週期燈：READY→發力→達標→回復（Slice3 補修：準備態不亮綠，只在真正做動作時亮）
     const st = (res.visible !== false && !framingPose(res)) ? STAGE_OF[res.phase] : undefined;
     hud.stages.forEach((el, i) => el.classList.toggle('on', i === st));
-    // 3) 深度量表：訊號即時填充 + 三色（Slice3 補修：準備態=取景藍 frame，動作態才三色）
+    // 3) 深度量表：訊號即時填充 + 四段色（藍準備 → 黃進行中 → 綠達標 → 紅錯誤）
     hud.gfill.style.height = Math.round(Math.max(0, Math.min(1, res.signal)) * 100) + '%';
-    hud.gfill.dataset.c = framingPose(res) ? 'frame' : res.color;
+    hud.gfill.dataset.c = gaugeColor(res, live.ex);
+    // 3b) 即時動作指引：告訴使用者「現在該做什麼」（Bug2(b)）
+    if (hud.next) {
+      const t = phaseCueText(res, live.ex);
+      hud.next.textContent = t;
+      hud.next.dataset.p = res.visible === false ? 'off' : (res.phase === 'TARGET' ? 'hit' : 'go');
+      hud.next.hidden = !t;
+    }
     // 4) 計次即時判定：✓ +1 / ✗ 原因
     if (res.repCountedThisFrame) {
       const okRep = res.repValidThisFrame;
-      hud.flash.textContent = okRep ? '✓ +1' : '✗ ' + (faultName(res.faults[0]) || '半程未達標');
+      // 用引擎給的 repReason，不是當下這一幀的 faults —— 一下在回到起始位置時才結算，
+      // 那時瞬間發生的錯誤已經消失，讀當幀會退回顯示「半程未達標」而報錯原因。
+      hud.flash.textContent = okRep ? '✓ +1' : '✗ ' + faultName(res.repReason || 'half_rep');
       hud.flash.className = 'lv-repflash pop ' + (okRep ? 'ok' : 'bad');
       void hud.flash.offsetWidth;  // 重觸發動畫
     }
@@ -975,6 +1040,14 @@ function handleResult(res, now, lm) {
   // —— 教練訊息（語音 + 字幕）——
   if (res.visible === false) {
     setCoach(res.cue?.text || '請站到鏡頭中、保持全身入鏡 🧍', 'mid');
+    return;
+  }
+  // 這一下被判無效 → 立刻講「為什麼、怎麼改」，並且直接 return，
+  // 不能讓下面的稱讚/指導把它蓋掉（否則會出現「剛判你無效」又說「很好，保持節奏」）。
+  if (res.repCountedThisFrame && !res.repValidThisFrame) {
+    const msg = rejectHint(res.repReason, live.ex);
+    setCoach('✗ ' + msg, 'high');
+    if (live.voice) CTX.coach.say(msg, 'high', Date.now());
     return;
   }
   // Slice3 修復 F3：追蹤進度資料（誠實回饋用）
@@ -992,7 +1065,7 @@ function handleResult(res, now, lm) {
     const pol = coachPolicy({ visible: res.visible !== false, hasCue: false, secsSinceValid, movingButNotTarget });
     if (pol.kind === 'guide') { setCoach(pol.text, 'mid'); if (live.voice) CTX.coach.say(pol.text, 'mid', nowMs); }
     else if (pol.kind === 'framing') {
-      const hint = lm && live.mode === 'camera' ? framingHint(lm) : null;
+      const hint = lm && live.mode === 'camera' ? framingHint(lm, live.ex) : null;
       setCoach(hint || positiveTip(now), hint ? 'mid' : 'good');
       if (hint && live.voice) CTX.coach.say(hint, 'mid', nowMs);
     } else {   // praise
@@ -1006,25 +1079,30 @@ function handleResult(res, now, lm) {
 // 只在「有效計次成立瞬間」由 handleResult 呼叫；1.8 秒冷卻避免連續狂播。不碰計次/判定/門檻。
 let _lastRepFbAt = 0, _repFbIdx = 0;
 const REP_PRAISE = ['做得好', '這一下有效', '姿勢正確', '很好，繼續'];
+// Bug2(c)：開合跳/高抬腿一下不到 1 秒，稱讚語還沒講完下一下就來了 —— 使用者只聽到一片糊。
+// 快節奏動作改以「短音效 + 畫面字卡」為主要回饋通道，語音只留修正口令與剩次提示。
+const isFastTempo = () => live?.ex?.meta?.tempo === 'fast';
 function positiveRepFeedback() {
   const now = Date.now();
   if (now - _lastRepFbAt < 1800) return;   // 冷卻：1.8 秒內不重複
   _lastRepFbAt = now;
   beep(880, 0.09, 0.18); beep(1180, 0.11, 0.18);   // 兩顆上行短音（成功感）
-  if (live?.voice) {
+  if (live?.voice && !isFastTempo()) {
     _repFbIdx = (_repFbIdx + 1) % REP_PRAISE.length;
     CTX.coach.say(REP_PRAISE[_repFbIdx], 'low', now);   // 低優先，不搶修正口令通道
   }
 }
 
-// 由 landmark 佔畫面高度給取景建議；置中合適則回 null
-function framingHint(lm) {
-  let minY = 1, maxY = 0;
-  for (const p of lm) { if ((p.visibility ?? 0) < 0.5) continue; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; }
-  const h = maxY - minY;
-  if (h > 0 && h < 0.45) return '離鏡頭有點遠，請往前一步 📷';
-  if (h > 0.97) return '太近了，請往後半步讓全身入鏡';
-  return null;
+// 取景建議：改用與 engine 同一份 framingReport（舊版自己算 bbox 高度、門檻 0.97 形同虛設，
+// 而且水平姿勢的伏地挺身永遠會被誤判「太遠」）。取景良好則回 null。
+// 逐幀不帶 needsHeadroom —— 與 engine 保持同一套規則（留白是開始前的前置條件，見 engine.js）。
+function framingHint(lm, ex) {
+  const r = framingReport(lm, {
+    gateLandmarks: ex.gateLandmarks || ex.requiredLandmarks || [],
+    gatePairs: ex.gatePairs || [],
+    requireHead: ex.requireHead !== false,
+  });
+  return r.ok ? null : r.text;
 }
 
 // Slice3 R3 倒數環雙語意（六-補）：WORK=本組次數進度環（teal 漸進）／REST=休息倒數環（隨時間消退）。
@@ -1042,10 +1120,12 @@ function drawRingAndHud() {
     setText('m-cd', Math.ceil(remain / 1000));
     checkEndingCues(remain);
   }
-  const kcal = estimateCalories({ met: live.ex.met, weightKg: CTX.store.getState().profile.weight_kg, durationSec: live.elapsedMs / 1000, targetRate: s.targetRate || 1 });
   setText('m-reps', s.validReps);
   setText('m-time', fmtTime(live.elapsedMs / 1000));
-  setText('m-kcal', Math.round(kcal));
+  // 即時達標率：訓練當下最該讓使用者知道的是「我做的算不算數」，而非估算的熱量。
+  // 尚未有任何一次結算前顯示「—」，避免 0/0 顯示成 0% 造成誤解。
+  const attempts = s.validReps + s.invalidReps;
+  setText('m-rate', attempts ? Math.round(s.validReps / attempts * 100) + '%' : '—');
 }
 
 // 接近結束時提醒：最後 10 秒語音＋提示、最後 3 秒每秒嗶聲、倒數欄轉紅。
@@ -1106,7 +1186,7 @@ function renderResult(ex, summary, session) {
         ${resCell('✅ 有效次數', summary.validReps)}
         ${resCell('⚠️ 無效次數', summary.invalidReps)}
         ${resCell('🎯 達標率', tr + '%')}
-        ${resCell('🔥 消耗熱量', session.calories + ' kcal')}
+        ${resCell('📋 主要問題', topFaultLabel(session.faults))}
         ${resCell('⏱️ 時長', fmtTime(session.durationSec))}
       </div>
       ${faults.length ? `<div class="wk-faults card">
@@ -1134,8 +1214,58 @@ function rewardIslandLine(s) {
   return `🏠 已建 <b>${n}</b> 棟 · 島嶼全部解鎖 🎉`;
 }
 
-/* Slice4 R1 結算第二幕：獎勵畫面。純表現層——先 commit 後演出，數字以 store 為準（金幣=session.coinsEarned）。
-   儀式動畫（飛行/滾動/落袋音）歸 R4。 */
+/* D-1 獎勵轉換儀式：金幣滾動 → 飛向島嶼 → 島嶼進度推進 → 落袋音。
+   純表現層：store 早在 finishLive 就 commit 完了，這裡一枚金幣都不會多給。
+   演出只是把「已經發生的事」畫出來，所以中途離開、跳過、關動畫都不影響帳。 */
+let rwTimers = [];                       // setTimeout / rAF 控制代碼，unmount 與跳過時一併清掉
+function rwClear() { for (const t of rwTimers) { clearTimeout(t); cancelAnimationFrame(t); } rwTimers = []; }
+const rwAfter = (ms, fn) => { rwTimers.push(setTimeout(fn, ms)); };
+// 尊重系統的「減少動態效果」：直接give終態，不做任何位移或滾動。
+const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+
+/** 數字滾動。ease-out，最後一幀一定落在 to（不靠浮點數湊）。 */
+function countUp(el, to, ms = 900) {
+  if (!el) return;
+  if (reducedMotion() || to <= 0) { el.textContent = String(to); return; }
+  const t0 = performance.now();
+  const step = (now) => {
+    const k = Math.min(1, (now - t0) / ms);
+    const eased = 1 - Math.pow(1 - k, 3);
+    el.textContent = String(Math.round(to * eased));
+    if (k < 1) rwTimers.push(requestAnimationFrame(step));
+    else el.textContent = String(to);
+  };
+  rwTimers.push(requestAnimationFrame(step));
+}
+
+/** 金幣從起點飛到終點。用固定定位的浮動元素，不動版面、不觸發 reflow。 */
+function flyCoins(fromEl, toEl, n, onLand) {
+  if (!fromEl || !toEl || reducedMotion()) { onLand?.(); return; }
+  const a = fromEl.getBoundingClientRect(), b = toEl.getBoundingClientRect();
+  if (!a.width || !b.width) { onLand?.(); return; }      // 元素還沒排版好就別演，直接給結果
+  const count = Math.max(3, Math.min(8, n));
+  let landed = 0;
+  for (let i = 0; i < count; i++) {
+    rwAfter(i * 70, () => {
+      const c = document.createElement('span');
+      c.className = 'wk-coin-fly'; c.textContent = '🪙';
+      // 起點在金幣數字附近散開，終點收斂到島嶼卡中心 —— 散開再收攏才有「被吸進去」的感覺
+      c.style.left = (a.left + a.width * (0.25 + Math.random() * 0.5)) + 'px';
+      c.style.top = (a.top + a.height * 0.4) + 'px';
+      document.body.appendChild(c);
+      requestAnimationFrame(() => {
+        c.style.transform = `translate(${b.left + b.width / 2 - a.left - a.width * 0.5}px, ${b.top + b.height / 2 - a.top - a.height * 0.4}px) scale(.55)`;
+        c.style.opacity = '0.15';
+      });
+      rwAfter(560, () => {
+        c.remove();
+        beep(880 + i * 40, 0.06, 0.10);      // 落袋音，音高遞升
+        if (++landed >= count) onLand?.();
+      });
+    });
+  }
+}
+
 function renderReward(ex, session) {
   CTX.setChrome(true);
   const s = CTX.store.getState();
@@ -1143,6 +1273,12 @@ function renderReward(ex, session) {
   const ratio = Math.max(0, Math.min(1, xp.ratio || 0));   // clamp 防異常值破版
   const xpGain = session.validReps * 5;   // 依 commitSession 現行契約推導的顯示值（session 未回傳 xpGain；store 公式改動需同步）
   const empty = session.coinsEarned === 0;
+  rwClear();
+  // 這次訓練「之前」的金幣：store 已 commit，所以要往回推才知道進度條該從哪裡長起來。
+  const prevCoins = Math.max(0, s.wallet.coins - session.coinsEarned);
+  const goal = nextGoal(s);
+  const cost = goal.kind === 'save' ? goal.item.cost : 0;
+  const pctOf = (c) => (cost > 0 ? Math.max(0, Math.min(100, Math.round(c / cost * 100))) : 100);
   root.innerHTML = `
     <div class="fade-in wk-rw stagger">
       <div class="card wk-rw-card">
@@ -1151,7 +1287,7 @@ function renderReward(ex, session) {
         <div class="wk-rw-title">這次沒有獲得金幣</div>
         <p class="wk-rw-s">只有有效動作才換得到金幣，再試一次！</p>` : `
         <div class="wk-rw-title">獎勵入袋！</div>
-        <div class="wk-rw-coins">+${session.coinsEarned}<span class="ico"> 🪙</span></div>
+        <div class="wk-rw-coins">+<span id="wk-rw-num">0</span><span class="ico"> 🪙</span></div>
         <p class="wk-rw-s">金幣已存入錢包 · 去島上蓋新建築吧</p>`}
       </div>
       <div class="card wk-rw-xp">
@@ -1159,7 +1295,13 @@ function renderReward(ex, session) {
         <div class="wk-rw-bar"><i style="width:${Math.round(ratio * 100)}%"></i></div>
         <div class="wk-rw-xp-s">再 ${Math.max(0, xp.need - xp.cur)} XP 升級</div>
       </div>
-      <div class="card wk-rw-island">${empty ? `🏠 我的島嶼 · 已建 <b>${s.island.placed.length}</b> 棟建築` : rewardIslandLine(s)}</div>
+      <div class="card wk-rw-island" id="wk-rw-island">
+        ${empty ? `🏠 我的島嶼 · 已建 <b>${s.island.placed.length}</b> 棟建築` : rewardIslandLine(s)}
+        ${!empty && cost > 0 ? `
+        <div class="wk-rw-goalbar" role="img" aria-label="距下一個目標的存款進度">
+          <i id="wk-rw-goalfill" style="width:${pctOf(prevCoins)}%"></i>
+        </div>` : ''}
+      </div>
       <div class="wk-cta">
         ${empty
           ? `<button class="btn" id="wk-rw-retry" style="flex:1">再一次</button>`
@@ -1167,14 +1309,57 @@ function renderReward(ex, session) {
         <button class="btn secondary" id="wk-rw-done" style="flex:1">完成</button>
       </div>
     </div>`;
-  const go = root.querySelector('#wk-rw-go'); if (go) go.onclick = () => CTX.navigate('island');
-  const rt = root.querySelector('#wk-rw-retry'); if (rt) rt.onclick = () => renderIntro(ex);
-  root.querySelector('#wk-rw-done').onclick = () => renderMenu();
+  const go = root.querySelector('#wk-rw-go'); if (go) go.onclick = () => { rwClear(); CTX.navigate('island'); };
+  const rt = root.querySelector('#wk-rw-retry'); if (rt) rt.onclick = () => { rwClear(); renderIntro(ex); };
+  root.querySelector('#wk-rw-done').onclick = () => { rwClear(); renderMenu(); };
+
+  // ── 儀式編排 ────────────────────────────────────────────
+  const numEl = root.querySelector('#wk-rw-num');
+  const islEl = root.querySelector('#wk-rw-island');
+  const fillEl = root.querySelector('#wk-rw-goalfill');
+  const settle = () => {          // 終態：任何時候被跳過都是走到這裡，畫面與 store 一致
+    rwClear();
+    if (numEl) numEl.textContent = String(session.coinsEarned);
+    if (fillEl) fillEl.style.width = pctOf(s.wallet.coins) + '%';
+    document.querySelectorAll('.wk-coin-fly').forEach(el => el.remove());
+  };
+  if (empty) return;
+  if (reducedMotion()) { settle(); return; }
+
+  countUp(numEl, session.coinsEarned, 900);
+  rwAfter(700, () => flyCoins(root.querySelector('.wk-rw-coins'), islEl, session.coinsEarned, () => {
+    if (fillEl) { fillEl.style.width = pctOf(s.wallet.coins) + '%'; }
+    if (islEl) { islEl.classList.add('hit'); rwAfter(600, () => islEl.classList.remove('hit')); }
+  }));
+  // 跳過：整頁任一處按下就直接給終態。演出是禮物不是關卡，不該擋著人操作。
+  root.querySelector('.wk-rw')?.addEventListener('pointerdown', settle, { once: true });
+}
+/** 本次最常見的錯誤（結算格用）。全部做對時回「無」——這是好消息，不該留白。 */
+function topFaultLabel(faults) {
+  const list = Object.entries(faults || {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  if (!list.length) return '無 ✨';
+  const [key, n] = list[0];
+  return `${faultName(key)} ×${n}`;
 }
 function resCell(k, v, cls = '') { return `<div class="wk-res card ${cls}"><div class="rv">${v}</div><div class="rk">${k}</div></div>`; }
+// 一下被判無效時要說的話：優先用該動作 spec 已寫好的修正口令（每個動作講法不同，
+// 例如深蹲的 half_rep 該說「再往下蹲」、伏地挺身該說「胸口往下壓」），沒有才退回通用句。
+const REJECT_FALLBACK = {
+  half_rep: '沒做到底 —— 要做到達標線才算一下',
+  no_alternation: '要左右輪流，同一邊連做不算',
+  unseen: '剛才有一段沒看清楚 —— 請保持全身在畫面內',
+  form: '深度或姿勢還差一點',
+};
+function rejectHint(reason, ex) {
+  const key = reason || 'half_rep';
+  if (key === 'half_rep' && ex?.cues?.deeper?.text) return ex.cues.deeper.text;
+  return ex?.cues?.[key]?.text || REJECT_FALLBACK[key] || faultName(key);
+}
+
 function faultName(f) {
   return { torso_lean: '彎腰／軀幹前傾', half_rep: '動作半程未達標', limb_desync: '手腳不同步',
-    no_support: '坐姿／支撐不穩', no_alternation: '未左右交替', sag: '塌腰', form: '深度／姿勢不足' }[f] || f;
+    no_support: '坐姿／支撐不穩', no_alternation: '未左右交替', sag: '塌腰', form: '深度／姿勢不足',
+    unseen: '動作中有一段沒看清楚', not_visible: '不在畫面中' }[f] || f;
 }
 
 /* ---------------- 共用 ---------------- */

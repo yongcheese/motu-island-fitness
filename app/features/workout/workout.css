@@ -47,8 +47,8 @@
 .wk2-tag { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
 .wk2-stats { display: flex; align-items: center; gap: 14px; margin-top: 12px; font-weight: 800; font-size: 15px; }
 .wk2-coin { color: var(--gold); }
-.wk2-kcal { color: var(--coral); }
-.wk2-kcal small { font-weight: 600; font-size: 10px; opacity: .75; }
+.wk2-target { color: var(--coral); }
+.wk2-target small { font-weight: 600; font-size: 10px; opacity: .75; }
 .wk2-go { margin-left: auto; color: var(--accent, #22e0a1); font-size: 20px; transition: transform .2s; }
 .wk2:hover .wk2-go { transform: translateX(3px); }
 .wk2-stats.dim { opacity: .35; }
@@ -154,6 +154,22 @@
 .lv-coach[data-p="high"] { border-color: var(--red); color: #ffd9dd; }
 .lv-coach[data-p="mid"] { border-color: var(--yellow); }
 .lv-coach[data-p="good"] { border-color: var(--green); color: #d7fff0; }
+/* Bug2(b) 即時動作指引：快節奏動作靠語音來不及，改用畫面字卡直接說「現在該做什麼」。
+   位置在教練字幕上方，字級較大、對比高，跳動中也看得清。 */
+/* bottom 值需高於 .lv-coach(168px) 加上它可能折到的行數 —— 取景長句在手機上會折 2~3 行，
+   固定 214px 只留 3px 間隙必定被壓到。改用 min() 上推並限制自身寬度，兩者不會重疊。 */
+.lv-next { position: absolute; left: 50%; transform: translateX(-50%); bottom: 272px; max-width: 86%;
+  text-align: center; padding: 9px 20px; border-radius: 14px; font-weight: 800; font-size: 18px;
+  letter-spacing: .02em; white-space: nowrap; z-index: 4; pointer-events: none;
+  background: rgba(8,22,28,.82); border: 1.5px solid var(--stroke); backdrop-filter: blur(8px);
+  transition: color .18s, border-color .18s, transform .18s var(--ease); }
+.lv-next[data-p="go"]  { color: #ffe89a; border-color: rgba(255,210,63,.6); }
+.lv-next[data-p="hit"] { color: #d7fff0; border-color: var(--green); transform: translateX(-50%) scale(1.06); }
+.lv-next[data-p="off"] { color: var(--muted); }
+@media (max-width: 480px) {
+  .lv-next { font-size: 15px; bottom: 264px; padding: 7px 14px; white-space: normal; }
+}
+
 .lv-hud { position: absolute; left: 0; right: 0; bottom: 84px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 0 16px; z-index: 3; }
 .lv-metric { background: rgba(8,22,28,.66); border: 1px solid var(--stroke); border-radius: 14px; padding: 10px 6px; text-align: center; backdrop-filter: blur(8px); }
 .m-v { font-weight: 800; font-size: 22px; transition: color .25s; }
@@ -284,8 +300,8 @@
 .wk-rec-plan { color: var(--muted); font-size: 12.5px; margin: 2px 0 0; }
 .wk-rec-stats { display: flex; align-items: center; gap: 14px; margin-top: 12px; font-weight: 800; font-size: 15px; }
 .wk-rec-coin { color: var(--gold); }
-.wk-rec-kcal { color: var(--coral); }
-.wk-rec-kcal small { font-weight: 600; font-size: 10px; opacity: .75; }
+.wk-rec-target { color: var(--coral); }
+.wk-rec-target small { font-weight: 600; font-size: 10px; opacity: .75; }
 .wk-rec-go { margin-left: auto; color: var(--gold); font-size: 20px; transition: transform .2s; }
 .wk-rec:hover .wk-rec-go { transform: translateX(3px); }
 @media (min-width: 960px) {
@@ -366,3 +382,35 @@
 
 /* 倒數欄雙態（成對切換版型；R3 才接切換邏輯） */
 .lv-set-progress { font-variant-numeric: tabular-nums; }
+
+/* ── D-1 獎勵轉換儀式 ─────────────────────────────────────
+   飛行金幣掛在 document.body（不是 #view）——因為 #view 有 overflow 裁切，
+   掛在裡面的話金幣飛到卡片邊緣就被切掉了。相對地，切頁時必須手動移除（見 unmount）。 */
+.wk-coin-fly {
+  position: fixed; z-index: 60; pointer-events: none;
+  font-size: 20px; line-height: 1;
+  transition: transform .52s cubic-bezier(.34, .8, .3, 1), opacity .52s ease-in;
+  will-change: transform, opacity;
+}
+
+/* 距下一個目標的存款進度：金幣落袋後往前長 */
+.wk-rw-goalbar {
+  height: 8px; margin-top: 10px; border-radius: 99px; overflow: hidden;
+  background: rgba(255, 255, 255, .08); border: 1px solid var(--stroke);
+}
+.wk-rw-goalbar i {
+  display: block; height: 100%; border-radius: 99px; background: var(--grad-accent);
+  transition: width .7s cubic-bezier(.2, .8, .2, 1);
+}
+/* 金幣落袋瞬間的回饋：卡片輕微亮一下，不用位移（位移會讓下面的按鈕跟著跳） */
+.wk-rw-island.hit {
+  border-color: var(--stroke-strong);
+  box-shadow: var(--shadow), 0 0 22px rgba(34, 224, 161, .32);
+  transition: box-shadow .25s ease-out, border-color .25s ease-out;
+}
+.wk-rw-coins { font-variant-numeric: tabular-nums; }   /* 滾動時寬度不跳動 */
+
+@media (prefers-reduced-motion: reduce) {
+  .wk-coin-fly { display: none; }
+  .wk-rw-goalbar i, .wk-rw-island.hit { transition: none; }
+}

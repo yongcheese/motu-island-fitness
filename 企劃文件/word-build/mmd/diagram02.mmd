@@ -1,0 +1,27 @@
+flowchart TB
+    subgraph L5["互動層 Interaction"]
+        I1["三色骨架渲染"]
+        I2["分級語音教練"]
+        I3["訓練結算報告"]
+    end
+    subgraph L4["邏輯層 Logic"]
+        G1["動作有限狀態機 FSM"]
+        G2["六層防作弊"]
+        G3["計次冷卻"]
+    end
+    subgraph L3["標準化層 Normalize ★關鍵層"]
+        N1["肩寬 / 腿長 / 軀幹長比例尺"]
+        N2["→ 動態判定門檻"]
+    end
+    subgraph L2["辨識層 Recognition"]
+        R1["MediaPipe Pose 33 點"]
+        R2["visibility 信心過濾"]
+        R3["取景閘門 framing gate"]
+    end
+    subgraph L1["輸入層 Input"]
+        P1["webcam 取像"]
+        P2["鏡像 / 多人排除"]
+    end
+
+    L1 --> L2 --> L3 --> L4 --> L5
+    style L3 fill:#2c5f8d,color:#fff

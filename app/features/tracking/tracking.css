@@ -83,7 +83,7 @@
 .trk-rec-body { flex: 1; min-width: 0; }
 .trk-rec-name { font-weight: 700; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .trk-rec-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
-.trk-rec-kcal { color: var(--coral); font-weight: 700; font-size: 13px; flex-shrink: 0; }
+.trk-rec-valid { color: var(--coral); font-weight: 700; font-size: 13px; flex-shrink: 0; }
 
 /* 空狀態 */
 .trk-empty {

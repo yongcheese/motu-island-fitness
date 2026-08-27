@@ -17,12 +17,31 @@ export const pushup = {
   // sag 直線判定用到雙髖、雙踝），才能可靠做「塌腰一直線」防作弊。
   requiredLandmarks: [LM.LEFT_SHOULDER, LM.LEFT_ELBOW, LM.LEFT_WRIST, LM.LEFT_HIP, LM.LEFT_ANKLE,
     LM.RIGHT_SHOULDER, LM.RIGHT_ELBOW, LM.RIGHT_WRIST, LM.RIGHT_HIP, LM.RIGHT_ANKLE],
+  // 逐幀不要求看到頭：下壓到底時臉朝地板，鼻/耳可見度常掉，若逐幀強制會在動作最深處把人判成
+  // 「看不到」而中止那一下。太近的把關對伏地挺身另有更強的訊號 —— gate 已含雙腕與雙踝，
+  // 取景一近就會有點出框而被攔下。開始前的取景關卡仍會檢查頭部（那時人是靜態撐住的）。
+  requireHead: false,
+  // 伏地挺身是唯一「側面拍」的動作，遠側肢體必然被身體擋住 —— 舊版要求左右兩側全部看得見，
+  // 實測遠側可見度一掉到 0.4 以下就整場停擺（0/4 計次、144 幀中斷）。
+  // 改為每一對左右關節「至少一側」可信即可。防作弊零損失：sag 用肩/髖/踝的中點算，
+  // 遠側被擋住時 MediaPipe 仍會估出位置，實測遠側可見度 0.15 時塌腰照樣 0 valid、4 次 sag。
+  gatePairs: [
+    [LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER], [LM.LEFT_ELBOW, LM.RIGHT_ELBOW],
+    [LM.LEFT_WRIST, LM.RIGHT_WRIST], [LM.LEFT_HIP, LM.RIGHT_HIP],
+    [LM.LEFT_ANKLE, LM.RIGHT_ANKLE],
+  ],
   // targetEnter 0.75：手肘壓到 ≈109° 即達標（原 0.80≈105°，實機側面角度常量不足）；半程樣本(≈0.45)仍被拒
   thresholds: { attemptEnter: 0.30, targetEnter: 0.75, readyReturn: 0.25 },
   faultSeverity: { sag: 'block' },
   cues: {
     sag: { text: '核心收緊，臀部不要塌下或翹高，身體保持一直線', priority: 'high' },
     deeper: { text: '手肘彎曲，胸口往下壓到接近地面，再撐起來', priority: 'mid' },
+  },
+  phaseCues: {
+    READY: '身體打直，開始往下壓',
+    CONCENTRIC: '胸口再往下壓一點',
+    TARGET: '到底了！用力撐起來',
+    ECCENTRIC: '手臂打直，準備下一下',
   },
   meta: { desc: '雙手撐地，身體成棒式下壓', target: '胸、肩、三頭肌', sets: 3, repsPerSet: 10, restSec: 40, difficulty: 3,
     voiceIntro: '開始伏地挺身。雙手撐地與肩同寬，身體從頭到腳保持一直線，手肘彎曲把胸口下壓，再撐起來。' },

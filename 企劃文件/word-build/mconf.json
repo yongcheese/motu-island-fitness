@@ -1,0 +1,17 @@
+{
+  "theme": "base",
+  "themeVariables": {
+    "fontFamily": "\"PingFang TC\",\"Heiti TC\",\"Noto Sans CJK TC\",sans-serif",
+    "fontSize": "16px",
+    "primaryColor": "#eaf1f8",
+    "primaryTextColor": "#1b2733",
+    "primaryBorderColor": "#2c5f8d",
+    "lineColor": "#5a6b7c",
+    "secondaryColor": "#f3f6f9",
+    "tertiaryColor": "#ffffff",
+    "clusterBkg": "#f7fafc",
+    "clusterBorder": "#c3d0dd"
+  },
+  "flowchart": {"curve": "basis", "htmlLabels": true, "padding": 12},
+  "gantt": {"fontSize": 14}
+}

@@ -1,5 +1,5 @@
 // Tab4 設定（個人化）：帳號 / 個人資料 / 提醒與目標 / 互動偏好 / 隱私與資料 / 關於。
-// 身高體重會回饋到 AI 動作標準化與熱量估算，因此個人資料區特別標示真實數值的重要性。
+// 身高體重會回饋到 AI 動作標準化（體型正規化層），因此個人資料區特別標示真實數值的重要性。
 import { store } from '../../state/store.js';
 
 let CTX = null;
@@ -77,7 +77,7 @@ function render() {
       <!-- 個人資料 -->
       <div class="section-title">個人資料</div>
       <div class="card set-card stagger">
-        <p class="set-note">身高體重會用於 AI 動作標準化與熱量估算，請填寫真實數值</p>
+        <p class="set-note">身高體重會用於 AI 動作標準化，讓判定不受體型差異影響，請填寫真實數值</p>
         <div class="set-grid2">
           <div class="set-row set-row-col">
             <label class="set-label" for="set-h">身高 (cm)</label>
@@ -314,7 +314,7 @@ function updateBmi() {
   const h = Number(height_cm) / 100;
   if (!h || !weight_kg) { out.textContent = ''; return; }
   const bmi = weight_kg / (h * h);
-  out.textContent = `目前 BMI 約 ${bmi.toFixed(1)} — 這些數值會即時影響熱量估算與動作標準化。`;
+  out.textContent = `目前 BMI 約 ${bmi.toFixed(1)} — 這些數值會即時影響動作標準化的計算基準。`;
 }
 
 /* ---------------- 隱私與資料 ---------------- */

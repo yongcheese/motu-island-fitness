@@ -1,0 +1,22 @@
+flowchart TB
+    subgraph CLIENT["使用者端"]
+        A["健身系統<br/>（Web）"]
+        B["島嶼遊戲<br/>（Web ✅ 已確認）"]
+    end
+
+    subgraph CLOUD["共用雲端服務"]
+        AUTH["🔑 Authentication<br/>Google 登入 → 統一 UID"]
+        FN["⚙️ 寫入閘門函式<br/>唯一能『加幣』的地方"]
+        DB["🗄️ 資料庫<br/>users / 使用者UID /<br/>wallet · history · island"]
+    end
+
+    A -->|"登入"| AUTH
+    B -->|"登入"| AUTH
+    A -->|"訓練結算<br/>（僅此路徑可加幣）"| FN
+    FN -->|"寫入"| DB
+    B -->|"只能扣減 + 寫消費紀錄"| DB
+    DB -->|"即時監聽<br/>金幣變動"| B
+    DB -->|"即時監聽"| A
+
+    style FN fill:#c0392b,color:#fff
+    style AUTH fill:#2c5f8d,color:#fff

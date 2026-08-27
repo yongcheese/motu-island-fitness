@@ -1,0 +1,16 @@
+gantt
+    title 開發里程碑
+    dateFormat YYYY-MM
+    axisFormat %Y-%m
+    section 健身系統
+    MVP 四動作 + 引擎 + 測試（已完成）    :done, m1, 2026-06, 2026-08
+    修復已知缺陷 + 門檻分類文件化          :active, m2, 2026-08, 1M
+    外部資料集驗證（UI-PRMD）              :m3, after m2, 1M
+    真人小樣本測試                          :m4, after m2, 1M
+    第二階段四動作                          :m5, after m3, 2M
+    section 整合
+    遊戲端技術確認                          :crit, i1, 2026-08, 1M
+    共用帳號 + 錢包架構                     :i2, after i1, 1M
+    雙系統聯調                              :i3, after i2, 1M
+    section 遊戲系統
+    待遊戲組提供時程                        :g1, after i1, 2M
