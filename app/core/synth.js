@@ -140,10 +140,17 @@ function poseHighKnees(d, side, variant) {
     sk[LM.RIGHT_WRIST] = P(lerp(0.61, 0.62, d), lerp(0.53, 0.64, d));
   }
   if (variant === 'sitting') {
-    // 坐姿抬腿：支撐腳膝蓋前移彎曲（膝角變小），整體下沉
+    // 坐姿抬腿：支撐腳大腿接近水平（膝與髖同高）、小腿垂直，整體下沉。
+    // ⚠️ 2026-08-28 修正：舊版把支撐腳膝蓋往「側邊」移 0.12 —— 真實坐姿時膝是往「前」（矢狀面），
+    //   正面機位下 x 幾乎不變。舊寫法屬於在錯誤的平面上模擬錯誤，與深蹲 compensation 同類問題
+    //   （見 docs/verification/torso_lean_機位驗證.md）。
+    //   本項判定驗證後確認「兩種模擬都抓得到」（膝角 69° vs 92°，門檻 150°），故非功能缺陷，
+    //   但模擬方式仍應真實，否則日後調整門檻時會出現「合成器過、真人不過」。
     const sKnee = L ? LM.RIGHT_KNEE : LM.LEFT_KNEE;
-    const sKx = L ? 0.55 : 0.45;
-    sk[sKnee] = P(sKx + (L ? 0.12 : -0.12), 0.66);
+    const sAnkle = L ? LM.RIGHT_ANKLE : LM.LEFT_ANKLE;
+    const hipY = (sk[LM.LEFT_HIP].y + sk[LM.RIGHT_HIP].y) / 2;
+    sk[sKnee] = P(sk[sKnee].x, hipY + 0.02);      // 大腿水平：膝與髖幾乎同高，x 不動
+    sk[sAnkle] = P(sk[sAnkle].x, hipY + 0.28);    // 小腿垂直
     for (const i of [LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER, LM.NOSE]) sk[i].y += 0.10;
   }
   // 上下彈跳（跑步重心起伏）：抬腿時身體微微躍起，整體垂直位移，辨識不受影響。
