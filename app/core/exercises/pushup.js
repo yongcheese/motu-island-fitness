@@ -57,9 +57,12 @@ export const pushup = {
     const torso = distance(shC, hipC) || 1e-6;
     const sagRatio = pointLineDist(hipC, shC, ankC) / torso; // 髖偏離肩—踝連線
     // —— 塌腰（sagging hips）——
-    // 規則依據（I 類）：美軍 APFT 要求伏地挺身計次時身體自頭至踵成一直線，塌腰該次不計；
-    //   ACFT（APFT 後繼制度）明列不計次原因含 sagging hips、pike position、手臂未完全伸直。
-    //   兩者皆直接針對伏地挺身且明文「塌腰不計次」，與本系統將其設為 block 一致。
+    // 規則依據（I 類）：美軍 AFT／ACFT Hand-Release Push-Up 官方標準（goarmy.com，2026-08-28 查證原文）
+    //   「The Soldier will maintain a generally straight body alignment from the top of the head to the ankles.」
+    //   「Failing to maintain a generally straight alignment during a repetition will cause that repetition to not count.」
+    //   直接針對伏地挺身，且明文「未維持直線對位即該次不計」，與本系統設為 block 一致。
+    // ⚠️ 官方原文未使用 "sagging hips" 一詞（那是二手網站轉述），對外描述應採「未維持整體直線對位」。
+    // ⚠️ HRP 額外要求底部雙手離地成 T 字，與一般伏地挺身非完全同一動作；共通者為「維持身體直線」此項要求。
     // ⚠️ 界線：軍方標準規範的是「怎樣算一次」，不是傷害研究。不得對外宣稱「塌腰會造成傷害」——
     //   直接針對伏地挺身塌腰之傷害研究，本團隊未查得。
     // ⚠️ 門檻 0.18 為工程判斷（III 類），無外部依據：軍方以目視判斷「是否成一直線」，未給量化閾值。
