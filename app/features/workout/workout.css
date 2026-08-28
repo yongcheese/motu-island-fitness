@@ -419,3 +419,18 @@
    紅黃在本作品代表「無效」，用在這裡會讓使用者以為次數被扣掉了。 */
 .wk-advis { border-left: 3px solid var(--teal, #22c8e0); }
 .wk-advis .wk-judge-t { color: var(--teal, #22c8e0); }
+
+/* 第二幕的遊戲資源卡（碎片／抽獎券）。
+   配色用 --coral —— lumina.css 對該色票的定義正是「Secondary / 遊戲化」，
+   而碎片與抽獎券正是遊戲端資源。
+   ⚠️ 不可用 --teal：它與 --green 同值 (#22e0a1)，在本作品代表「有效／達標」，
+   用在這裡會讓使用者以為這兩項也是健身端的成就。亦不可用 --gold（金幣）或 --red（錯誤）。 */
+.wk-rw-res { padding: 12px 14px; }
+.wk-rw-res-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.wk-rw-res-pill {
+  font-variant-numeric: tabular-nums;   /* 等寬數字：多次結算時數字不會左右跳動 */
+  border: 1px solid color-mix(in srgb, var(--coral, #ff7a59) 45%, transparent);
+  color: var(--coral, #ff7a59);
+}
+.wk-rw-res-pill b { font-weight: 700; }
+.wk-rw-res-s { margin-top: 8px; font-size: 12px; color: var(--muted, #93a4b3); }

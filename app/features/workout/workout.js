@@ -1210,6 +1210,27 @@ function renderResult(ex, summary, session) {
   root.querySelector('#wk-done').onclick = () => renderReward(ex, session);
 }
 
+/* 第二幕的「遊戲資源」卡：碎片與抽獎券。
+   這兩項由遊戲端記帳，健身端只顯示不儲存（08/21 議定），因此：
+   —— 只出現在結算畫面，主畫面不常駐；
+   —— 兩者皆為 0 時整張卡不渲染。0 與「沒發生」是兩件事，畫一張全 0 的卡只會讓人以為系統壞了。
+   視覺權重刻意低於金幣卡與經驗值卡：用 .pill 並列而非大數字、不做 countUp，
+   藉此表達「這是遊戲端資產」而不顯得次等（見 TODO_PLAN 的設計顧問輸入）。 */
+export function gameResourceCard(session) {
+  const shards = session?.shards || 0;
+  const tickets = session?.tickets || 0;
+  if (shards <= 0 && tickets <= 0) return '';
+  const pill = (icon, n, label) => `<span class="pill wk-rw-res-pill">${icon} ${label} <b>+${n}</b></span>`;
+  return `
+      <div class="card wk-rw-res">
+        <div class="wk-rw-res-row">
+          ${shards > 0 ? pill('🧩', shards, '碎片') : ''}
+          ${tickets > 0 ? pill('🎟️', tickets, '抽獎券') : ''}
+        </div>
+        <div class="wk-rw-res-s">於島嶼遊戲中使用 · 不會出現在錢包</div>
+      </div>`;
+}
+
 /* Slice4 R3 第二幕島嶼行：與島嶼目標條共用 nextGoal——同一函式、同一數字。三態文案，皆非死路。 */
 function rewardIslandLine(s) {
   const n = s.island.placed.length;
@@ -1279,7 +1300,7 @@ function renderReward(ex, session) {
   const s = CTX.store.getState();
   const xp = CTX.store.derived.xpProgress();
   const ratio = Math.max(0, Math.min(1, xp.ratio || 0));   // clamp 防異常值破版
-  const xpGain = session.validReps * 5;   // 依 commitSession 現行契約推導的顯示值（session 未回傳 xpGain；store 公式改動需同步）
+  const xpGain = session.xpGain ?? session.validReps * 5;   // Slice 2 起由 commitSession 直接回傳；?? 僅為舊存檔的 history 相容
   const empty = session.coinsEarned === 0;
   rwClear();
   // 這次訓練「之前」的金幣：store 已 commit，所以要往回推才知道進度條該從哪裡長起來。
@@ -1303,6 +1324,7 @@ function renderReward(ex, session) {
         <div class="wk-rw-bar"><i style="width:${Math.round(ratio * 100)}%"></i></div>
         <div class="wk-rw-xp-s">再 ${Math.max(0, xp.need - xp.cur)} XP 升級</div>
       </div>
+      ${gameResourceCard(session)}
       <div class="card wk-rw-island" id="wk-rw-island">
         ${empty ? `🏠 我的島嶼 · 已建 <b>${s.island.placed.length}</b> 棟建築` : rewardIslandLine(s)}
         ${!empty && cost > 0 ? `
