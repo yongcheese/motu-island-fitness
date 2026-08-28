@@ -1,6 +1,6 @@
 // 中央狀態（單一真實來源）+ localStorage 持久化 + 事件匯流排。
 // 防刷鐵則：只有 commitSession() 能增加金幣/XP/history；UI 任何按鈕都不能直接加幣。
-import { coinsFor, grade } from '../core/rewards.js';
+import { coinsFor, grade, shardsFor, ticketsFor } from '../core/rewards.js';
 
 const KEY = 'island-fitness-ai/v1';
 const SCHEMA = 1;
@@ -71,6 +71,11 @@ export const store = {
     const coins = coinsFor({ validReps, baseCoinPerRep, targetRate, streakDays });
     const g = grade({ targetRate, validRate: targetRate });
     const xpGain = validReps * 5;
+    // 碎片與抽獎券：只算「本次獲得多少」並輸出，健身端不持有餘額 ——
+    // 08/21 雙方議定由遊戲端儲存記帳。故此二值只進 session（單次結算結果），
+    // 絕不可寫入 state.wallet 或任何持久化結構，否則即違反「不得回流成金幣或經驗值」的底線。
+    const shards = shardsFor({ validReps });
+    const tickets = ticketsFor({ validReps, targetRate });
 
     const session = {
       id: uid(), dateISO: new Date().toISOString(), date: todayISO(),
@@ -79,6 +84,10 @@ export const store = {
       validReps, invalidReps,
       targetRate: +targetRate.toFixed(3),
       coinsEarned: coins, grade: g, faults: result.faultCounts || {},
+      // —— 以下為純追加欄位，既有欄位的名稱／型別／語意一律不得更動 ——
+      // commitSession() 的回傳值是將來遊戲端依賴的對外契約，改既有欄位會直接打斷對接。
+      xpGain,            // 補上此欄以消除 UI 端重複推導 XP 公式的脆弱點（原 workout.js 自行乘 5）
+      shards, tickets,   // 本次獲得量，非餘額
     };
     state.history.push(session);
     state.wallet.coins += coins;

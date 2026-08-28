@@ -54,7 +54,7 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
 
 ## 進度總覽
 - 總 Slice 數：7
-- 已完成：1 / 7
+- 已完成：2 / 7
 - 平行組：無（Slice 2/5 同碰 `store.js`，Slice 7 碰共用檔 `main.js`，一律序列）
 
 ---
@@ -77,7 +77,7 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
 - **依賴**：無
 - **平行組**：獨立
 
-### [ ] Slice 2 — commitSession 輸出本次碎片與抽獎券
+### [x] Slice 2 — commitSession 輸出本次碎片與抽獎券
 - **目標**：結算結果帶出本次獲得的碎片與抽獎券數量，供遊戲端記帳，健身端不持有餘額。
 - **範圍內**：`commitSession()` 回傳的 `session` 物件新增 `shards`、`tickets` 欄位（呼叫 Slice 1 的函式）；一併補上 `xpGain` 欄位以消除 `workout.js:1274` 重複推導 XP 公式的既有脆弱點。
 - **範圍外**：**不得**在 `state.wallet` 或任何持久化結構新增碎片／抽獎券欄位（違反不變量 3）；不改 UI。
@@ -85,15 +85,15 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
 - **設計要點**：N/A ｜ 純狀態層
 - **UI Slice?**：NO
 - **驗收標準**：
-  - [ ] `commitSession()` 回傳物件含 `shards`、`tickets`、`xpGain` 三個欄位
-  - [ ] 連續呼叫兩次後，`getState().wallet` **不存在** shards／tickets 相關鍵（以 `Object.keys` 斷言）
-  - [ ] localStorage 序列化結果不含碎片／抽獎券餘額
-  - [ ] `xpGain` 與 `wallet.xp` 的實際增量一致
-  - [ ] **新增欄位為純追加（additive）**：既有欄位 `id`/`dateISO`/`date`/`exercise`/`exerciseName`/`durationSec`/`validReps`/`invalidReps`/`targetRate`/`coinsEarned`/`grade`/`faults` 的名稱、型別與語意完全不變，以測試逐一斷言（`commitSession()` 回傳值是將來遊戲端依賴的對外契約，改動既有欄位會直接打斷對接）
-  - [ ] 既有 123 項測試全數維持通過
+  - [x] `commitSession()` 回傳物件含 `shards`、`tickets`、`xpGain` 三個欄位
+  - [x] 連續呼叫兩次後，`getState().wallet` **不存在** shards／tickets 相關鍵（以 `Object.keys` 斷言）
+  - [x] localStorage 序列化結果不含碎片／抽獎券餘額
+  - [x] `xpGain` 與 `wallet.xp` 的實際增量一致
+  - [x] **新增欄位為純追加（additive）**：既有欄位 `id`/`dateISO`/`date`/`exercise`/`exerciseName`/`durationSec`/`validReps`/`invalidReps`/`targetRate`/`coinsEarned`/`grade`/`faults` 的名稱、型別與語意完全不變，以測試逐一斷言（`commitSession()` 回傳值是將來遊戲端依賴的對外契約，改動既有欄位會直接打斷對接）
+  - [x] 既有 123 項測試全數維持通過
 - **測試策略**：`tests/session-rewards.test.js` — 回傳欄位完整性、wallet 不受污染（負向斷言）、xpGain 與實際增量一致、零有效次數情境
 - **完成定義**：`npm test` 全綠 + 瀏覽器實機結算一次無 console error
-- **對外介面**：（施工後回填）
+- **對外介面**：`commitSession(result)` 回傳的 session 物件**純追加**三個欄位——`shards`（本次獲得碎片數，整數）、`tickets`（本次獲得抽獎券數，整數）、`xpGain`（本次經驗值增量，整數）。三者皆為**單次獲得量而非餘額**；`state.wallet` 仍只有 `coins`/`xp`/`level`，碎片與抽獎券不入持久化結構。既有 12 個欄位（id/dateISO/date/exercise/exerciseName/durationSec/validReps/invalidReps/targetRate/coinsEarned/grade/faults）名稱、型別、語意均未變動。無新 storage key、無新路由。
 - **依賴**：Slice 1
 - **平行組**：獨立（碰 `store.js`，必經 slice-reviewer）
 
