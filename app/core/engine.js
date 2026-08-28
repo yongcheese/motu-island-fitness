@@ -90,6 +90,10 @@ export function createDetector(spec, opts = {}) {
   // 尺度正規化做 EMA：身形尺寸本不該逐幀劇變，平滑分母可大幅穩定 progress、減少誤判。
   // 位置(center)仍取當幀，身體移動才跟得上。
   let scaleEma = null;
+  // 站立基準軀幹投影長：偵測矢狀面前傾用。
+  // 為何不能沿用 scaleEma：其 a=0.12，半衰期約 5 幀，彎腰持續一秒基準就跟著縮短，
+  // 比值恆為 1，等於量不到。故另立一個「只在身體直立時才更新」的基準。
+  let standTorso = null;
   function stableScale(frame) {
     const s = bodyScale(frame);
     if (!scaleEma) {
@@ -98,7 +102,16 @@ export function createDetector(spec, opts = {}) {
       const a = 0.12;
       for (const k of ['shoulderWidth', 'hipWidth', 'torsoLength', 'legLength']) scaleEma[k] = a * s[k] + (1 - a) * scaleEma[k];
     }
-    return { ...s, ...scaleEma };
+    // frameTorso 為「當幀」軀幹投影長（未平滑）；torsoRatio 為其與站立基準之比值。
+    // 直立時 ≈1；前傾時軀幹投影縮短使其下降。透視會部分抵消（前傾使人靠近鏡頭而放大），
+    // 故本量只能分辨明顯前傾，詳見 squat.js 之註解與 docs/verification/。
+    const frameTorso = s.torsoLength;
+    return { ...s, ...scaleEma, frameTorso, torsoRatio: standTorso ? frameTorso / standTorso : 1 };
+  }
+  /** 由 update 在確認身體直立（動作尚未展開）時呼叫，緩慢更新站立基準。 */
+  function updateStandBaseline(frameTorso, isUpright) {
+    if (!isUpright) return;
+    standTorso = standTorso === null ? frameTorso : 0.05 * frameTorso + 0.95 * standTorso;
   }
 
   function idleResult() {
@@ -208,7 +221,7 @@ export function createDetector(spec, opts = {}) {
       // 短暫掉幀 vs 真的離開畫面：前者只是凍結（保住進行中的那一下），後者才重置狀態機。
       if (lostSinceMs === null) lostSinceMs = tMs;
       if (tMs - lostSinceMs >= cfg.abortAfterMs) {
-        scaleEma = null;   // 重新進入畫面時重新校準尺度
+        scaleEma = null; standTorso = null;   // 重新進入畫面時重新校準尺度與站立基準
         for (const k in tracks) { tracks[k].tk.abort(); tracks[k].buf = []; tracks[k].faults.clear(); }
       }
       const seg = {}; for (const k of SEG_KEYS) seg[k] = 'red';
@@ -233,6 +246,9 @@ export function createDetector(spec, opts = {}) {
 
     const scale = stableScale(frame);   // 只用取景合格的幀更新尺度 EMA
     const ev = spec.evaluate(frame, scale);
+    // 站立基準只在「動作尚未展開」時更新：progress 低代表人還站著，
+    // 此時的軀幹投影長才是直立基準。動作進行中更新會讓基準被彎腰污染。
+    updateStandBaseline(scale.frameTorso, (ev.progress ?? Math.max(ev.progressL ?? 0, ev.progressR ?? 0)) < 0.15);
     let phase = 'READY';
     let signal = 0;
 
@@ -291,7 +307,7 @@ export function createDetector(spec, opts = {}) {
 
   function reset() {
     validReps = invalidReps = attempts = 0; lastCountTime = -1e9; lastSide = null; visStreak = 0; scaleEma = null;
-    unconfirmedFirstAlt = false; prevAttemptSide = null;
+    unconfirmedFirstAlt = false; prevAttemptSide = null; standTorso = null;
     framingWin = []; lostSinceMs = null;
     for (const k in faultCounts) delete faultCounts[k];
     for (const k in advisoryCounts) delete advisoryCounts[k];

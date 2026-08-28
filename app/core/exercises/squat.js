@@ -1,9 +1,16 @@
 // 深蹲：髖部低於膝蓋高度才達標；排除只彎腰、半蹲。
 import { LM } from '../landmarks.js';
-import { midpoint, vAngleFromVertical, norm, distance } from '../geometry.js';
+import { midpoint, norm, distance } from '../geometry.js';
 
 // 膝內夾門檻：膝距低於踝距的此倍率即提示。工程判斷值，待真人樣本標定（見 evaluate 內註解）。
 export const KNEE_VALGUS_KASR = 0.85;
+
+// 軀幹前傾門檻：軀幹畫面投影長 ÷ 站立基準。低於此值判為彎腰代償。
+// 依透視模型試算（軀幹 0.5m、距鏡頭 1.5–2.5m）：
+//   正常深蹲之自然前傾 0–30° → 0.96–1.06（15–20° 時因靠近鏡頭放大而略大於 1）
+//   彎腰代償 ≥50°           → <0.86
+// 取 0.86 使兩者間留有緩衝。⚠️ 工程判斷值，待真人樣本標定。
+export const TORSO_FOLD_RATIO = 0.86;
 
 export const squat = {
   id: 'squat', name: '深蹲', group: 'lower',
@@ -40,7 +47,6 @@ export const squat = {
     const depth = (hipC.y - kneeY) / legLen;
     const progress = norm(depth, -0.5, 0.1);
     const gatePass = depth >= -0.10;             // Demo 校準 -0.02→-0.10：允許髖到近膝(近平行蹲)，半蹲峰值 depth≈-0.33 仍被擋
-    const torsoLean = vAngleFromVertical(shC, hipC); // 軀幹傾角
     const faults = [];
     // 門檻 45°。以下為 2026-08-22 實測值（跑合成序列逐幀量 vAngleFromVertical 取峰值）：
     //   clean 0.00° ／ half 0.00° ／ compensation 46.42°
@@ -53,15 +59,29 @@ export const squat = {
     //      舊註解曾這樣寫，但那是工程判斷，不是實測結論，已刪除。
     // 真人正常深蹲的前傾分佈仍未知；若其落在 45° 附近，就會與代償樣本的 46.42° 重疊而分不開。
     // 這正是必須做真人測試的理由之一（見《現狀盤點與改善規劃》C-3、B-3）。在那之前不動此值。
-    // ⚠️⚠️ 已知缺陷（2026-08-28 驗證，見 docs/verification/torso_lean_機位驗證.md）
-    //   本判定在**正面機位下對矢狀面前傾完全失效**。vAngleFromVertical 由 dx（水平位移）決定角度，
-    //   而人繞髖前傾時，正面投影的 dx 恆為 0 —— 數學上不論前傾至 90°，測得皆為 0°。
-    //   端對端驗證：正面機位施加真實前傾 45°／60° 的樣本，5 次全判為有效，torso_lean 一次未觸發。
-    //   合成器之所以測得 46.42°，是因為它用 sk[i].x += lean 模擬彎腰 —— 那是側傾不是前傾。
-    //   測試全綠證明不了本功能有效。
-    //   更嚴重的是：它會對側傾與身體旋轉觸發，卻回饋「背部打直，不要彎腰」——抓到 A 說出 B，
-    //   且為 block 級會取消該次。處理方向見驗證報告第五節，未決策前不得對外宣稱本項可判定彎腰代償。
-    if (torsoLean > 45) faults.push('torso_lean');
+    // —— 軀幹前傾（彎腰代替下蹲）——
+    // 規則依據（I 類）：Myer et al. (2014) Back Squat Assessment 第③項「軀幹位置」；
+    //   CrossFit air squat 動作規範「chest up、維持腰椎曲線」。
+    // ⚠️ 量測方式於 2026-08-28 更換，原因見 docs/verification/torso_lean_機位驗證.md：
+    //   舊版用 vAngleFromVertical(肩,髖) 取肩髖連線與鉛直線的夾角，該角度由「水平位移」決定。
+    //   但人繞髖在矢狀面前傾時，正面機位的水平位移恆為 0 —— 數學上不論前傾至 90° 都測得 0°，
+    //   端對端驗證亦確認真實前傾 45°/60° 的樣本 5 次全被判為有效。舊版實際測到的是「側傾」，
+    //   卻回饋「不要彎腰」，且為 block 級會取消該次。
+    // 改用「軀幹畫面投影長 ÷ 站立基準」：前傾使軀幹投影縮短，此變化正面機位測得到。
+    // ⚠️ 能力界線（必須對外揭露，兩點）：
+    //  (1) 透視會部分抵消縮短（前傾使人靠近鏡頭而放大），故只分辨得出明顯彎腰。
+    //      合成驗證（漸進式前傾，站直→蹲下才彎）：30° 不觸發、45°/60°/75° 皆觸發。
+    //      完整的軀幹評估仍需側面機位，BSA 亦如此建議。
+    //  (2) **基準污染**：若使用者「一開始站著就已駝背」，站立基準即在彎腰狀態下建立，
+    //      比值恆為 1，系統偵測不到。本量測的是「相對於自己站姿的變化」，不是絕對姿勢。
+    //      驗證中曾對全序列施加固定前傾，結果 45°/60° 完全無法偵測，即為此故。
+    //      真人測試須將此情形納入：彎腰組的口令必須是「站直後、蹲下時才彎腰」，
+    //      而非「全程駝背做完」——後者是本方法的已知盲區。
+    const torsoRatio = s.torsoRatio ?? 1;
+    // 閘門與 engine 的站立基準更新門檻一致（progress < 0.15 時更新基準、之後才判定），
+    // 兩者互補不重疊。⚠️ 不可用較高的閘門（如 0.4）：彎腰代償的特徵正是「蹲不深卻前傾」，
+    // 其 progress 峰值僅約 0.38，高閘門會讓最該抓的樣本剛好漏掉。
+    if (progress >= 0.15 && torsoRatio < TORSO_FOLD_RATIO) faults.push('torso_lean');
 
     // —— 膝內夾（knee valgus）——
     // 規則依據（I 類）：NASM Overhead Squat Assessment 明列「knees moving inward」為代償項，
@@ -88,7 +108,8 @@ export const squat = {
     }
     const legColor = gatePass ? 'green' : (progress > 0.3 ? 'yellow' : 'green');
     const segments = {
-      torso: torsoLean > 45 ? 'red' : (torsoLean > 32 ? 'yellow' : 'green'),
+      torso: (progress >= 0.15 && torsoRatio < TORSO_FOLD_RATIO) ? 'red'
+        : (progress >= 0.15 && torsoRatio < 0.93) ? 'yellow' : 'green',
       leftLeg: legColor, rightLeg: legColor, leftArm: 'green', rightArm: 'green',
     };
     return { progress, gatePass, faults, segments };

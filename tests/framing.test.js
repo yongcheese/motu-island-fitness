@@ -300,10 +300,18 @@ test('engine: 動作中途短暫掉幀不應把那一下整個吞掉', () => {
 // 防作弊：凍結的幀等於「沒看到」，那段裡可能正好是姿勢跑掉的瞬間 —— 不能因為沒看到就給過。
 // 這是「凍結」機制帶進來的風險，必須由 unseen 旗標擋住。
 test('engine 防作弊: 錯誤發生的那幾幀剛好掉幀，不得把無效的一下升級成有效', () => {
-  const lean = (f, k) => {
+  // 正面機位的彎腰：繞髖前傾使軀幹的畫面投影縮短，水平位置不動。
+  // ⚠️ 舊版以 x += k 注入 —— 那是側傾。2026-08-28 判定改用投影長度比後，
+  //   側傾不再觸發 torso_lean，故注入方式必須一併修正（見 docs/verification/）。
+  // 40°（投影比 0.766）：低於門檻 0.86 足以觸發，又不致因單幀劇變被取景穩定性檢查凍結
+  //（實測 50° 以上會被判為訊號不可信而記成 unseen —— 真人彎腰是漸進的，不會兩幀內對折）。
+  const lean = (f, deg) => {
     const o = f.map(p => ({ ...p }));
-    o[LM.LEFT_SHOULDER] = { ...o[LM.LEFT_SHOULDER], x: o[LM.LEFT_SHOULDER].x + k };
-    o[LM.RIGHT_SHOULDER] = { ...o[LM.RIGHT_SHOULDER], x: o[LM.RIGHT_SHOULDER].x + k };
+    const hipY = (o[LM.LEFT_HIP].y + o[LM.RIGHT_HIP].y) / 2;
+    const k = Math.cos(deg * Math.PI / 180);
+    for (const i of [LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER, LM.NOSE, LM.LEFT_EAR, LM.RIGHT_EAR]) {
+      o[i] = { ...o[i], y: hipY - (hipY - o[i].y) * k };
+    }
     return o;
   };
   const seq = makeSequence('squat', { reps: 3, variant: 'clean' });
@@ -312,7 +320,7 @@ test('engine 防作弊: 錯誤發生的那幾幀剛好掉幀，不得把無效�
   let t = 0; const peak = [];
   seq.frames.forEach((f) => { if (probe.update(f, t).phase === 'TARGET') peak.push(seq.frames.indexOf(f)); t += seq.dtMs; });
   const inject = [peak[2], peak[3]];
-  const withFault = { ...seq, frames: seq.frames.map((f, i) => (inject.includes(i) ? lean(f, 0.3) : f)) };
+  const withFault = { ...seq, frames: seq.frames.map((f, i) => (inject.includes(i) ? lean(f, 40) : f)) };
   const faulted = runSeq('squat', withFault).s;
   eq(faulted.validReps, 2, '前提：這個彎腰確實會讓那一下無效');
   eq(faulted.faultCounts.torso_lean || 0, 1);
@@ -380,10 +388,18 @@ test('engine: 一好一壞交替的取景（50% 壞幀）必須停止判定', ()
 // 若 UI 讀「當下這一幀的 faults」，瞬間彎腰/掉幀都會退回顯示「半程未達標」——
 // 使用者蹲夠深了卻被告知沒蹲夠，會照著錯的方向改。
 test('repReason: 瞬間發生的錯誤不得被誤報成「半程未達標」', () => {
-  const lean = (f, k) => {
+  // 正面機位的彎腰：繞髖前傾使軀幹的畫面投影縮短，水平位置不動。
+  // ⚠️ 舊版以 x += k 注入 —— 那是側傾。2026-08-28 判定改用投影長度比後，
+  //   側傾不再觸發 torso_lean，故注入方式必須一併修正（見 docs/verification/）。
+  // 40°（投影比 0.766）：低於門檻 0.86 足以觸發，又不致因單幀劇變被取景穩定性檢查凍結
+  //（實測 50° 以上會被判為訊號不可信而記成 unseen —— 真人彎腰是漸進的，不會兩幀內對折）。
+  const lean = (f, deg) => {
     const o = f.map(p => ({ ...p }));
-    o[LM.LEFT_SHOULDER] = { ...o[LM.LEFT_SHOULDER], x: o[LM.LEFT_SHOULDER].x + k };
-    o[LM.RIGHT_SHOULDER] = { ...o[LM.RIGHT_SHOULDER], x: o[LM.RIGHT_SHOULDER].x + k };
+    const hipY = (o[LM.LEFT_HIP].y + o[LM.RIGHT_HIP].y) / 2;
+    const k = Math.cos(deg * Math.PI / 180);
+    for (const i of [LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER, LM.NOSE, LM.LEFT_EAR, LM.RIGHT_EAR]) {
+      o[i] = { ...o[i], y: hipY - (hipY - o[i].y) * k };
+    }
     return o;
   };
   const seq = makeSequence('squat', { reps: 3, variant: 'clean' });
@@ -402,7 +418,7 @@ test('repReason: 瞬間發生的錯誤不得被誤報成「半程未達標」', 
     return out;
   };
   // 只在最深處彎腰 → 原因要是 torso_lean，不是 half_rep
-  const leaned = seq.frames.map((f, i) => (inject.includes(i) ? lean(f, 0.3) : f));
+  const leaned = seq.frames.map((f, i) => (inject.includes(i) ? lean(f, 40) : f));
   eq(reasonsOf(leaned)[0], 'torso_lean', '蹲夠深了卻被說沒蹲夠，使用者會照錯的方向改');
   // 那幾幀剛好掉幀 → 原因要是 unseen
   const hidden = leaned.map((f, i) => (inject.includes(i) ? f.map(p => ({ ...p, visibility: 0.05 })) : f));

@@ -71,10 +71,20 @@ function poseSquat(d, variant) {
     sk[LM.RIGHT_KNEE].x = 0.55 + kneeOut - inward;
   }
   if (variant === 'compensation') {
-    // 只彎腰：肩/頭大幅前傾，髖回升 → 不夠深 + 軀幹傾角過大
-    const lean = 0.20 * d, lift = 0.11 * d;
-    for (const i of [LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER, LM.NOSE, LM.LEFT_EAR, LM.RIGHT_EAR]) sk[i].x += lean;
-    sk[LM.NOSE].y += lift * 0.5;
+    // 只彎腰代替下蹲：不夠深 ＋ 軀幹大幅前傾。
+    // ⚠️ 2026-08-28 修正：舊版以 sk[i].x += lean 模擬彎腰 —— 那是「往側邊倒」，
+    //   不是矢狀面前傾。正面機位下，繞髖前傾不產生任何水平位移，只會使軀幹的
+    //   畫面投影縮短（並因靠近鏡頭而略被透視放大抵消）。舊寫法讓引擎測得 46.42° 的
+    //   側傾角並「通過」測試，但真人正面彎腰時該值恆為 0，功能其實失效。
+    //   詳見 docs/verification/torso_lean_機位驗證.md。
+    const lean = 60 * d * Math.PI / 180;          // 前傾至 60°（明顯的彎腰代償）
+    const lift = 0.11 * d;                        // 髖回升 → 蹲不夠深
+    const hipY = (sk[LM.LEFT_HIP].y + sk[LM.RIGHT_HIP].y) / 2 - lift;
+    // 軀幹投影縮短：肩與頭部朝髖靠攏，垂直分量乘以 cos θ；水平位置完全不動。
+    const shrink = Math.cos(lean);
+    for (const i of [LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER, LM.NOSE, LM.LEFT_EAR, LM.RIGHT_EAR]) {
+      sk[i].y = hipY - (hipY - sk[i].y) * shrink;
+    }
     sk[LM.LEFT_HIP].y -= lift; sk[LM.RIGHT_HIP].y -= lift;
   }
   return sk;

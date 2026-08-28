@@ -3,6 +3,8 @@ import { createDetector } from '../app/core/engine.js';
 import { EXERCISES } from '../app/core/exercises/index.js';
 import { makeSequence } from '../app/core/synth.js';
 import { LM } from '../app/core/landmarks.js';
+import { bodyScale } from '../app/core/normalize.js';
+import { TORSO_FOLD_RATIO } from '../app/core/exercises/squat.js';
 
 const run = (id, seqOpts) => {
   const det = createDetector(EXERCISES[id]);
@@ -175,29 +177,32 @@ test('整體判定準確率 ≥ 90% (正/負樣本混合)', () => {
   assert(acc >= 0.9, `accuracy ${(acc * 100).toFixed(1)}% < 90%`);
 });
 
-// C-2：把註解裡宣稱的實測值變成會失敗的斷言。舊註解寫「代償樣本 ≈48°」與「42° 誤殺率高」，
-// 兩者都無實測支持（實測 46.42°，且合成器的正常深蹲軀幹恆為 0°、不模擬自然前傾）。
-// 這條測試把數字鎖住：日後若合成器或門檻被改動，這裡會紅，註解就不會再默默失真。
-test('squat: 軀幹傾角規則的判別餘裕僅約 1.4°（鎖住實測值）', () => {
-  const peakLean = (variant) => {
+// C-2：把註解裡宣稱的實測值變成會失敗的斷言，日後改動會在此處紅燈，註解不會默默失真。
+// 2026-08-28 改寫：量測方式由「肩髖連線傾角」換為「軀幹投影長度比」。
+// 舊版鎖的是 46.42° 側傾角 —— 那個量在正面機位對真實前傾恆為 0，鎖住它等於鎖住一個失效的數字。
+test('squat: 軀幹前傾改用投影長度比後的判別餘裕（鎖住實測值）', () => {
+  const minRatio = (variant) => {
     const seq = makeSequence('squat', { reps: 5, variant });
-    const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
-    let peak = -1;
+    let stand = null, min = 9;
     for (const f of seq.frames) {
-      const sh = mid(f[LM.LEFT_SHOULDER], f[LM.RIGHT_SHOULDER]);
-      const hip = mid(f[LM.LEFT_HIP], f[LM.RIGHT_HIP]);
-      const dx = sh.x - hip.x, dy = sh.y - hip.y;
-      const a = Math.abs(Math.atan2(dx, -dy) * 180 / Math.PI);
-      if (a > peak) peak = a;
+      const t = bodyScale(f).torsoLength;
+      if (stand === null) { stand = t; continue; }
+      const r = t / stand;
+      if (r < min) min = r;
     }
-    return peak;
+    return min;
   };
-  const comp = peakLean('compensation');
-  between(comp, 46.0, 47.0, `代償樣本峰值應在 46–47°（實測 46.42），實得 ${comp.toFixed(2)}`);
-  assert(comp - 45 < 2.0, '餘裕不到 2°——此規則對真人資料很脆弱，不得在無真人資料下調鬆門檻');
-  const clean = peakLean('clean');
-  assert(clean < 1.0, `合成器的正常深蹲軀幹恆為打直（實得 ${clean.toFixed(2)}°）——`
-    + '這代表「不會誤殺正常動作」在合成資料上是必然成立的，不能當作證據');
+  const comp = minRatio('compensation');
+  between(comp, 0.30, 0.40, `代償樣本投影比最低應在 0.30–0.40（實測 0.336），實得 ${comp.toFixed(3)}`);
+  assert(TORSO_FOLD_RATIO - comp > 0.4,
+    `門檻 ${TORSO_FOLD_RATIO} 與代償樣本 ${comp.toFixed(3)} 的餘裕應大於 0.4 —— `
+    + '相較舊量測方式的 1.4°，此餘裕大得多，但仍須真人資料確認');
+
+  const clean = minRatio('clean');
+  assert(clean > 0.99,
+    `合成器的正常深蹲軀幹恆為打直（實得投影比 ${clean.toFixed(3)}）——`
+    + '這代表「不會誤殺正常動作」在合成資料上是必然成立的，不能當作證據。'
+    + '真人正常深蹲的自然前傾使該比值落在約 0.96–1.06，與門檻 0.86 的實際餘裕未知。');
 });
 
 // —— 膝內夾（knee valgus）——
