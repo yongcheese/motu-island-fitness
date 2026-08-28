@@ -6,7 +6,8 @@ import { drawSkeleton, drawCountdownRing, drawProgressRing, COLOR } from '../../
 import { makeSequence } from '../../core/synth.js';
 import { createAvatar3D } from '../../ui/avatar3d.js';
 import { pose3d, EX_VIEW } from '../../ui/pose3d.js';
-import { nextGoal } from '../island/goals.js';   // Slice4 R3：結算第二幕與島嶼目標條共用（純函式、零依賴）
+import { nextGoal } from '../island/goals.js';
+import { planFor, planLabel } from '../../core/difficulty.js';   // Slice4 R3：結算第二幕與島嶼目標條共用（純函式、零依賴）
 import { coachPolicy, repCountdownCue } from '../../core/coach-policy.js';   // Slice3 修復 F3：誠實回饋決策（純函式）
 import { framingReport, createStabilityTracker, landmarkOk, HEAD_LANDMARKS } from '../../core/framing.js';   // 取景判定：與 engine 共用同一份純函式
 import { ALL_FRAME, framingPose, displaySegments, gaugeColor, phaseCueText } from '../../ui/display-colors.js';   // 顏色語意（純函式，可單測）
@@ -167,8 +168,11 @@ function rewardBadges(e, p) {
   return `<span class="${p}-coin">🪙 ≈${e.baseCoinPerRep * 10}</span>
           <span class="${p}-target">🎯 ${e.meta?.target || '全身'}</span>`;
 }
+// 依使用者設定的難度換算該動作的訓練量。**所有**顯示與執行都必須經由此函式，
+// 否則簡介頁寫「3 組 × 12 下」、實際跑 2 組，使用者會以為系統壞了。
+function planOf(ex) { return planFor(ex?.meta, CTX.store.getState().prefs?.difficulty); }
 // 課表句（R4 簡介文案一致化的單一來源）。
-function planText(meta) { return `${meta.sets} 組 × ${meta.repsPerSet} 下 · 組間休息 ${meta.restSec} 秒`; }
+function planText(meta) { return planLabel(planFor(meta, CTX.store.getState().prefs?.difficulty)); }
 // 推薦理由 caption。TODO(R3): 改讀 store 任務欄位（無任務→預設推薦文案）。
 function recWhyText() { return '🎯 今天練下肢 · 完成今日任務：20 個有效深蹲'; }
 // Demo 取景提示：深蹲只需到膝、最易成功(預設推薦)；開合跳需腳踝＋橫向空間。
@@ -261,8 +265,8 @@ function renderIntro(ex) {
       <p class="sub">${ex.meta.desc}</p>
       <div class="wk-stats stagger">
         ${stat('🎯 部位', ex.meta.target)}
-        ${stat('🔁 組數', `${ex.meta.sets} 組 × ${ex.meta.repsPerSet} 下`)}
-        ${stat('⏱️ 組間休息', `${ex.meta.restSec} 秒`)}
+        ${stat('🔁 組數', `${planOf(ex).sets} 組 × ${planOf(ex).repsPerSet} 下`)}
+        ${stat('⏱️ 組間休息', `${planOf(ex).restSec} 秒`)}
         ${stat('🪙 預估金幣', `${ex.baseCoinPerRep} / 有效次`)}
         ${stat('🔥 強度', `${ex.met} MET`)}
         ${stat('📷 鏡頭', ex.id === 'pushup' ? '側面' : ex.id === 'jumpingjack' ? '正面 · 需全身入鏡' : '正面')}
@@ -676,8 +680,8 @@ function liveShell(ex) {
         <div class="lv-metric"><div class="m-v" id="m-time">0:00</div><div class="m-k">時間</div></div>
         <div class="lv-metric"><div class="m-v" id="m-rate">—</div><div class="m-k">達標率</div></div>
         <div class="lv-metric lv-cdmetric">
-          <div class="m-v" id="m-cd" hidden>${ex.meta.restSec}</div><div class="m-k" hidden>倒數</div>
-          <div class="m-v lv-set-progress">0/${ex.meta.repsPerSet}</div><div class="m-k lv-set-label">本組次數</div>
+          <div class="m-v" id="m-cd" hidden>${planOf(ex).restSec}</div><div class="m-k" hidden>倒數</div>
+          <div class="m-v lv-set-progress">0/${planOf(ex).repsPerSet}</div><div class="m-k lv-set-label">本組次數</div>
         </div>
       </div>
       <div class="lv-ctrls">
@@ -772,7 +776,8 @@ function containRect(video, cw, ch) {
 /* ---------------- Slice3 R3 組數狀態機（六-補：次數為主／90s 安全網／倒數環雙語意） ---------------- */
 // 建立組狀態＋統一時鐘起點。時鐘契約：每幀無條件 dt=now−lastFrameTs 貼緊；僅 WORK && !paused 把 dt 累進 elapsedMs。
 function initSetState(run) {
-  const m = run.ex.meta;
+  // 與簡介頁同一個 planOf，兩處數字必然一致
+  const m = planOf(run.ex);
   run.set = { idx: 1, total: m.sets, target: m.repsPerSet, baseValid: 0, lastValid: 0, setEndValid: 0, phase: 'WORK', workMs: 0, restMs: 0, restSec: m.restSec, cue3: false, cue1: false };
   run.lastFrameTs = performance.now();
   run.skipRest = false;

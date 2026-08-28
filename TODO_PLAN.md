@@ -54,7 +54,7 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
 
 ## 進度總覽
 - 總 Slice 數：7
-- 已完成：3 / 7
+- 已完成：4 / 7
 - 平行組：無（Slice 2/5 同碰 `store.js`，Slice 7 碰共用檔 `main.js`，一律序列）
 
 ---
@@ -117,7 +117,7 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
 - **平行組**：獨立
 - **待審**：留待收尾批次 slice-reviewer（未觸發當場審條件：改動檔案與其他 Slice 無交集、非共用檔、未觸發 Circuit Breaker）
 
-### [ ] Slice 4 — 難度設定接線至訓練量
+### [x] Slice 4 — 難度設定接線至訓練量
 - **目標**：設定頁的「簡單／普通／困難」真的會改變訓練內容，消滅「按了沒反應」。
 - **範圍內**：新增 `app/core/difficulty.js` 純函式，依 `prefs.difficulty` 調整動作的組數／每組次數／休息秒數（以各動作 `meta.sets`/`repsPerSet`/`restSec` 為基準值）；`workout.js` 讀取設定套用；簡介頁顯示的數字須與實際流程一致。
 - **範圍外**：**絕對不得**改動任何判定門檻、角度閾值、深度閾值（違反不變量 4）；不改設定頁 UI（UI 已存在）。
@@ -125,14 +125,14 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
 - **設計要點**：N/A ｜ 純邏輯 + 既有 UI 接線
 - **UI Slice?**：NO
 - **驗收標準**：
-  - [ ] 三個難度各自產生不同的組數／次數／休息秒數，且 easy < normal < hard 的訓練量單調遞增
-  - [ ] 產生值皆為正整數，不因基準值缺漏而回傳 NaN／0／undefined
-  - [ ] 未知或缺失的 difficulty 值回退為 normal
-  - [ ] 簡介頁顯示的組數與次數與實際執行流程一致
-  - [ ] **判定門檻未被更動**：以測試斷言引擎在三種難度下對同一組骨架序列的判定結果完全相同
+  - [x] 三個難度各自產生不同的組數／次數／休息秒數，且 easy < normal < hard 的訓練量單調遞增
+  - [x] 產生值皆為正整數，不因基準值缺漏而回傳 NaN／0／undefined
+  - [x] 未知或缺失的 difficulty 值回退為 normal
+  - [x] 簡介頁顯示的組數與次數與實際執行流程一致
+  - [x] **判定門檻未被更動**：以測試斷言引擎在三種難度下對同一組骨架序列的判定結果完全相同
 - **測試策略**：`tests/difficulty.test.js` — 三難度單調性、未知值回退、邊界（基準值缺漏）、**門檻不變性**（同一輸入在三難度下 validReps 相同）
 - **完成定義**：`npm test` 全綠 + 實機切換三種難度確認簡介頁數字與流程一致
-- **對外介面**：（施工後回填）
+- **對外介面**：`app/core/difficulty.js` 新增 export —— `planFor(meta, level)` → `{sets, repsPerSet, restSec, level}`（三者皆為 ≥1 的整數）、`planLabel(plan)` → 課表字串、`normalizeDifficulty(level)`、`DIFFICULTY_LEVELS`。`workout.js` 新增內部函式 `planOf(ex)` 作為訓練量的單一取得點（簡介頁、HUD、initSetState 三處共用）。無 storage key、無路由。⚠️ 本模組刻意不 export 任何與判定門檻相關的東西，並有靜態守門測試鎖住。
 - **依賴**：無
 - **平行組**：獨立
 
