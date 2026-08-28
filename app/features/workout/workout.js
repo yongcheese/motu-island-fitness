@@ -1163,6 +1163,7 @@ function finishLive() {
     exercise: ex.id, exerciseName: ex.name, durationSec,
     validReps: summary.validReps, invalidReps: summary.invalidReps,
     met: ex.met, baseCoinPerRep: ex.baseCoinPerRep, faultCounts: summary.faultCounts,
+    advisoryCounts: summary.advisoryCounts,
   });
   renderResult(ex, summary, session);
   if (wasVoice) CTX.coach.say('這組完成，做得很好！', 'high');
@@ -1173,6 +1174,9 @@ function renderResult(ex, summary, session) {
   const total = summary.validReps + summary.invalidReps;
   const tr = total ? Math.round(summary.validReps / total * 100) : 0;
   const faults = Object.entries(session.faults || {}).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  // advisory：不影響有效次數，但值得提醒的姿勢問題。與「常見問題」分開呈現 ——
+  // 混在一起會讓使用者以為這些是被扣次數的原因。
+  const advisories = Object.entries(summary.advisoryCounts || {}).sort((a, b) => b[1] - a[1]);
   const gColor = { S: 'var(--gold)', A: 'var(--green)', B: 'var(--teal)', C: 'var(--muted)' }[session.grade];
   root.innerHTML = `
     <div class="fade-in wk-result">
@@ -1193,6 +1197,10 @@ function renderResult(ex, summary, session) {
         <div class="wk-judge-t">常見問題</div>
         ${faults.map(([f, n]) => `<div class="wk-fault-row"><span>${faultName(f)}</span><span class="pill">${n} 次</span></div>`).join('')}
       </div>` : `<div class="wk-faults card"><div class="wk-judge-t">👏 動作品質很棒，沒有明顯錯誤！</div></div>`}
+      ${advisories.length ? `<div class="wk-faults card wk-advis">
+        <div class="wk-judge-t">💡 可以更好（不影響有效次數）</div>
+        ${advisories.map(([f, n]) => `<div class="wk-fault-row"><span>${faultName(f)}</span><span class="pill">${n} 次</span></div>`).join('')}
+      </div>` : ''}
       <div class="wk-cta">
         <button class="btn secondary" id="wk-again" style="flex:1">再一次</button>
         <button class="btn" id="wk-done" style="flex:1">領取獎勵 ›</button>
@@ -1357,7 +1365,7 @@ function rejectHint(reason, ex) {
 }
 
 function faultName(f) {
-  return { torso_lean: '彎腰／軀幹前傾', half_rep: '動作半程未達標', limb_desync: '手腳不同步',
+  return { torso_lean: '彎腰／軀幹前傾', knee_valgus: '膝蓋內夾', half_rep: '動作半程未達標', limb_desync: '手腳不同步',
     no_support: '坐姿／支撐不穩', no_alternation: '未左右交替', sag: '塌腰', form: '深度／姿勢不足',
     unseen: '動作中有一段沒看清楚', not_visible: '不在畫面中' }[f] || f;
 }

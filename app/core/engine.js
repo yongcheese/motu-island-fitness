@@ -62,6 +62,10 @@ export function createDetector(spec, opts = {}) {
 
   let validReps = 0, invalidReps = 0, attempts = 0;
   const faultCounts = {};
+  // advisory：觀察到但「不取消有效次數」的姿勢提醒。與 faultCounts 分開統計，
+  // 因為後者的語意是「這一下為何無效」——把不阻擋的項目混進去會讓結算的無效原因失真。
+  // 用途：門檻尚未由真人樣本標定的規則（如深蹲膝內夾），先提示不阻擋，標定後再決定是否升格。
+  const advisoryCounts = {};
   let lastCountTime = -1e9, lastSide = null, visStreak = 0;
   // 交替動作的第一下沒有前例可比，只能先放行（否則每組都會冤枉第一下）。
   // 但「一直抬同一隻腳」的作弊也是從這一下開始的，所以先記著它是「未經交替證實」的，
@@ -103,7 +107,8 @@ export function createDetector(spec, opts = {}) {
     track.buf.push(raw); if (track.buf.length > cfg.smooth) track.buf.shift();
     return track.buf.reduce((a, b) => a + b, 0) / track.buf.length;
   };
-  const bump = (f) => { faultCounts[f] = (faultCounts[f] || 0) + 1; };
+  const isAdvisory = (f) => spec.faultSeverity?.[f] === 'advisory';
+  const bump = (f) => { if (isAdvisory(f)) return; faultCounts[f] = (faultCounts[f] || 0) + 1; };
 
   // 處理一條 track 一幀；回傳 close 事件或 null
   function feed(track, raw, gatePass, frameFaults) {
@@ -126,6 +131,9 @@ export function createDetector(spec, opts = {}) {
   function classify(side, ev, tMs) {
     // 冷卻：在冷卻窗內的關閉事件視為底部抖動，忽略
     if (tMs - lastCountTime < cfg.cooldownMs) return;
+    // advisory 在此統計：不論該次最終有效或無效都要記錄，因為它描述的是姿勢品質，
+    // 不是計次結果。放在冷卻檢查之後，避免底部抖動造成的重複關閉事件被重複計入。
+    for (const f of ev.faults) if (isAdvisory(f)) advisoryCounts[f] = (advisoryCounts[f] || 0) + 1;
     // 上一次「有結算」的側別（不論有效與否）。撤銷第一下時要看它而不是 lastSide：
     // lastSide 只在有效時更新，若中間夾一下換邊但無效的動作（L 有效 → R 塌腰 → L），
     // 用 lastSide 判會誤以為使用者一直同側，把無辜的第一下也撤掉。
@@ -271,6 +279,7 @@ export function createDetector(spec, opts = {}) {
       targetRate: total ? validReps / total : 0,
       validRate: total ? validReps / total : 0,
       faultCounts: { ...faultCounts },
+      advisoryCounts: { ...advisoryCounts },
     };
   }
 
@@ -279,6 +288,7 @@ export function createDetector(spec, opts = {}) {
     unconfirmedFirstAlt = false; prevAttemptSide = null;
     framingWin = []; lostSinceMs = null;
     for (const k in faultCounts) delete faultCounts[k];
+    for (const k in advisoryCounts) delete advisoryCounts[k];
     for (const k in tracks) { tracks[k].tk.reset(); tracks[k].buf = []; tracks[k].faults.clear(); }
   }
 

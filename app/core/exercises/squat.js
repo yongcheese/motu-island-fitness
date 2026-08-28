@@ -2,6 +2,9 @@
 import { LM } from '../landmarks.js';
 import { midpoint, vAngleFromVertical, norm, distance } from '../geometry.js';
 
+// 膝內夾門檻：膝距低於踝距的此倍率即提示。工程判斷值，待真人樣本標定（見 evaluate 內註解）。
+export const KNEE_VALGUS_KASR = 0.85;
+
 export const squat = {
   id: 'squat', name: '深蹲', group: 'lower',
   met: 5.4, baseCoinPerRep: 10, intensity: 1.0,
@@ -10,9 +13,10 @@ export const squat = {
   // 入鏡判定不含腳踝：深度只看髖 vs 膝，腳被切到框外仍可練（腳踝僅用於估腿長，已有備援）
   gateLandmarks: [LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER, LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE],
   thresholds: { attemptEnter: 0.25, targetEnter: 0.62, readyReturn: 0.20 },   // Demo 校準 0.75→0.62：真機低角度鏡頭髖顯偏高，標準/近平行蹲可過；半蹲峰值僅 0.28 仍遠低於門檻
-  faultSeverity: { torso_lean: 'block' },
+  faultSeverity: { torso_lean: 'block', knee_valgus: 'advisory' },
   cues: {
     torso_lean: { text: '背部打直，不要彎腰，用臀部往後坐下', priority: 'high' },
+    knee_valgus: { text: '膝蓋往外推，對齊腳尖方向', priority: 'high' },
     deeper: { text: '再往下蹲，讓髖部低於膝蓋', priority: 'mid' },
   },
   // Bug2(b)：每一幀都告訴使用者「現在該做什麼」，不用等語音。
@@ -50,6 +54,30 @@ export const squat = {
     // 真人正常深蹲的前傾分佈仍未知；若其落在 45° 附近，就會與代償樣本的 46.42° 重疊而分不開。
     // 這正是必須做真人測試的理由之一（見《現狀盤點與改善規劃》C-3、B-3）。在那之前不動此值。
     if (torsoLean > 45) faults.push('torso_lean');
+
+    // —— 膝內夾（knee valgus）——
+    // 規則依據（I 類）：NASM Overhead Squat Assessment 明列「knees moving inward」為代償項，
+    //   其正面觀察判準為「膝蓋應與腳對齊」。OHSA 為徒手深蹲，與本動作同型。
+    //   Myer et al. (2014) 亦將膝內夾與軀幹前傾、深度不足並列為需辨識矯正之技術缺陷 ——
+    //   本作品企劃書第二章已引用該文獻，先前卻只實作了後兩項，此處補齊。
+    // 量測方式：KASR（knee-to-ankle separation ratio，膝距 ÷ 踝距）。
+    //   Mizner et al. 建議 KASR 與 FPPA 作為 3D 動力學的 2D 替代指標。
+    //   選 KASR 而非 FPPA 的理由：只需膝與踝的水平座標，是正面深蹲最可靠的兩組點位；
+    //   FPPA 需要髖-膝-踝三點夾角，髖點在深蹲時受衣物與骨盆前傾影響較大。
+    // ⚠️ 門檻 0.85 為工程判斷（III 類），**沒有文獻依據**，不得對外描述為文獻值。
+    //   合成器實測（2026-08-28，單次動作最深處）：clean 2.738 ／ half 1.782 ／
+    //   compensation 2.738 ／ valgus 0.352。合成器的正常深蹲膝為外開（KASR≥1），
+    //   真人不會如此，故此門檻在真人資料上的適切性未知。
+    //   待標定來源：UI-PRMD 的 incorrect 含「knees not aligned」樣本，以及真人測試加拍之膝內夾組。
+    // ⚠️ 刻意不列入 faultSeverity 的 block：門檻既無依據，就不應據以取消使用者的有效次數。
+    //   目前僅輸出提示，標定完成後再決定是否升格為阻擋。
+    const ankleSpan = Math.abs(f[LM.RIGHT_ANKLE].x - f[LM.LEFT_ANKLE].x);
+    const kneeSpan = Math.abs(f[LM.RIGHT_KNEE].x - f[LM.LEFT_KNEE].x);
+    // 只在蹲到一定深度後才判：站直時膝自然併攏，淺處判定會誤觸發。
+    // 需 ankleReliable：踝點不可信時踝距失真，比值無意義。
+    if (progress > 0.5 && ankleReliable && ankleSpan > 1e-6) {
+      if (kneeSpan / ankleSpan < KNEE_VALGUS_KASR) faults.push('knee_valgus');
+    }
     const legColor = gatePass ? 'green' : (progress > 0.3 ? 'yellow' : 'green');
     const segments = {
       torso: torsoLean > 45 ? 'red' : (torsoLean > 32 ? 'yellow' : 'green'),

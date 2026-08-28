@@ -62,6 +62,14 @@ function poseSquat(d, variant) {
   for (const i of down) sk[i].y += drop;
   sk[LM.LEFT_KNEE].x = 0.45 - kneeOut; sk[LM.RIGHT_KNEE].x = 0.55 + kneeOut;
   sk[LM.LEFT_KNEE].y = kneeY; sk[LM.RIGHT_KNEE].y = kneeY;
+  if (variant === 'valgus') {
+    // 膝內夾：膝往中線移動、踝不動，使膝距窄於踝距。深度與軀幹皆正常，
+    // 藉此隔離出「只有膝內夾」這一項 —— 若引擎把它判成有效，就是漏抓而非誤判其他規則。
+    // 位移量 0.16×d 使底部 KASR 降至約 0.4，是「明顯內夾」而非邊界案例。
+    const inward = 0.16 * d;
+    sk[LM.LEFT_KNEE].x = 0.45 - kneeOut + inward;
+    sk[LM.RIGHT_KNEE].x = 0.55 + kneeOut - inward;
+  }
   if (variant === 'compensation') {
     // 只彎腰：肩/頭大幅前傾，髖回升 → 不夠深 + 軀幹傾角過大
     const lean = 0.20 * d, lift = 0.11 * d;

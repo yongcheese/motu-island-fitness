@@ -414,3 +414,8 @@
   .wk-coin-fly { display: none; }
   .wk-rw-goalbar i, .wk-rw-island.hit { transition: none; }
 }
+
+/* advisory：不扣次數的姿勢提醒。刻意用中性藍而非紅／黃 ——
+   紅黃在本作品代表「無效」，用在這裡會讓使用者以為次數被扣掉了。 */
+.wk-advis { border-left: 3px solid var(--teal, #22c8e0); }
+.wk-advis .wk-judge-t { color: var(--teal, #22c8e0); }

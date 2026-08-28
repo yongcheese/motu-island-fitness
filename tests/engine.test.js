@@ -199,3 +199,52 @@ test('squat: 軀幹傾角規則的判別餘裕僅約 1.4°（鎖住實測值）'
   assert(clean < 1.0, `合成器的正常深蹲軀幹恆為打直（實得 ${clean.toFixed(2)}°）——`
     + '這代表「不會誤殺正常動作」在合成資料上是必然成立的，不能當作證據');
 });
+
+// —— 膝內夾（knee valgus）——
+// 規則依據 NASM OHSA「膝蓋應與腳對齊」；門檻為待標定之工程值，故僅提示、不阻擋計次。
+
+test('squat: 膝內夾樣本被辨識出 knee_valgus', () => {
+  const { s } = run('squat', { reps: 5, variant: 'valgus' });
+  const adv = Object.keys(s.advisoryCounts || {});
+  assert(adv.includes('knee_valgus'), `應辨識出膝內夾，實得 [${adv}]`);
+});
+
+test('squat: 正常深蹲不觸發膝內夾（不得誤殺）', () => {
+  for (const variant of ['clean', 'half', 'compensation']) {
+    const { s } = run('squat', { reps: 5, variant });
+    const n = (s.advisoryCounts || {}).knee_valgus || 0;
+    eq(n, 0, `${variant} 不應出現膝內夾，實得 ${n} 次`);
+  }
+});
+
+test('squat: 膝內夾不污染 faultCounts（無效原因統計須維持精確）', () => {
+  const { s } = run('squat', { reps: 5, variant: 'valgus' });
+  eq((s.faultCounts || {}).knee_valgus, undefined, 'advisory 不得混入無效原因統計');
+});
+
+test('squat: 膝內夾不阻擋計次（門檻未標定前不取消有效次數）', () => {
+  const { s } = run('squat', { reps: 5, variant: 'valgus' });
+  assert(s.validReps > 0, `膝內夾樣本的深度與軀幹皆正常，應仍計為有效，實得 ${s.validReps}`);
+});
+
+test('squat: 膝內夾判定在不同體型與鏡頭距離下一致（比值不受尺度影響）', () => {
+  const base = run('squat', { reps: 5, variant: 'valgus' }).s.advisoryCounts.knee_valgus;
+  for (const scale of [0.7, 1.15]) {
+    const n = run('squat', { reps: 5, variant: 'valgus', scale }).s.advisoryCounts.knee_valgus || 0;
+    assert(n > 0, `scale=${scale} 時應仍辨識出膝內夾，實得 ${n}`);
+  }
+  assert(base > 0, '基準組應有膝內夾');
+});
+
+test('squat: 腳踝不可信時不判膝內夾（踝距失真則比值無意義）', () => {
+  const seq = makeSequence('squat', { reps: 3, variant: 'valgus' });
+  for (const f of seq.frames) {
+    f[LM.LEFT_ANKLE].visibility = 0.2;
+    f[LM.RIGHT_ANKLE].visibility = 0.2;
+  }
+  const det = createDetector(EXERCISES.squat);
+  let t = 0;
+  for (const f of seq.frames) { det.update(f, t); t += seq.dtMs; }
+  const n = (det.summary().advisoryCounts || {}).knee_valgus || 0;
+  eq(n, 0, `腳踝不可信時不應判膝內夾，實得 ${n} 次`);
+});
