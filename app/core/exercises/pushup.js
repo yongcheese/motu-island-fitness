@@ -56,6 +56,14 @@ export const pushup = {
     const ankC = midpoint(f[LM.LEFT_ANKLE], f[LM.RIGHT_ANKLE]);
     const torso = distance(shC, hipC) || 1e-6;
     const sagRatio = pointLineDist(hipC, shC, ankC) / torso; // 髖偏離肩—踝連線
+    // —— 塌腰（sagging hips）——
+    // 規則依據（I 類）：美軍 APFT 要求伏地挺身計次時身體自頭至踵成一直線，塌腰該次不計；
+    //   ACFT（APFT 後繼制度）明列不計次原因含 sagging hips、pike position、手臂未完全伸直。
+    //   兩者皆直接針對伏地挺身且明文「塌腰不計次」，與本系統將其設為 block 一致。
+    // ⚠️ 界線：軍方標準規範的是「怎樣算一次」，不是傷害研究。不得對外宣稱「塌腰會造成傷害」——
+    //   直接針對伏地挺身塌腰之傷害研究，本團隊未查得。
+    // ⚠️ 門檻 0.18 為工程判斷（III 類），無外部依據：軍方以目視判斷「是否成一直線」，未給量化閾值。
+    //   待標定來源：真人測試加拍之塌腰組。
     const gatePass = sagRatio < 0.18;
     const faults = [];
     if (sagRatio >= 0.18) faults.push('sag');
