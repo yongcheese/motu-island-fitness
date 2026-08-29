@@ -96,6 +96,12 @@ export function createDetector(spec, opts = {}) {
   // 位於兩次動作之間，週期內根本觀察不到（實測週期內肘角僅 104–146°，永不及 160°）。
   let lockoutSeen = false;      // 自上次動作結束以來，是否見過完全伸展的一幀
   let lockoutPending = false;   // 有一次動作已結束，等下次開始時回頭判定
+  // 「上一次動作」層級的提示佇列。
+  // tempo_fast 與 no_lockout 都是**整次動作結算後**才知道的判定（要比較兩段耗時、
+  // 要看動作之間有沒有伸直），無法像姿勢類 fault 那樣逐幀產生。
+  // 若只寫進結算統計，使用者在訓練當下完全聽不到 —— 而本作品的核心是「做錯當下就糾正」，
+  // 事後才知道等於沒糾正。故在下一次動作期間持續提示，直到該次結束。
+  let pendingCue = null;
   // ⚠️ 這兩個是 detector 層級的單一狀態，**不支援交替動作**（alt = 有 L/R 兩條 track）。
   //    交替時一側結束的瞬間另一側往往已開始，active 恆為 true，lockoutSeen 永遠更新不到，
   //    會導致全數誤報。目前唯一的交替動作 highknees 未使用本功能，故無實害。
@@ -165,9 +171,13 @@ export function createDetector(spec, opts = {}) {
     const sig = smooth(track, raw);
     const ev = track.tk.step(sig);
     if (ev.justStarted) {
+      // 先清掉上一輪的提醒（已說過一輪），再判定本輪 —— 順序不可顛倒，
+      // 否則會把剛設起的提醒立刻清掉。
+      pendingCue = null;
       // 新動作開始 → 回頭判定「上一次結束到現在」是否曾完全伸展
       if (spec.checksLockout && lockoutPending && !lockoutSeen) {
         advisoryCounts.no_lockout = (advisoryCounts.no_lockout || 0) + 1;
+        if (spec.cues?.no_lockout) pendingCue = { key: 'no_lockout', ...spec.cues.no_lockout };
       }
       lockoutPending = false; lockoutSeen = false;
       track.faults.clear(); track.peakSig = -1; track.gateAtPeak = true; track.unseen = false;
@@ -215,7 +225,10 @@ export function createDetector(spec, opts = {}) {
 
     if (spec.tempoAdvisory && ev.downMs != null && ev.upMs != null && ev.upMs > 0 && ev.downMs > 0) {
       // 只在兩段都有實際耗時時判定，避免除以零與單幀動作的假陽性
-      if (ev.downMs / ev.upMs < TEMPO_MIN_RATIO) advisoryCounts.tempo_fast = (advisoryCounts.tempo_fast || 0) + 1;
+      if (ev.downMs / ev.upMs < TEMPO_MIN_RATIO) {
+        advisoryCounts.tempo_fast = (advisoryCounts.tempo_fast || 0) + 1;
+        if (spec.cues?.tempo_fast) pendingCue = { key: 'tempo_fast', ...spec.cues.tempo_fast };
+      }
     }
     // 上一次「有結算」的側別（不論有效與否）。撤銷第一下時要看它而不是 lastSide：
     // lastSide 只在有效時更新，若中間夾一下換邊但無效的動作（L 有效 → R 塌腰 → L），
@@ -347,9 +360,12 @@ export function createDetector(spec, opts = {}) {
     // 教練提示
     let cue = null;
     if (spec.cues && ev.faults.length) {
-      // 取最高嚴重度的 fault 對應提示
+      // 取最高嚴重度的 fault 對應提示。當下的姿勢問題優先於上一次的節奏提醒 ——
+      // 使用者正在做錯的事，比剛才做錯的事更急。
       const f = ev.faults.find(x => spec.cues[x]) || ev.faults[0];
       if (spec.cues[f]) cue = { key: f, ...spec.cues[f] };
+    } else if (pendingCue) {
+      cue = pendingCue;      // 上一次動作的節奏／伸展提醒，在這一次進行中補說
     } else if (phase === 'CONCENTRIC' && spec.cues?.deeper && color === 'yellow') {
       cue = { key: 'deeper', ...spec.cues.deeper };
     }
@@ -388,7 +404,7 @@ export function createDetector(spec, opts = {}) {
     framingWin = []; lostSinceMs = null;
     for (const k in faultCounts) delete faultCounts[k];
     for (const k in advisoryCounts) delete advisoryCounts[k];
-    lockoutSeen = false; lockoutPending = false;
+    lockoutSeen = false; lockoutPending = false; pendingCue = null;
     for (const k in tracks) { tracks[k].tk.reset(); tracks[k].buf = []; tracks[k].faults.clear(); }
   }
 

@@ -203,3 +203,68 @@ test('checklist: 最後一次動作的頂點伸展也會被檢查（summary 補�
   for (const f of clean.frames) { ok.update(f, t); t += clean.dtMs; }
   eq((ok.summary().advisoryCounts || {}).no_lockout, undefined, '正常樣本補算後仍不得誤報');
 });
+
+// —— 訓練當下聽得到，不是只有結算才知道 ——
+// 本作品的核心是「做錯當下就糾正」。若一項判定只寫進結算統計，
+// 使用者要等整組做完才知道，那等於沒糾正。
+// tempo_fast 與 no_lockout 是「整次動作結算後才知道」的判定（要比兩段耗時、
+// 要看動作之間有沒有伸直），無法逐幀產生，故改在下一次動作期間補說。
+test('checklist: 六項判定在訓練當下都會發出提示', () => {
+  const probe = (id, opts, key) => {
+    const seq = makeSequence(id, { reps: 4, ...opts });
+    const d = createDetector(EXERCISES[id]);
+    let t = 0, cues = 0;
+    for (const f of seq.frames) {
+      const r = d.update(f, t); t += seq.dtMs;
+      if (r.cue?.key === key) cues++;
+    }
+    return cues;
+  };
+  const cases = [
+    ['squat', { variant: 'headtilt', tempoRatio: 3 }, 'head_tilt'],
+    ['squat', { variant: 'hipuneven', tempoRatio: 3 }, 'hip_uneven'],
+    ['squat', { variant: 'clean', tempoRatio: 1 }, 'tempo_fast'],
+    ['pushup', { variant: 'nolockout' }, 'no_lockout'],
+    ['pushup', { variant: 'headfwd' }, 'head_forward'],
+    ['highknees', { variant: 'torsolean' }, 'torso_lean'],
+  ];
+  for (const [id, opts, key] of cases) {
+    assert(probe(id, opts, key) > 0,
+      `${key} 只出現在結算統計、訓練中聽不到 —— 事後才知道等於沒糾正`);
+  }
+});
+
+test('checklist: 正常樣本在訓練中不得發出這些提示', () => {
+  const probe = (id, opts, key) => {
+    const seq = makeSequence(id, { reps: 4, ...opts });
+    const d = createDetector(EXERCISES[id]);
+    let t = 0, cues = 0;
+    for (const f of seq.frames) {
+      const r = d.update(f, t); t += seq.dtMs;
+      if (r.cue?.key === key) cues++;
+    }
+    return cues;
+  };
+  for (const [id, opts, key] of [
+    ['squat', { variant: 'clean', tempoRatio: 4 }, 'tempo_fast'],
+    ['squat', { variant: 'clean', tempoRatio: 3 }, 'head_tilt'],
+    ['squat', { variant: 'clean', tempoRatio: 3 }, 'hip_uneven'],
+    ['pushup', { variant: 'clean' }, 'no_lockout'],
+    ['pushup', { variant: 'clean' }, 'head_forward'],
+    ['highknees', { variant: 'clean' }, 'torso_lean'],
+  ]) {
+    eq(probe(id, opts, key), 0, `正常樣本不得被提示 ${key}`);
+  }
+});
+
+test('checklist: 當下的姿勢問題優先於上一次的節奏提醒', () => {
+  // 使用者正在做錯的事，比剛才做錯的事更急。
+  const seq = makeSequence('squat', { reps: 4, variant: 'compensation', tempoRatio: 1 });
+  const d = createDetector(EXERCISES.squat);
+  let t = 0; const keys = new Set();
+  for (const f of seq.frames) {
+    const r = d.update(f, t); t += seq.dtMs;
+    if (r.cue?.key) keys.add(r.cue.key);
+  }
+  assert(keys.has('torso_lean'), '當下的彎腰（block 級）應被提示');
+});
