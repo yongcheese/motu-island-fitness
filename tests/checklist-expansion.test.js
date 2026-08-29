@@ -147,7 +147,7 @@ test('checklist: 交替動作不得使用 checksLockout（設計限制）', () =
   }
 });
 
-test('checklist: reset() 清乾淨 tempo 與 lockout 的狀態', () => {
+test('checklist: reset() 清乾淨 lockout 的狀態', () => {
   const d = createDetector(EXERCISES.pushup);
   const seq = makeSequence('pushup', { reps: 3, variant: 'nolockout' });
   let t = 0;
@@ -163,4 +163,43 @@ test('checklist: reset() 清乾淨 tempo 與 lockout 的狀態', () => {
   for (const f of clean.frames) { d.update(f, t); t += clean.dtMs; }
   eq((d.summary().advisoryCounts || {}).no_lockout, undefined,
     'reset 後的正常樣本不得因前一輪殘留而誤報');
+});
+
+test('checklist: reset() 後 tempo 狀態不跨輪污染', () => {
+  const d = createDetector(EXERCISES.squat);
+  // 先跑一輪過快的，累積 tempo 提示
+  const fast = makeSequence('squat', { reps: 3, variant: 'clean', tempoRatio: 1 });
+  let t = 0;
+  for (const f of fast.frames) { d.update(f, t); t += fast.dtMs; }
+  assert((d.summary().advisoryCounts || {}).tempo_fast > 0, '前提：應先累積 tempo 提示');
+
+  d.reset();
+  eq((d.summary().advisoryCounts || {}).tempo_fast, undefined, 'reset 後統計應清空');
+
+  // reset 後跑節奏正常的，不得被前一輪的 tStart/tPeak 殘留影響
+  const slow = makeSequence('squat', { reps: 3, variant: 'clean', tempoRatio: 4 });
+  t = 0;
+  for (const f of slow.frames) { d.update(f, t); t += slow.dtMs; }
+  eq((d.summary().advisoryCounts || {}).tempo_fast, undefined,
+    'reset 後的正常節奏樣本不得誤報');
+});
+
+test('checklist: 最後一次動作的頂點伸展也會被檢查（summary 補算）', () => {
+  const bad = makeSequence('pushup', { reps: 3, variant: 'nolockout' });
+  const d = createDetector(EXERCISES.pushup);
+  let t = 0;
+  for (const f of bad.frames) { d.update(f, t); t += bad.dtMs; }
+  eq((d.summary().advisoryCounts || {}).no_lockout, 3,
+    '三次動作應全數被檢查 —— 最後一次由 summary() 補算，不因沒有下一次而漏掉');
+
+  // summary() 可能被多次呼叫，不得重複累加
+  eq(d.summary().advisoryCounts.no_lockout, 3, '重複呼叫 summary() 結果須一致');
+  eq(d.summary().advisoryCounts.no_lockout, 3);
+
+  // 正常樣本不因補算而誤報
+  const ok = createDetector(EXERCISES.pushup);
+  const clean = makeSequence('pushup', { reps: 3, variant: 'clean' });
+  t = 0;
+  for (const f of clean.frames) { ok.update(f, t); t += clean.dtMs; }
+  eq((ok.summary().advisoryCounts || {}).no_lockout, undefined, '正常樣本補算後仍不得誤報');
 });

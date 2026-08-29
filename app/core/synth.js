@@ -271,6 +271,10 @@ export function makeSequence(exerciseId, opts = {}) {
     const side = exerciseId === 'highknees'
       ? (variant === 'singleleg' ? 'L' : (r % 2 === 0 ? 'L' : 'R')) : 'L';
     // 依 tempoRatio 分配下蹲與上升的幀數：ratio 越大表示下蹲越慢（離心控制越好）
+    // ⚠️ 等價性的正確範圍（2026-08-29 獨立審查指正）：
+    //   預設 tempoRatio=1 與舊版對稱三角波是**行為等價**（既有樣本的判定結果不變），
+    //   但**逐幀數值並不相同** —— 舊版峰值 0.966 落在 index 14，新版為 1.000 落在 index 15。
+    //   不得依賴「逐幀 d 值不變」這個假設。
     const downFrames = Math.max(1, Math.round(framesPerRep * tempoRatio / (tempoRatio + 1)));
     const upFrames = Math.max(1, framesPerRep - downFrames);
     for (let i = 0; i < downFrames; i++) {

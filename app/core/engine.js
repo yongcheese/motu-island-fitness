@@ -374,7 +374,11 @@ export function createDetector(spec, opts = {}) {
       targetRate: total ? validReps / total : 0,
       validRate: total ? validReps / total : 0,
       faultCounts: { ...faultCounts },
-      advisoryCounts: { ...advisoryCounts },
+      // 最後一次動作沒有「下一次」可回頭判定，故在此補算。
+      // 刻意不寫回 advisoryCounts —— summary() 可能被多次呼叫，寫回會重複累加。
+      advisoryCounts: (spec.checksLockout && lockoutPending && !lockoutSeen)
+        ? { ...advisoryCounts, no_lockout: (advisoryCounts.no_lockout || 0) + 1 }
+        : { ...advisoryCounts },
     };
   }
 
