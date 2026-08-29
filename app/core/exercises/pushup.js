@@ -9,6 +9,17 @@ function pointLineDist(P, A, B) {
   return Math.abs((P.x - A.x) * dy - (P.y - A.y) * dx) / len;
 }
 
+// 頂點伸展角度：一次動作中肘角須至少回到此值，才算「推到頂手臂打直」。
+// 依據：美軍 AFT／ACFT 官方標準「fully extending the elbows (front leaning rest)」。
+// ⚠️ 160 為工程判斷 —— AFT 以目視判斷伸直與否，未給角度值。未經真人標定。
+// ⚠️ 必須用「該次是否曾達到」判定，不能逐幀判也不能用 progress 推斷：
+//    progress 經平滑與 clamp，且動作週期在 readyReturn 就結束，永遠降不到對應的值。
+export const LOCKOUT_ANGLE = 160;
+
+// 頭頸前伸門檻：耳相對肩的水平偏移 ÷ 軀幹長。NASM Pushing Assessment 列
+// 「head jutting forward」為代償項。⚠️ 0.35 為工程判斷，未經真人標定。
+export const HEAD_FORWARD_RATIO = 0.35;
+
 export const pushup = {
   id: 'pushup', name: '伏地挺身', group: 'upper',
   met: 8.0, baseCoinPerRep: 8, intensity: 1.05,
@@ -32,10 +43,13 @@ export const pushup = {
   ],
   // targetEnter 0.75：手肘壓到 ≈109° 即達標（原 0.80≈105°，實機側面角度常量不足）；半程樣本(≈0.45)仍被拒
   thresholds: { attemptEnter: 0.30, targetEnter: 0.75, readyReturn: 0.25 },
-  faultSeverity: { sag: 'block' },
+  faultSeverity: { sag: 'block', no_lockout: 'advisory', head_forward: 'advisory' },
+  checksLockout: true,
   cues: {
     sag: { text: '核心收緊，臀部不要塌下或翹高，身體保持一直線', priority: 'high' },
     deeper: { text: '手肘彎曲，胸口往下壓到接近地面，再撐起來', priority: 'mid' },
+    no_lockout: { text: '推到頂時手臂完全打直', priority: 'mid' },
+    head_forward: { text: '頭別往前伸，脖子跟身體保持一直線', priority: 'mid' },
   },
   phaseCues: {
     READY: '身體打直，開始往下壓',
@@ -69,12 +83,23 @@ export const pushup = {
     //   待標定來源：真人測試加拍之塌腰組。
     const gatePass = sagRatio < 0.18;
     const faults = [];
+
+
+    // —— 頭頸前伸（NASM Pushing Assessment）——
+    // 側面機位即矢狀面，故此量可靠。耳相對肩的水平偏移，以軀幹長正規化。
+    // ⚠️ NASM 該評估使用站姿推舉而非伏地挺身，屬相鄰動作之外推，已於依據總表記錄。
+    const ear = f[LM.LEFT_EAR]?.visibility >= (f[LM.RIGHT_EAR]?.visibility ?? 0)
+      ? f[LM.LEFT_EAR] : f[LM.RIGHT_EAR];
+    if ((ear?.visibility ?? 0) >= 0.5 && torso > 1e-6) {
+      // 側面拍攝時身體沿 x 軸水平：頭在肩的前方（x 較小），偏移過大即前伸
+      if ((shC.x - ear.x) / torso > HEAD_FORWARD_RATIO) faults.push('head_forward');
+    }
     if (sagRatio >= 0.18) faults.push('sag');
     const armColor = progress >= 0.8 ? 'green' : (progress > 0.4 ? 'yellow' : 'green');
     const segments = {
       torso: sagRatio >= 0.18 ? 'red' : (sagRatio > 0.1 ? 'yellow' : 'green'),
       leftArm: armColor, rightArm: armColor, leftLeg: 'green', rightLeg: 'green',
     };
-    return { progress, gatePass, faults, segments };
+    return { progress, gatePass, faults, segments, lockoutOk: elbowAngle >= LOCKOUT_ANGLE };
   },
 };

@@ -1,5 +1,16 @@
 // 邏輯層：通用動作狀態機 + 六層防作弊 + 計次冷卻。瀏覽器 + Node 共用。
 import { bodyScale } from './normalize.js';
+
+// 下蹲:上升的最小時間比。低於此值代表下放太快（沒有控制離心）。依據見 classify() 內註解。
+//
+// ⚠️ 本值不等於文獻的 2:1 —— 引擎量到的是「動作開始（attemptEnter）→最深處」與
+//    「最深處→動作結束（readyReturn）」，兩端各被門檻截掉一段，故測得的比值
+//    **系統性地小於真實比值**。合成器實測：真實幀數比 2.0 時引擎測得約 1.875，
+//    真實 3.0 時測得約 3.08。
+//    因此取 1.7 作為引擎基準的門檻，約對應真實的 2:1，避免誤報節奏正常的使用者。
+// ⚠️ 此值仍為工程判斷，未經真人標定。真人標定時應直接採用引擎的量測基準，
+//    偏差會自動被吸收，不需再換算。
+export const TEMPO_MIN_RATIO = 1.7;
 import { framingReport } from './framing.js';
 
 const SEG_KEYS = ['torso', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'];
@@ -28,7 +39,15 @@ class CycleTracker {
 
 // unseen：這一下進行中有沒有出現「沒被判定到」的幀（取景壞掉而凍結、或看不到人）。
 // 有的話就不能算有效——那些幀裡可能正好藏著姿勢錯誤，我們沒看到就不該給過。
-function makeTrack(th) { return { tk: new CycleTracker(th), faults: new Set(), peakSig: -1, gateAtPeak: true, buf: [], unseen: false }; }
+function makeTrack(th) {
+  return {
+    tk: new CycleTracker(th), faults: new Set(), peakSig: -1, gateAtPeak: true, buf: [], unseen: false,
+    // 節奏量測：下蹲（起始→最深處）與上升（最深處→回到起始）各花多久。
+    // 屬時序特徵，不受機位影響 —— 這是少數在正面機位也完全可靠的量。
+    tStart: null, tPeak: null,
+
+  };
+}
 
 export function createDetector(spec, opts = {}) {
   const cfg = {
@@ -72,6 +91,18 @@ export function createDetector(spec, opts = {}) {
   // 因為後者的語意是「這一下為何無效」——把不阻擋的項目混進去會讓結算的無效原因失真。
   // 用途：門檻尚未由真人樣本標定的規則（如深蹲膝內夾），先提示不阻擋，標定後再決定是否升格。
   const advisoryCounts = {};
+  // 頂點伸展的追蹤。刻意放在動作週期**之外** ——
+  // 週期由 attemptEnter 起、readyReturn 止，而「手臂完全伸直」是 READY 的起始姿勢，
+  // 位於兩次動作之間，週期內根本觀察不到（實測週期內肘角僅 104–146°，永不及 160°）。
+  let lockoutSeen = false;      // 自上次動作結束以來，是否見過完全伸展的一幀
+  let lockoutPending = false;   // 有一次動作已結束，等下次開始時回頭判定
+  // ⚠️ 這兩個是 detector 層級的單一狀態，**不支援交替動作**（alt = 有 L/R 兩條 track）。
+  //    交替時一側結束的瞬間另一側往往已開始，active 恆為 true，lockoutSeen 永遠更新不到，
+  //    會導致全數誤報。目前唯一的交替動作 highknees 未使用本功能，故無實害。
+  //    若日後要為交替動作加上此判定，必須改為 per-track 狀態 —— 有測試鎖住這個前提。
+  if (spec.checksLockout && alt) {
+    console.warn('[engine] checksLockout 目前不支援交替動作，將導致誤報。需改為 per-track 狀態。');
+  }
   let lastCountTime = -1e9, lastSide = null, visStreak = 0;
   // 交替動作的第一下沒有前例可比，只能先放行（否則每組都會冤枉第一下）。
   // 但「一直抬同一隻腳」的作弊也是從這一下開始的，所以先記著它是「未經交替證實」的，
@@ -130,19 +161,34 @@ export function createDetector(spec, opts = {}) {
   const bump = (f) => { if (isAdvisory(f)) return; faultCounts[f] = (faultCounts[f] || 0) + 1; };
 
   // 處理一條 track 一幀；回傳 close 事件或 null
-  function feed(track, raw, gatePass, frameFaults) {
+  function feed(track, raw, gatePass, frameFaults, tMs) {
     const sig = smooth(track, raw);
     const ev = track.tk.step(sig);
-    if (ev.justStarted) { track.faults.clear(); track.peakSig = -1; track.gateAtPeak = true; track.unseen = false; }
+    if (ev.justStarted) {
+      // 新動作開始 → 回頭判定「上一次結束到現在」是否曾完全伸展
+      if (spec.checksLockout && lockoutPending && !lockoutSeen) {
+        advisoryCounts.no_lockout = (advisoryCounts.no_lockout || 0) + 1;
+      }
+      lockoutPending = false; lockoutSeen = false;
+      track.faults.clear(); track.peakSig = -1; track.gateAtPeak = true; track.unseen = false;
+      track.tStart = tMs; track.tPeak = null;
+    }
     if (track.tk.active) {
       for (const f of frameFaults) track.faults.add(f);
       // 品質 gate 取「動作最深處(峰值)」採樣，避免目標進入瞬間因平滑延遲誤判
-      if (sig > track.peakSig) { track.peakSig = sig; track.gateAtPeak = gatePass; }
+      if (sig > track.peakSig) { track.peakSig = sig; track.gateAtPeak = gatePass; track.tPeak = tMs; }
     }
     if (ev.justClosed) {
       const gateFailed = ev.reachedTarget && !track.gateAtPeak;
       const blocking = [...track.faults].some(f => spec.faultSeverity[f] === 'block') || gateFailed;
-      return { closed: true, reachedTarget: ev.reachedTarget, blocking, unseen: track.unseen, faults: [...track.faults] };
+      // 下蹲耗時 = 起始→最深處；上升耗時 = 最深處→回到起始
+      if (spec.checksLockout) { lockoutPending = true; lockoutSeen = false; }
+      const downMs = (track.tPeak != null && track.tStart != null) ? track.tPeak - track.tStart : null;
+      const upMs = (track.tPeak != null) ? tMs - track.tPeak : null;
+      return {
+        closed: true, reachedTarget: ev.reachedTarget, blocking, unseen: track.unseen,
+        faults: [...track.faults], downMs, upMs,
+      };
     }
     return { closed: false, phase: ev.phase, sig };
   }
@@ -153,6 +199,24 @@ export function createDetector(spec, opts = {}) {
     // advisory 在此統計：不論該次最終有效或無效都要記錄，因為它描述的是姿勢品質，
     // 不是計次結果。放在冷卻檢查之後，避免底部抖動造成的重複關閉事件被重複計入。
     for (const f of ev.faults) if (isAdvisory(f)) advisoryCounts[f] = (advisoryCounts[f] || 0) + 1;
+
+    // —— 動作節奏（BSA ⑩ Ascent）——
+    // 依據：Myer et al. (2014) Back Squat Assessment。⚠️ 該文兩處敘述方向相反：
+    //   Ascent 項寫「Ascent: Descent timing ratio is at least 2:1」，
+    //   Descent 項寫「no less than 2:1 (descent: ascent) up to a 4:1 ratio」。
+    // 採後者 —— 其表述完整無歧義（明寫 descent:ascent），且符合「離心慢、向心快」的領域常識。
+    // 此歧義必須據實記錄，不得對外宣稱原文明確要求某一方向。
+    // ⚠️ 門檻為工程判斷，未經真人標定；且節奏不影響「動作是否成立」，故一律 advisory。
+    // —— 頂點未回到完全伸展位（極值判定）——
+    // 依據：美軍 AFT／ACFT 要求每次推起須「fully extending the elbows」。
+    // ⚠️ 設為 advisory 而非 block：AFT 的 HRP 另有雙手離地成 T 字的要求，與本作品的
+    //   一般伏地挺身非同一動作；且門檻值為本團隊自訂（AFT 以目視判斷），標定前不取消次數。
+
+
+    if (spec.tempoAdvisory && ev.downMs != null && ev.upMs != null && ev.upMs > 0 && ev.downMs > 0) {
+      // 只在兩段都有實際耗時時判定，避免除以零與單幀動作的假陽性
+      if (ev.downMs / ev.upMs < TEMPO_MIN_RATIO) advisoryCounts.tempo_fast = (advisoryCounts.tempo_fast || 0) + 1;
+    }
     // 上一次「有結算」的側別（不論有效與否）。撤銷第一下時要看它而不是 lastSide：
     // lastSide 只在有效時更新，若中間夾一下換邊但無效的動作（L 有效 → R 塌腰 → L），
     // 用 lastSide 判會誤以為使用者一直同側，把無辜的第一下也撤掉。
@@ -246,6 +310,15 @@ export function createDetector(spec, opts = {}) {
 
     const scale = stableScale(frame);   // 只用取景合格的幀更新尺度 EMA
     const ev = spec.evaluate(frame, scale);
+    // 頂點伸展：只在動作未進行時（READY）觀察，見上方宣告處的說明
+    if (spec.checksLockout) {
+      const active = alt ? (tracks.L.tk.active || tracks.R.tk.active) : tracks.C.tk.active;
+      if (!active && ev.lockoutOk) lockoutSeen = true;
+      if (!active && lockoutPending) {
+        // 動作已結束且已回到 READY：此時仍未見伸展 → 等下次動作開始時判定
+        // （不在此處立即判，因為使用者可能正緩慢推起中）
+      }
+    }
     // 站立基準只在「動作尚未展開」時更新：progress 低代表人還站著，
     // 此時的軀幹投影長才是直立基準。動作進行中更新會讓基準被彎腰污染。
     updateStandBaseline(scale.frameTorso, (ev.progress ?? Math.max(ev.progressL ?? 0, ev.progressR ?? 0)) < 0.15);
@@ -253,14 +326,14 @@ export function createDetector(spec, opts = {}) {
     let signal = 0;
 
     if (alt) {
-      const rl = feed(tracks.L, ev.progressL ?? 0, ev.side === 'L' ? ev.gatePass : true, ev.faults);
-      const rr = feed(tracks.R, ev.progressR ?? 0, ev.side === 'R' ? ev.gatePass : true, ev.faults);
+      const rl = feed(tracks.L, ev.progressL ?? 0, ev.side === 'L' ? ev.gatePass : true, ev.faults, tMs);
+      const rr = feed(tracks.R, ev.progressR ?? 0, ev.side === 'R' ? ev.gatePass : true, ev.faults, tMs);
       if (rl.closed) classify('L', rl, tMs);
       if (rr.closed) classify('R', rr, tMs);
       phase = tracks.L.tk.phase !== 'READY' ? tracks.L.tk.phase : tracks.R.tk.phase;
       signal = Math.max(ev.progressL ?? 0, ev.progressR ?? 0);
     } else {
-      const r = feed(tracks.C, ev.progress ?? 0, ev.gatePass, ev.faults);
+      const r = feed(tracks.C, ev.progress ?? 0, ev.gatePass, ev.faults, tMs);
       if (r.closed) classify('C', r, tMs);
       phase = tracks.C.tk.phase;
       signal = ev.progress ?? 0;
@@ -311,6 +384,7 @@ export function createDetector(spec, opts = {}) {
     framingWin = []; lostSinceMs = null;
     for (const k in faultCounts) delete faultCounts[k];
     for (const k in advisoryCounts) delete advisoryCounts[k];
+    lockoutSeen = false; lockoutPending = false;
     for (const k in tracks) { tracks[k].tk.reset(); tracks[k].buf = []; tracks[k].faults.clear(); }
   }
 

@@ -70,6 +70,15 @@ function poseSquat(d, variant) {
     sk[LM.LEFT_KNEE].x = 0.45 - kneeOut + inward;
     sk[LM.RIGHT_KNEE].x = 0.55 + kneeOut - inward;
   }
+  if (variant === 'headtilt') {
+    // 頭部側傾：鼻與耳往同一側水平位移。冠狀面的量，正面投影可見。
+    const tilt = 0.09 * d;
+    for (const i of [LM.NOSE, LM.LEFT_EAR, LM.RIGHT_EAR]) sk[i].x += tilt;
+  }
+  if (variant === 'hipuneven') {
+    // 骨盆傾斜：單側髖下沉。冠狀面的垂直落差，正面投影可見。
+    sk[LM.LEFT_HIP].y += 0.05 * d;
+  }
   if (variant === 'compensation') {
     // 只彎腰代替下蹲：不夠深 ＋ 軀幹大幅前傾。
     // ⚠️ 2026-08-28 修正：舊版以 sk[i].x += lean 模擬彎腰 —— 那是「往側邊倒」，
@@ -139,6 +148,16 @@ function poseHighKnees(d, side, variant) {
     sk[LM.RIGHT_ELBOW] = P(lerp(0.60, 0.61, d), lerp(0.40, 0.46, d));
     sk[LM.RIGHT_WRIST] = P(lerp(0.61, 0.62, d), lerp(0.53, 0.64, d));
   }
+  if (variant === 'torsolean') {
+    // 軀幹前傾：正面投影下軀幹縮短（肩往髖靠攏、x 不動），與深蹲 compensation 同法。
+    // ⚠️ 必須隨動作進度漸進（站立時 0°）—— 若整段施加固定角度，站立基準本身就是彎的，
+    //    比值恆為 1，判定完全測不到。此坑已於 2026-08-28 的 torso_lean 驗證中踩過一次。
+    const k = Math.cos(55 * d * Math.PI / 180);
+    const hipY = (sk[LM.LEFT_HIP].y + sk[LM.RIGHT_HIP].y) / 2;
+    for (const i of [LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER, LM.NOSE, LM.LEFT_EAR, LM.RIGHT_EAR]) {
+      sk[i].y = hipY - (hipY - sk[i].y) * k;
+    }
+  }
   if (variant === 'sitting') {
     // 坐姿抬腿：支撐腳大腿接近水平（膝與髖同高）、小腿垂直，整體下沉。
     // ⚠️ 2026-08-28 修正：舊版把支撐腳膝蓋往「側邊」移 0.12 —— 真實坐姿時膝是往「前」（矢狀面），
@@ -169,9 +188,16 @@ function posePushup(d, variant) {
   const xs = { sh: 0.30, hip: 0.55, kn: 0.70, an: 0.85, nose: 0.22 };
   const distRatio = (x) => (pivotX - x) / (pivotX - xs.sh); // 肩=1, 踝=0
   const sagExtra = variant === 'sag' ? 0.06 : 0;
-  sk[LM.LEFT_SHOULDER] = P(xs.sh, 0.43 + sink * distRatio(xs.sh));
-  sk[LM.RIGHT_SHOULDER] = P(xs.sh, 0.45 + sink * distRatio(xs.sh));
+  // 頂點未伸直：只在動作回到起始時留有殘餘下沉，使肘角回不到伸直角度。
+  // ⚠️ 不可整段施加 —— 那會變成「一直趴著」，動作根本不成立、連無效都算不到。
+  const noLockout = variant === 'nolockout' ? 0.014 * (1 - d) : 0;
+  sk[LM.LEFT_SHOULDER] = P(xs.sh, 0.43 + (sink + noLockout) * distRatio(xs.sh));
+  sk[LM.RIGHT_SHOULDER] = P(xs.sh, 0.45 + (sink + noLockout) * distRatio(xs.sh));
   sk[LM.NOSE] = P(xs.nose, 0.42 + sink * distRatio(xs.nose));
+  // 頭頸前伸：耳往身體前方（側面拍攝時 x 較小的方向）位移
+  const headFwd = variant === 'headfwd' ? 0.12 : 0;
+  sk[LM.LEFT_EAR] = P(xs.nose + 0.03 - headFwd, 0.41 + sink * distRatio(xs.nose));
+  sk[LM.RIGHT_EAR] = P(xs.nose + 0.03 - headFwd, 0.43 + sink * distRatio(xs.nose));
   sk[LM.LEFT_HIP] = P(xs.hip, 0.43 + sink * distRatio(xs.hip) + sagExtra);
   sk[LM.RIGHT_HIP] = P(xs.hip, 0.45 + sink * distRatio(xs.hip) + sagExtra);
   sk[LM.LEFT_KNEE] = P(xs.kn, 0.43 + sink * distRatio(xs.kn) + sagExtra * 0.5);
@@ -180,7 +206,10 @@ function posePushup(d, variant) {
   sk[LM.LEFT_HEEL] = P(0.88, 0.44); sk[LM.RIGHT_HEEL] = P(0.88, 0.46);
   sk[LM.LEFT_FOOT_INDEX] = P(0.83, 0.47); sk[LM.RIGHT_FOOT_INDEX] = P(0.83, 0.49);
   // 手腕固定地面，肘以 IK 求
-  const W = { x: 0.28, y: 0.62 };
+  // 手腕位置。y 由 0.62 下移至 0.64（2026-08-29）：原值使左右肩（y 相差 0.02，
+  // 模擬側面拍攝的深度差）算出的肘角落差過大（左 176°、右 128°），平均僅 152°，
+  // 導致「頂點完全伸直」的 clean 樣本本身就達不到伸直角度，no_lockout 判定無從區分。
+  const W = { x: 0.28, y: 0.64 };
   sk[LM.LEFT_WRIST] = P(W.x, W.y); sk[LM.RIGHT_WRIST] = P(W.x, W.y);
   sk[LM.LEFT_ELBOW] = ik(sk[LM.LEFT_SHOULDER], W, 0.09, 0.10, 0.10);
   sk[LM.RIGHT_ELBOW] = ik(sk[LM.RIGHT_SHOULDER], W, 0.09, 0.10, 0.10);
@@ -214,6 +243,10 @@ export function makeSequence(exerciseId, opts = {}) {
   const {
     reps = 1, variant = 'clean', fps = 30, framesPerRep = 30, restFrames = 6,
     scale = 1, dx = 0, dy = 0, noise = 0, occludeIdx = null, seed = 42,
+    // 下蹲:上升的幀數比。預設 1 = 對稱往返（合成器原本的行為）。
+    // ⚠️ 對稱往返並不模擬真人的節奏 —— 真人通常離心慢、向心快。
+    //    故 tempo 類判定在預設樣本上無意義，必須明確指定此參數才測得到。
+    tempoRatio = 1,
   } = opts;
   const rng = mulberry32(seed);
   const dtMs = 1000 / fps;
@@ -237,8 +270,15 @@ export function makeSequence(exerciseId, opts = {}) {
   for (let r = 0; r < reps; r++) {
     const side = exerciseId === 'highknees'
       ? (variant === 'singleleg' ? 'L' : (r % 2 === 0 ? 'L' : 'R')) : 'L';
-    for (let i = 0; i < framesPerRep; i++) {
-      const d = tri(i / (framesPerRep - 1)) * depthMax;
+    // 依 tempoRatio 分配下蹲與上升的幀數：ratio 越大表示下蹲越慢（離心控制越好）
+    const downFrames = Math.max(1, Math.round(framesPerRep * tempoRatio / (tempoRatio + 1)));
+    const upFrames = Math.max(1, framesPerRep - downFrames);
+    for (let i = 0; i < downFrames; i++) {
+      const d = (i / downFrames) * depthMax;
+      push(poseFor(exerciseId, d, side, shapeVariant), d, side);
+    }
+    for (let i = 0; i < upFrames; i++) {
+      const d = (1 - i / upFrames) * depthMax;
       push(poseFor(exerciseId, d, side, shapeVariant), d, side);
     }
     for (let i = 0; i < restFrames; i++) push(rest(), 0, side);

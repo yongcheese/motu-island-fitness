@@ -1392,7 +1392,10 @@ function rejectHint(reason, ex) {
 }
 
 function faultName(f) {
-  return { torso_lean: '彎腰／軀幹前傾', knee_valgus: '膝蓋內夾', half_rep: '動作半程未達標', limb_desync: '手腳不同步',
+  return { torso_lean: '彎腰／軀幹前傾', knee_valgus: '膝蓋內夾',
+    head_tilt: '頭部歪斜', hip_uneven: '骨盆左右不平', tempo_fast: '下放太快',
+    no_lockout: '推到頂時手臂沒打直', head_forward: '頭頸往前伸',
+    half_rep: '動作半程未達標', limb_desync: '手腳不同步',
     no_support: '坐姿／支撐不穩', no_alternation: '未左右交替', sag: '塌腰', form: '深度／姿勢不足',
     unseen: '動作中有一段沒看清楚', not_visible: '不在畫面中' }[f] || f;
 }

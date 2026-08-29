@@ -12,6 +12,15 @@ export const KNEE_VALGUS_KASR = 0.85;
 // 取 0.86 使兩者間留有緩衝。⚠️ 工程判斷值，待真人樣本標定。
 export const TORSO_FOLD_RATIO = 0.86;
 
+// 頭部側傾門檻：鼻相對肩中心的水平偏移 ÷ 肩寬。BSA ①「頭部位置」。
+// ⚠️ 只測得到「側傾」——頭部前傾屬矢狀面，正面投影無水平位移，與 torso_lean 同類限制。
+// ⚠️ 0.18 為工程判斷，未經真人標定。
+export const HEAD_TILT_RATIO = 0.18;
+
+// 骨盆傾斜門檻：左右髖的垂直落差 ÷ 肩寬。BSA ④「髖部位置（骨盆水平、對稱）」。
+// ⚠️ 0.10 為工程判斷，未經真人標定。
+export const HIP_UNEVEN_RATIO = 0.10;
+
 export const squat = {
   id: 'squat', name: '深蹲', group: 'lower',
   met: 5.4, baseCoinPerRep: 10, intensity: 1.0,
@@ -20,10 +29,18 @@ export const squat = {
   // 入鏡判定不含腳踝：深度只看髖 vs 膝，腳被切到框外仍可練（腳踝僅用於估腿長，已有備援）
   gateLandmarks: [LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER, LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE],
   thresholds: { attemptEnter: 0.25, targetEnter: 0.62, readyReturn: 0.20 },   // Demo 校準 0.75→0.62：真機低角度鏡頭髖顯偏高，標準/近平行蹲可過；半蹲峰值僅 0.28 仍遠低於門檻
-  faultSeverity: { torso_lean: 'block', knee_valgus: 'advisory' },
+  faultSeverity: {
+    torso_lean: 'block',
+    knee_valgus: 'advisory', head_tilt: 'advisory', hip_uneven: 'advisory', tempo_fast: 'advisory',
+  },
+  // 開啟節奏判定（BSA ⑩）。時序特徵，不受機位影響。
+  tempoAdvisory: true,
   cues: {
     torso_lean: { text: '背部打直，不要彎腰，用臀部往後坐下', priority: 'high' },
     knee_valgus: { text: '膝蓋往外推，對齊腳尖方向', priority: 'high' },
+    head_tilt: { text: '頭擺正，視線看前方', priority: 'mid' },
+    hip_uneven: { text: '兩邊髖部放平，重心平均分配', priority: 'mid' },
+    tempo_fast: { text: '下蹲慢一點，控制著往下', priority: 'mid' },
     deeper: { text: '再往下蹲，讓髖部低於膝蓋', priority: 'mid' },
   },
   // Bug2(b)：每一幀都告訴使用者「現在該做什麼」，不用等語音。
@@ -99,6 +116,24 @@ export const squat = {
     //   待標定來源：UI-PRMD 的 incorrect 含「knees not aligned」樣本，以及真人測試加拍之膝內夾組。
     // ⚠️ 刻意不列入 faultSeverity 的 block：門檻既無依據，就不應據以取消使用者的有效次數。
     //   目前僅輸出提示，標定完成後再決定是否升格為阻擋。
+    // —— 頭部側傾（BSA ①）——
+    // 依據：Myer et al. (2014) BSA 第①項「頭部位置」，正確為頸部垂直、目光向前，
+    //   異常含頭部側傾。⚠️ 該項原文含「過度前傾、後仰」，但那屬矢狀面，
+    //   正面機位測不到（與 torso_lean 同類限制），故本作品只實作「側傾」這一子項，
+    //   不得對外宣稱已涵蓋 BSA ① 全部。
+    const nose = f[LM.NOSE];
+    if (progress >= 0.15 && (nose?.visibility ?? 0) >= 0.5 && s.shoulderWidth > 1e-6) {
+      if (Math.abs(nose.x - shC.x) / s.shoulderWidth > HEAD_TILT_RATIO) faults.push('head_tilt');
+    }
+
+    // —— 骨盆水平（BSA ④）——
+    // 依據：BSA 第④項「髖部位置」，正確為兩側髖平行於地面、對稱；異常為一側下降。
+    // 正面機位可靠：左右髖的垂直落差是冠狀面的量，落在畫面平面內。
+    if (progress >= 0.15 && s.shoulderWidth > 1e-6) {
+      const dy = Math.abs(f[LM.LEFT_HIP].y - f[LM.RIGHT_HIP].y);
+      if (dy / s.shoulderWidth > HIP_UNEVEN_RATIO) faults.push('hip_uneven');
+    }
+
     const ankleSpan = Math.abs(f[LM.RIGHT_ANKLE].x - f[LM.LEFT_ANKLE].x);
     const kneeSpan = Math.abs(f[LM.RIGHT_KNEE].x - f[LM.LEFT_KNEE].x);
     // 只在蹲到一定深度後才判：站直時膝自然併攏，淺處判定會誤觸發。

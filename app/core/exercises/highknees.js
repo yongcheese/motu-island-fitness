@@ -2,6 +2,12 @@
 import { LM } from '../landmarks.js';
 import { midpoint, angle, norm } from '../geometry.js';
 
+// 軀幹挺直門檻：軀幹畫面投影長 ÷ 站立基準。與深蹲 TORSO_FOLD_RATIO 同一方法，
+// 但門檻較寬（0.80 vs 0.86）—— 高抬腿是有氧動作，自然前傾幅度大於深蹲，
+// 沿用深蹲門檻會誤殺。⚠️ 0.80 為工程判斷，未經真人標定。
+// 依據：田徑與健身教學材料通行描述「torso upright / 保持軀幹挺直」（II 類，僅教學慣例）。
+export const TORSO_UPRIGHT_RATIO = 0.80;
+
 export const highknees = {
   id: 'highknees', name: '高抬腿', group: 'cardio',
   met: 8.0, baseCoinPerRep: 5, intensity: 1.1,
@@ -15,10 +21,11 @@ export const highknees = {
   needsHeadroom: true,
   // targetEnter 0.80：真人膝蓋接近髖高即達標（0.85 在實機常差一口氣不計次）；半程樣本(≈0.45)仍被拒
   thresholds: { attemptEnter: 0.30, targetEnter: 0.80, readyReturn: 0.25 },
-  faultSeverity: { no_support: 'block' },
+  faultSeverity: { no_support: 'block', torso_lean: 'advisory' },
   cues: {
     no_support: { text: '請站直，支撐腳打直，不要坐著抬腿', priority: 'high' },
     deeper: { text: '把膝蓋抬高到髖部的高度，左右輪流', priority: 'mid' },
+    torso_lean: { text: '上半身挺直，不要往前彎', priority: 'mid' },
   },
   phaseCues: {
     READY: '開始原地交替抬膝',
@@ -48,6 +55,13 @@ export const highknees = {
     const faults = [];
     const active = Math.max(progressL, progressR);
     if (active > 0.5 && !gatePass) faults.push('no_support');
+
+    // —— 軀幹挺直 ——
+    // 沿用深蹲已驗證的「軀幹投影長度比」：正面機位下前傾使軀幹投影縮短。
+    // 直接量肩髖連線的傾角在正面是無效的（見 docs/verification/torso_lean_機位驗證.md）。
+    // ⚠️ 同樣有基準污染的盲區：使用者一開始就駝背站著時偵測不到。
+    const torsoRatio = s.torsoRatio ?? 1;
+    if (active > 0.4 && torsoRatio < TORSO_UPRIGHT_RATIO) faults.push('torso_lean');
     const lc = (p) => p >= 0.7 ? 'green' : (p > 0.4 ? 'yellow' : 'green');
     const segments = {
       torso: gatePass ? 'green' : 'red',
