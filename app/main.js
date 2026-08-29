@@ -5,13 +5,38 @@ import { setPalette } from './ui/feedback.js';
 import today from './features/today/today.js';
 import workout from './features/workout/workout.js';
 import island from './features/island/island.js';
+import { resolveIsland } from './features/island/registry.js';
 import tracking from './features/tracking/tracking.js';
 import settings from './features/settings/settings.js';
 
 const coach = createCoach({ enabled: store.getState().prefs.voice });
 
-// feature 契約：{ id, label, icon, mount(root, ctx), unmount(), onShow?(), needsTopbar }
-const FEATURES = { today, island, workout, tracking, settings };
+// —— 島嶼分頁的模組來源 ——
+// 遊戲組將交付整包原始碼由我方整合（08/25 議定）。屆時的接入步驟：
+//   1. 把他們的模組放到 app/features/island-game/island-game.js
+//      （須符合 feature 契約，見 docs/CONTRACTS.md 第 10 節）
+//   2. 取消下面那行 import 的註解
+//   3. 把 ISLAND_SOURCE 從 'builtin' 改成 'game'
+// 我方版本永遠保留在註冊表裡當備援——合體要到彩排前才完成，
+// 中間任何一天都可能需要切回可用的版本做 demo。
+// import islandGame from './features/island-game/island-game.js';
+const ISLAND_MODULES = {
+  builtin: island,
+  // game: islandGame,
+};
+const ISLAND_SOURCE = 'builtin';
+
+const islandPick = resolveIsland(ISLAND_MODULES, ISLAND_SOURCE);
+if (!islandPick.ok) console.error('[island]', islandPick.message);
+
+// feature 契約（以實際消費方式為準，見 show()）：
+//   必要：mount(root, ctx)、unmount()
+//   選用：onShow?()
+// ⚠️ 分頁列的 label 與 icon 來自下方獨立的 TABS 常數，**不是**由模組提供 ——
+//    模組即使帶了 label/icon 也不會被讀取。舊註解曾把它們列入契約，那是錯的
+//    （2026-08-29 由跨模型互審抓出，且該錯誤已一度被抄進 docs/CONTRACTS.md）。
+//    needsTopbar 同樣從未被讀取，已自契約移除。
+const FEATURES = { today, island: islandPick.module, workout, tracking, settings };
 const TABS = [
   { id: 'today', label: '今日', icon: '☀️' },
   { id: 'island', label: '島嶼', icon: '🏝️' },

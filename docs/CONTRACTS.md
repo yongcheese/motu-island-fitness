@@ -176,44 +176,101 @@ FrameResult {
 
 ## 10. feature 模組契約（遊戲端接入點）
 
-`app/main.js` 的 `FEATURES` 註冊表接受符合下列形狀的物件：
+> ⚠️ 2026-08-29 更正：本節前一版依 `main.js` 的註解撰寫，把 `label`、`icon`、`needsTopbar`
+> 列為契約的一部分。經查 `main.js` 的實際消費方式（`show()`，第 100–109 行），
+> **這三個欄位從未被讀取**。分頁列的文字與圖示來自 `main.js` 內獨立的 `TABS` 常數。
+> 依實際行為更正如下，並已同步修正 `main.js` 的註解。
 
-```ts
-{
-  id: string;                          // 對應 TABS 的 id
-  label: string;                       // 分頁列顯示文字
-  icon: string;                        // 分頁列圖示（emoji）
-  mount(root: HTMLElement, ctx): void;  // 掛載；root 為 #view
-  unmount(): void;                      // 卸載；須清乾淨 timer／事件／WebGL 資源
-  onShow?(): void;                      // 每次切換到本頁時呼叫（mount 之後）
-  needsTopbar?: boolean;
-}
+### 模組必須提供
+
+```js
+// 採 default export
+export default {
+  mount(root, ctx) { /* 掛載到 root（即 #view）*/ },   // 必要
+  unmount() { /* 清乾淨 timer／事件／WebGL 資源 */ },   // 必要
+  onShow() { /* 每次切到本頁時呼叫，在 mount 之後 */ }, // 選用
+};
 ```
 
-生命週期（`main.js:82-90`）：切頁時先呼叫前一個模組的 `unmount()`，
-再 `setChrome(true)`、`mount(view, ctx)`、`onShow?.()`。
+| 成員 | 必要性 | 簽名 | 說明 |
+|---|---|---|---|
+| `mount` | **必要** | `(root: HTMLElement, ctx: Ctx) => void` | `root` 為 `#view`。拋錯會被 catch 並顯示「模組載入失敗」訊息，不會白畫面 |
+| `unmount` | **必要** | `() => void` | 切離本頁時呼叫。**務必釋放 WebGL context 與 rAF**，否則切回來會累積 |
+| `onShow` | 選用 | `() => void` | `mount` 之後呼叫；用 `?.()` 呼叫，未提供不會出錯 |
 
-### `ctx` 提供的內容（`main.js:34-47`）
-| 欄位 | 說明 |
-|---|---|
-| `ctx.store` | 上述 store，**唯一**的狀態來源 |
-| `ctx.coach` | 語音教練（`say(text, priority)` / `stop()`） |
-| `ctx.navigate(id)` | 切換到指定分頁 |
-| `ctx.toast(msg)` | 顯示 2.2 秒的提示 |
-| `ctx.setChrome(visible)` | 隱藏／顯示 topbar 與 tabbar（全螢幕沉浸用） |
+### 模組**不需要**提供
+`label`、`icon`、`needsTopbar` —— 這些不會被讀取。分頁列由 `main.js` 的 `TABS` 常數決定；
+若要改島嶼分頁的名稱或圖示，請改 `TABS`，不是模組。
+
+### 生命週期（`main.js:100-109`）
+```
+切頁 → prev.unmount()（若有，包在 try/catch）
+     → setChrome(true)
+     → feat.mount(#view, ctx)（包在 try/catch，失敗顯示錯誤訊息）
+     → feat.onShow?.()
+```
+
+### `ctx` 提供的內容（`main.js:52-65`）
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `ctx.store` | Store | 上述 store，**唯一**的狀態來源 |
+| `ctx.coach` | Coach | 語音教練：`say(text, priority)`、`stop()` |
+| `ctx.navigate(id)` | `(string) => void` | 切換到指定分頁 |
+| `ctx.toast(msg)` | `(string) => void` | 顯示 2.2 秒提示 |
+| `ctx.setChrome(visible)` | `(boolean) => void` | 隱藏／顯示 topbar 與 tabbar（全螢幕沉浸用） |
 
 ### 五個現有分頁
-| id | label | icon |
-|---|---|---|
-| `today` | 今日 | ☀️ |
-| `island` | 島嶼 | 🏝️ |
-| `workout` | 訓練 | 🏋️ |
-| `tracking` | 健康 | 📊 |
-| `settings` | 設定 | ⚙️ |
+`today`（今日 ☀️）、`island`（島嶼 🏝️）、`workout`（訓練 🏋️）、`tracking`（健康 📊）、`settings`（設定 ⚙️）
 
-遊戲端要替換的是 **`island`** 這一個。
+遊戲端要替換的是 **`island`**。切換方式見 `main.js` 的 `ISLAND_SOURCE` 常數。
+
+### CSS 與資產如何隨模組切換
+本專案**無打包步驟**，故：
+- **CSS**：模組自行在 `mount()` 內以 `<link>` 或 `<style>` 注入，並於 `unmount()` 移除。
+  全域樣式變數見 `app/styles/lumina.css`（`--green`／`--coral`／`--gold` 等語意色票）。
+- **靜態資產**（模型、貼圖、音效）：放在 `vendor/` 或自建目錄，以相對路徑引用。
+  ⚠️ 不得使用 CDN —— 本作品需離線可用，這是企劃書已對外的承諾。
+- **three.js**：不要自帶。改為 `import * as THREE from '<相對路徑>/vendor/three/three.module.min.js'`，
+  與我方共用同一份（r161），避免兩份 three 同時載入。
 
 ---
+
+## 10b. State schema
+
+```js
+{
+  schema: 1,
+  profile: { nickname, avatar, height_cm, weight_kg, age, sex },
+  prefs:   { voice, bgm, difficulty, mirror, colorMode, dailyGoalMin, weeklyGoalDays, warmup },
+  wallet:  { coins, xp, level },              // 只有這三個欄位
+  island:  { placed: Building[], unlocked: string[] },
+  streak:  { current, lastActiveDate, longest },
+  boost:   { coinNext: boolean },             // 雙倍卡的一次性旗標
+  history: Session[],                          // 每次結算一筆，見第 8 節
+  achievements: string[],
+}
+
+// Building
+{ id: string, type: string, x: number, y: number, rot: number }
+```
+
+⚠️ **遊戲端的資料請放在自己的 namespace**，不要往上述子樹塞欄位——
+`importJSON()` 為淺層合併，結構衝突會很難查。
+
+### 寫入 API 的輸入與失敗語意
+| 方法 | 輸入 | 回傳 | 失敗時 |
+|---|---|---|---|
+| `spendCoins(n)` | `n > 0` 的有限數 | `boolean` | 餘額不足或 `n` 非法 → 回 `false`，**狀態完全不變** |
+| `consumeBoost()` | 無 | `boolean` | 已有一張生效中 → 回 `false`，**不疊加、不扣任何東西** |
+| `placeBuilding(b)` | `{ type, x, y, rot }` | — | 不驗證重疊或範圍（由呼叫端負責）；`id` 由 store 產生 |
+| `moveBuilding(id, x, y)` | 既有 id | — | id 不存在 → **靜默 no-op** |
+| `removeBuilding(id)` | 既有 id | — | id 不存在 → 靜默 no-op |
+| `unlock(type)` | string | — | 已解鎖過 → no-op（不重複加入） |
+| `updatePrefs(p)` / `updateProfile(p)` | 部分欄位物件 | — | 淺層合併，未提供的欄位保留 |
+| `importJSON(json)` | JSON 字串 | `boolean` | 解析失敗 → 回 `false`，狀態不變 |
+
+⚠️ `getState()` 回傳的是**可變參考**，請勿直接改寫其內容——所有變更都應經由上述方法，
+否則不會觸發 `subscribe` 通知，畫面不會更新。
 
 ## 11. 遊戲端不可做的事
 

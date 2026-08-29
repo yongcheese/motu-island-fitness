@@ -54,7 +54,7 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
 
 ## 進度總覽
 - 總 Slice 數：7
-- 已完成：6 / 7
+- 已完成：7 / 7（Slice 1–7）｜互審後新增 Slice 8–10 與凍結 Gate 待辦
 - 平行組：無（Slice 2/5 同碰 `store.js`，Slice 7 碰共用檔 `main.js`，一律序列）
 
 ---
@@ -156,8 +156,9 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
 - **依賴**：無（但與 Slice 2 同碰 `store.js`，須序列執行）
 - **平行組**：獨立（碰 `store.js`，必經 slice-reviewer）
 
-### [x] Slice 6 — 補齊 docs/CONTRACTS.md 的模組與 store API 契約
+### [x] Slice 6 — 補齊 docs/CONTRACTS.md 的模組與 store API 契約（provisional）
 - **目標**：遊戲組拿到這份文件就能把島嶼模組接上，不必問我方任何一句話。
+- **⚠️ 狀態為 provisional（2026-08-29 跨模型互審）**：本 Slice 先於 Slice 7 完成，故最終的 import path、切換常數與錯誤行為可能與文件不符；碎片與抽獎券的接收契約亦待 Slice 9 定案。**正式定稿的驗收移至 Slice 10 的凍結 Gate。**
 - **範圍內**：於 `docs/CONTRACTS.md` 寫入 feature 模組契約 `{ id, label, icon, mount(root, ctx), unmount(), onShow? }`、`ctx` 提供的內容、store 對外可用 API 全表（含 Slice 2 的結算輸出與 Slice 5 的 `consumeBoost()`）、以及**明文禁止事項**（不得自行保存金幣副本、不得繞過 `commitSession()`、碎片與抽獎券不得回流）。
 - **範圍外**：不改任何程式碼。
 - **改動檔案**：`docs/CONTRACTS.md`（修改）
@@ -175,22 +176,74 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
 - **平行組**：獨立
 - **待審**：留待收尾批次 slice-reviewer（純文件、未觸發當場審條件）
 
-### [ ] Slice 7 — 島嶼分頁可替換開關
+### [x] Slice 7 — 島嶼分頁可替換開關
 - **目標**：遊戲組的模組一交付，改一處設定即可切換，且我方版本保留為備援。
 - **範圍內**：`app/main.js` 的 `FEATURES` 註冊改為可切換來源；保留現行島嶼模組為備援；切換點集中於單一常數並加註解說明如何替換。
 - **範圍外**：不實作遊戲端模組本身；不改島嶼模組的內部邏輯；不改其餘四個分頁。
-- **改動檔案**：`app/main.js`（修改）
+- **改動檔案**：`app/main.js`（修改）、`app/features/island/registry.js`（新增）、`tests/island-registry.test.js`（新增）、`tests/island-contract.test.js`（新增）
+  ⚠️ 後三者為計畫外新增，已於送審時主動申報：`main.js` 頂層即取用 `document`，Node 無法 import，解析邏輯若留在其中則「測試註冊表解析邏輯」這條驗收無法達成。slice-reviewer 判定為「合理的必要偏離」。
 - **設計要點**：N/A ｜ 純結構
 - **UI Slice?**：NO
 - **驗收標準**：
-  - [ ] 切換常數後，島嶼分頁載入另一個模組，其餘四個分頁完全不受影響
-  - [ ] 備援模組仍可用，切回無殘留狀態
-  - [ ] 指定的模組不存在時有明確的失敗訊息，不是整個 App 白畫面
-  - [ ] 既有測試全綠
+  - [x] 切換常數後，島嶼分頁載入另一個模組，其餘四個分頁完全不受影響
+  - [x] 備援模組仍可用，切回無殘留狀態
+  - [x] 指定的模組不存在時有明確的失敗訊息，不是整個 App 白畫面
+  - [x] 既有測試全綠
 - **測試策略**：驗證註冊表解析邏輯（指定存在／不存在的模組），以及五個分頁 id 完整性
 - **完成定義**：`npm test` 全綠 + 實機切換五個分頁皆正常
-- **對外介面**：（施工後回填）
+- **對外介面**：`app/features/island/registry.js` 新增 export —— `resolveIsland(registry, key)` → `{module, key, ok, message}`（找不到時回退 builtin 並回報原因，不拋錯）、常數 `ISLAND_FALLBACK = 'builtin'`。`main.js` 新增 `ISLAND_MODULES` 註冊表與 `ISLAND_SOURCE` 切換常數。
+- **順帶修正**：`main.js` 的 feature 契約註解原列 `label`／`icon`／`needsTopbar`，但 `show()` 從未讀取這三者（分頁列來自獨立的 `TABS` 常數）。該錯誤已被抄進 CONTRACTS.md，由跨模型互審抓出，兩處均已更正，並新增 `tests/island-contract.test.js` 以可執行契約防止再犯。
 - **依賴**：Slice 6（契約先定稿，實作才有依據）
 - **平行組**：獨立（碰共用檔 `main.js`，必經 slice-reviewer）
 
-<!-- cross-model-review: APPROVED reviewer=ollama-qwen2.5-coder-14b hash=e0a39e33f5e076ee at=2026-08-28T23:53:40+08:00 -->
+
+---
+
+## 跨模型互審後新增（2026-08-29，codex）
+
+> 以下四項由 codex 跨模型互審提出，經逐點討論後達成共識。
+> 它們**不阻擋 Slice 1–7 的既有施工**，但**阻擋「合體完成」與「CONTRACTS 可直接接線」的宣告**。
+
+### [ ] Slice 8 — 受限 facade：遊戲端不得直接呼叫 commitSession
+- **目標**：遊戲模組拿到的不是完整 store，而是只能讀狀態、消費資源、宣告用卡的受限介面。
+- **問題**：目前 `ctx.store` 是完整 store，遊戲模組可自行構造 `{validReps: 9999}` 呼叫 `commitSession()`。
+  「唯一經過 commitSession」不等於「經 AI 驗證」，核心承諾目前只剩團隊約定。
+- **範圍內**：`ctx` 改為傳入受限 facade（唯讀狀態、`spendCoins`、`consumeBoost`、`subscribe`）；
+  `commitSession` 留在健身端內部；補「未驗證的普通物件不能結算」測試。
+- **⚠️ 界線（互審共識）**：純前端無法抵抗 DevTools 或直接改 localStorage。
+  facade 防的是**合作模組誤用與越權**，不是惡意使用者。
+- **連帶的對外改口**：企劃書「以介面設計使違規成為不可能」**過度**，應改為
+  「在正常應用流程與模組權限邊界內，金幣與經驗值只能由 AI 判定後的訓練結算產出；
+  純前端架構不宣稱抵抗使用者直接竄改瀏覽器資料」。
+- **依賴**：需先與遊戲組議定他們需要哪些權限
+- **平行組**：獨立
+
+### [ ] Slice 9 — 碎片與抽獎券的領取與防重複
+- **目標**：遊戲端能可靠地、只一次地收到每次結算產出的碎片與抽獎券。
+- **問題**：`commitSession()` 的回傳值只有健身頁拿得到，而遊戲頁在訓練進行時已 `unmount`。
+  若靠掃描 history 補發，重整／重新掛載／同步重跑都會漏發或重複發。
+- **範圍內**：以 `session.id` 為冪等鍵的 claim/ack 流程。至少須凍結：
+  session.id 是否為冪等鍵、遊戲端何時掃描或領取、processed ID 由誰持久化、
+  重複領取為 no-op、入帳途中失敗如何重試。
+- **連帶修正不變量 3 的措辭**：「健身端只顯示不儲存」與 history 確實持久化單次 grant 相矛盾。
+  應改為「健身端不保存**餘額**，但保存不可變的**結算事件**」。
+- **依賴**：需遊戲組確認記帳方式
+- **平行組**：獨立
+
+### [ ] Slice 10 — 雙倍卡與卡片庫存的事務邊界
+- **目標**：扣卡片庫存與設起 boost 旗標成為一個明確的契約，不會吞卡也不會免費加倍。
+- **問題**：卡片庫存在遊戲端、旗標在健身端，目前是兩筆各自獨立的操作。
+  先扣卡可能吞卡，先設旗標可能免費加倍。
+- **範圍內**：二選一並寫入契約 —— (a) shared store 以單一操作完成扣卡與 arm boost；
+  或 (b) 定義 operation ID、冪等、失敗補償與重試規則。
+- **依賴**：需先與遊戲組議定事務邊界由誰持有
+- **平行組**：獨立
+
+### [ ] Gate — 規則凍結與契約定稿（最終交付前置條件）
+- 取得遊戲組對碎片與抽獎券發放規則的決議，更新 `rewards.js` 的三個常數，
+  補正式邊界測試，並標記規則版本與生效日期。**在此之前一律稱 provisional contract。**
+- Slice 8、9、10 完成後回驗並更新 `docs/CONTRACTS.md`，解除其 provisional 狀態。
+- 收尾驗證新增：**測試數不得低於前次**、不得新增 skip/only、人工檢查測試 diff 是否弱化斷言
+  （`npm test` 全綠本身守不住不變量 5）。
+
+<!-- cross-model-review: APPROVED reviewer=codex hash=32904061fa259a7b at=2026-08-29T09:06:19+08:00 -->

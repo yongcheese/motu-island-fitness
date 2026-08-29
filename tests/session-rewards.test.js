@@ -104,3 +104,56 @@ test('commitSession: 髒輸入不會讓新欄位變成 NaN（邊界）', () => {
     assert(Number.isFinite(s[k]), `${k} 不得為 NaN/Infinity，實得 ${s[k]}`);
   }
 });
+
+// —— 不變量 2：經驗值只增不減 ——
+// 原測試只寫 eq(s.xpGain, after - before)，跨模型互審指出：兩者同為負數或 NaN 也會通過，
+// 等於沒有驗證「只增不減」。以下補上真正的守門。
+
+test('commitSession: xpGain 必為非負有限整數', () => {
+  fresh();
+  for (const [v, iv] of [[0, 0], [1, 0], [20, 5], [999, 0]]) {
+    const s = store.commitSession(mk(v, iv));
+    assert(Number.isInteger(s.xpGain) && s.xpGain >= 0,
+      `validReps=${v} 的 xpGain 應為非負整數，實得 ${s.xpGain}`);
+  }
+});
+
+test('commitSession: 髒輸入不得讓 xp 倒退或污染（不變量 2）', () => {
+  fresh();
+  const dirty = [
+    { validReps: -50, invalidReps: 0 },
+    { validReps: NaN, invalidReps: 0 },
+    { validReps: Infinity, invalidReps: 0 },
+    { validReps: -Infinity, invalidReps: 0 },
+    { validReps: '20', invalidReps: 0 },
+    {},                                    // 完全缺欄位
+  ];
+  for (const bad of dirty) {
+    const before = store.getState().wallet.xp;
+    const s = store.commitSession({ ...mk(0), ...bad });
+    const after = store.getState().wallet.xp;
+    assert(Number.isInteger(after) && after >= 0, `輸入 ${JSON.stringify(bad)} 後 xp 應仍為非負整數，實得 ${after}`);
+    assert(after >= before, `xp 不得倒退：${before} → ${after}（輸入 ${JSON.stringify(bad)}）`);
+    assert(Number.isFinite(s.xpGain) && s.xpGain >= 0, `xpGain 不得為負或 NaN，實得 ${s.xpGain}`);
+  }
+});
+
+test('commitSession: 連續多次結算後 xp 單調不減（不變量 2）', () => {
+  fresh();
+  let prev = store.getState().wallet.xp;
+  for (const v of [10, 0, 25, 0, 3, 100, 0]) {
+    store.commitSession(mk(v, 5));
+    const now = store.getState().wallet.xp;
+    assert(now >= prev, `第 ${v} 次後 xp 由 ${prev} 變成 ${now} —— 經驗值只增不減`);
+    prev = now;
+  }
+  assert(prev > 0, '前提：應確實累積過經驗值');
+});
+
+test('commitSession: 全 invalid 時四種資源皆為 0（沒做對就沒有獎勵）', () => {
+  fresh();
+  const s = store.commitSession(mk(0, 30));
+  for (const k of ['coinsEarned', 'xpGain', 'shards', 'tickets']) {
+    eq(s[k], 0, `全部無效時 ${k} 應為 0 —— 這是「只有正確動作可換取獎勵」的底線`);
+  }
+});
