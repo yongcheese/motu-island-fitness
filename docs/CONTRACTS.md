@@ -115,10 +115,16 @@ FrameResult {
 - `Detector.summary(): { validReps, invalidReps, attempts, targetRate, faultCounts }`
 - `Detector.reset()`
 
-## 6. core/calories.js（pure）
-- `estimateCalories({ met, weightKg, durationSec, targetRate }): number`
+## 6. core/rewards.js（pure）
+> 原 `core/calories.js`。熱量估算（`estimateCalories`）已於 2026-08-25 移除——該數字由 METs 公式推算、
+> 未納入個體代謝差異，屬本系統無法驗證的量。對外量化一律改用可精確判定的項目。
+
 - `grade({ targetRate, validRate }): 'S'|'A'|'B'|'C'`
-- `coinsFor({ validReps, baseCoinPerRep, targetRate, streakBonus? }): number`
+- `coinsFor({ validReps, baseCoinPerRep, targetRate, streakDays }): number`
+- `shardsFor({ validReps }): number` — 本次獲得碎片數（非餘額）
+- `ticketsFor({ validReps, targetRate }): number` — 本次獲得抽獎券數（非餘額）
+- 常數：`SHARD_PER_VALID_REPS`、`TICKET_MIN_VALID_REPS`、`TICKET_MIN_TARGET_RATE`
+  ⚠️ 三者為**暫定值**，發放規則尚待與遊戲組議定（見《現狀盤點》E-7）。議定後只需改這三個常數。
 
 ## 7. core/pose.js（browser only）
 - `createPose({ modelUrl, wasmDir, numPoses=1, delegate }) : Promise<Pose>`
@@ -126,16 +132,119 @@ FrameResult {
 - `Pose.close()`
 
 ## 8. state/store.js（single source of truth）
-- `store.getState()`, `store.subscribe(fn)→unsub`
-- `store.commitSession(sessionResult)` — **唯一**能加金幣/XP/history 的入口（防刷）。
-- `store.spendCoins(n)→bool`、`store.placeBuilding(b)`、`store.removeBuilding(id)`
-- `store.updateProfile(p)`、`store.updatePrefs(p)`
-- `store.exportJSON()`、`store.importJSON()`、`store.reset()`
-- 事件名：`change`（任何狀態變更）。
+
+### 讀取
+| 方法 | 回傳 | 說明 |
+|---|---|---|
+| `store.getState()` | State | 整份狀態（唯讀取用，勿直接改寫） |
+| `store.subscribe(fn)` | `()=>void` | 任何狀態變更時呼叫 `fn(state)`；回傳解除訂閱函式 |
+| `store.isBoostArmed()` | boolean | 下一次結算是否將套用雙倍金幣卡 |
+| `store.derived.xpProgress()` | `{cur, need, ratio}` | 當前等級的經驗值進度 |
+| `store.derived.levelFromXp(xp)` / `xpForLevel(lv)` | number | 等級與經驗值換算 |
+
+### 寫入
+| 方法 | 回傳 | 說明 |
+|---|---|---|
+| `store.commitSession(result)` | Session | **唯一**能增加金幣／XP／history 的入口 |
+| `store.consumeBoost()` | boolean | 宣告使用一張雙倍金幣卡。**零參數**；true=已設起，false=已有一張生效中（不疊加） |
+| `store.spendCoins(n)` | boolean | 扣款；餘額不足回 false |
+| `store.placeBuilding(b)` / `moveBuilding(id,x,y)` / `removeBuilding(id)` / `unlock(type)` | — | 島嶼建物 |
+| `store.updateProfile(p)` / `updatePrefs(p)` | — | 個人資料／偏好設定 |
+| `store.exportJSON()` / `importJSON(json)` / `reset()` | — | 存檔管理 |
+
+### `commitSession(result)` 的回傳（遊戲端依賴的對外契約）
+```ts
+{
+  id, dateISO, date, exercise, exerciseName,   // 識別
+  durationSec, validReps, invalidReps, targetRate, coinsEarned, grade, faults,  // 既有 12 欄
+  xpGain,             // 本次經驗值增量
+  shards, tickets,    // 本次獲得量 —— 非餘額
+  coinBoostApplied,   // 本次是否套用雙倍卡
+}
+```
+⚠️ **前 12 個欄位為凍結契約**，名稱、型別、語意不得更動。新增一律純追加。
+
+### wallet 只有三個欄位
+`{ coins, xp, level }`。**碎片與抽獎券不在其中**——由遊戲端記帳，健身端只在結算畫面顯示。
+
+### 常數（export）
+`STREAK_MIN_VALID_REPS`（連續天數的當日有效次數門檻）、`COIN_BOOST_MULTIPLIER`（雙倍卡倍率）、`ACHIEVEMENTS`
 
 ## 9. ui/feedback.js（browser）
 - `drawSkeleton(ctx, frame, segments, opts)` — 依 segments 上色畫骨架。
 - `drawCountdownRing(ctx, ratio, opts)` — 倒數邊框。
 
+## 10. feature 模組契約（遊戲端接入點）
+
+`app/main.js` 的 `FEATURES` 註冊表接受符合下列形狀的物件：
+
+```ts
+{
+  id: string;                          // 對應 TABS 的 id
+  label: string;                       // 分頁列顯示文字
+  icon: string;                        // 分頁列圖示（emoji）
+  mount(root: HTMLElement, ctx): void;  // 掛載；root 為 #view
+  unmount(): void;                      // 卸載；須清乾淨 timer／事件／WebGL 資源
+  onShow?(): void;                      // 每次切換到本頁時呼叫（mount 之後）
+  needsTopbar?: boolean;
+}
+```
+
+生命週期（`main.js:82-90`）：切頁時先呼叫前一個模組的 `unmount()`，
+再 `setChrome(true)`、`mount(view, ctx)`、`onShow?.()`。
+
+### `ctx` 提供的內容（`main.js:34-47`）
+| 欄位 | 說明 |
+|---|---|
+| `ctx.store` | 上述 store，**唯一**的狀態來源 |
+| `ctx.coach` | 語音教練（`say(text, priority)` / `stop()`） |
+| `ctx.navigate(id)` | 切換到指定分頁 |
+| `ctx.toast(msg)` | 顯示 2.2 秒的提示 |
+| `ctx.setChrome(visible)` | 隱藏／顯示 topbar 與 tabbar（全螢幕沉浸用） |
+
+### 五個現有分頁
+| id | label | icon |
+|---|---|---|
+| `today` | 今日 | ☀️ |
+| `island` | 島嶼 | 🏝️ |
+| `workout` | 訓練 | 🏋️ |
+| `tracking` | 健康 | 📊 |
+| `settings` | 設定 | ⚙️ |
+
+遊戲端要替換的是 **`island`** 這一個。
+
+---
+
+## 11. 遊戲端不可做的事
+
+以下每一條都對應企劃書中已對外承諾的內容，違反即等於該承諾失效。
+
+| 禁止 | 理由 |
+|---|---|
+| **不得自行保存金幣副本** | 兩端共用同一份 store。另存副本會產生兩個真實來源，同步一旦落差就無法判斷哪個是對的 |
+| **不得繞過 `commitSession()` 增加金幣或經驗值** | 企劃書第四章：「介面中不存在增加金幣之方法」。這是「金幣僅由 AI 驗證產生」在架構層面的實現——非依約定，而是以介面設計使違規成為不可能 |
+| **不得讓碎片或抽獎券回流成金幣或經驗值** | 08/21 兩組議定的底線。一旦可回流，核心資源就有了第二條產出管道 |
+| **不得扣減經驗值** | 雙方議定經驗值只增不減。最高稀有度商品以「達等級門檻解鎖並直接獲得」，不扣經驗值、不另付金幣 |
+| **不得指定雙倍卡的倍率** | `consumeBoost()` 為零參數，倍率寫死於健身端。若由呼叫端指定，等於開了「說幾倍就幾倍」的加值路徑 |
+| **不得在主畫面常駐顯示碎片與抽獎券** | 議定僅於結算畫面與遊戲端提示中顯示 |
+
+### 經濟面的約束（給遊戲端定價時參考）
+功能卡的售價**必須高於一次結算的金幣增量**，否則會形成「買卡 → 賺更多金幣 → 再買卡」的自我增殖迴圈。
+
+---
+
+## 12. 技術環境
+
+| 項目 | 我方現況 |
+|---|---|
+| 模組系統 | 原生 ES Modules，**無打包步驟**（無 webpack／vite） |
+| three.js | **r161**，本地 vendor 引入（`vendor/three/three.module.min.js`），非 CDN |
+| 執行方式 | `python3 serve.py 8080`，開瀏覽器即可 |
+| 後端 | **無**。全部在瀏覽器內執行，不需伺服器 |
+| 持久化 | `localStorage`，單一 key |
+
+⚠️ 遊戲端若使用不同的 three.js 版本，合併後會有兩份 three 同時載入。**版本必須對齊 r161。**
+
+---
+
 ## Gate 4 結論
-契約與測試一致、職責單一、防刷由 `commitSession` 把關。PASS，進入 Gate 5。
