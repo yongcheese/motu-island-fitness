@@ -26,7 +26,7 @@ import { midpoint, norm, distance } from '../geometry.js';
 //   4. ⚠️ FMS deep squat 是**雙臂過頭**做的，肩胛上旋使肩峰標記內移 ——
 //      實測 10 位受試者的肩寬平均僅 226mm（身高約 1.55m），明顯低於成人正常值。
 //      因此**凡是以肩寬正規化的量，在本資料集上都被系統性放大**（約 1.5 倍）。
-//      knee / head_tilt / hip_uneven 三項皆屬此類，其分位數不可直接當成本 App 的門檻。
+//      knee / head_tilt 兩項皆屬此類，其分位數不可直接當成本 App 的門檻。
 //      torso_lean 不受影響（它是同一個量的前後比值，肩寬不進入計算）。
 //
 // 【2026-08-30 交叉驗證】另以 REHAB24-6（Černek et al., 2024，Zenodo，
@@ -34,7 +34,7 @@ import { midpoint, norm, distance } from '../geometry.js';
 //   （89 次正確 + 41 次不正確，物理治療師標註，肩寬 357mm 為正常值）：
 //     · 軀幹投影比 0.58 → 誤判 3.6%    ✅ 確認
 //     · 頭偏移      0.18 → 誤判 0.0%    ✅ 確認
-//     · 髖高差      0.10 → 誤判 0.0%    ✅ 確認（亦證實不應依 UI-PRMD 分位數放寬至 0.15）
+//     · 髖高差      0.10 → 兩組皆 0.0%  ⛔ 完全不觸發 → 該判定已移除（理由見下方說明）
 //     · 膝距/肩寬   1.70 → 誤判 32.7%   ❌ 推翻，已下修為 1.50
 //   ⚠️ 該資料集的深蹲為復健用的部分範圍（130 次中無一次髖低於膝），驗證不了深度判準。
 // ══════════════════════════════════════════════════════════════════════════
@@ -71,13 +71,25 @@ export const TORSO_FOLD_RATIO = 0.58;
 // 二來該實測同樣受限制 4 污染 —— 修正肩寬偏誤後正確組 p95 約 0.05，0.18 仍在安全側。
 export const HEAD_TILT_RATIO = 0.18;
 
-// 骨盆傾斜門檻：左右髖的垂直落差 ÷ 肩寬。BSA ④「髖部位置（骨盆水平、對稱）」。
-// ⚠️ 本資料集**無法證明這一項具有鑑別力**：實測在正確組觸發 13.6%、不正確組僅 7.0%，
-//    誤判反而高於偵測。不得對外宣稱它能偵測骨盆傾斜。
-// ⚠️ 曾一度依實測 p95 調高為 0.15，但隨後發現該實測受上述限制 4（肩寬被低估）污染 ——
-//    把放大約 1.5 倍的分位數直接當門檻，等於憑錯誤的分母放寬判定。故還原為 0.10。
-//    真正的標定必須等真人測試（需要真正單側下沉的樣本，且手臂不過頭）。
-export const HIP_UNEVEN_RATIO = 0.10;
+// ══ 已於 2026-08-30 移除：骨盆傾斜（BSA ④「髖部位置」）══════════════════════
+// 保留這段說明而不是靜靜刪掉，是為了讓將來想加回來的人先看到證據。
+//
+// 移除理由（不是「做不出來」，是「證明不了它有用」）：
+//   1. 兩個獨立真人資料集都無法證明它具鑑別力。
+//      UI-PRMD：正確組觸發 13.6%、不正確組僅 7.0% —— 誤判反而高於偵測。
+//      REHAB24-6（肩寬未受壓縮，是更可靠的來源）：兩組皆 0.0% —— 根本不會觸發。
+//   2. 它也**無法靠真人測試補救**：要驗證它需要真正有單側骨盆下沉的受試者；
+//      請健康受試者「做出骨盆傾斜」，得到的是誇張的模仿，與真實代償不是同一回事。
+//   3. 於是它落在最糟的位置：既拿不出有效性證據，也沒有取得證據的路徑。
+//      在一個以「每項門檻都要能追溯」為賣點的作品裡，這樣一項是負債而非資產。
+//
+// 什麼情況下可以加回來：取得**具真實單側骨盆下沉之受試者**的標註樣本，
+//   且該樣本在本判定量上與健康對照組能分開。屆時門檻須以肩寬未受壓縮的資料標定
+//   （切勿沿用 UI-PRMD 的分位數 —— 該資料集因雙臂過頭而低估肩寬約 1.5 倍）。
+//
+// 規則來源本身是有依據的（Myer et al. 2014 的背蹲舉技術缺陷評估第 ④ 項），
+// 移除的是「我們這個實作」，不是那條規則。
+// ══════════════════════════════════════════════════════════════════════════
 
 export const squat = {
   id: 'squat', name: '深蹲', group: 'lower',
@@ -95,7 +107,7 @@ export const squat = {
   //   一個無法對機位保持不變的量，不該有權取消使用者的有效次數 —— 故降為僅提示。
   faultSeverity: {
     torso_lean: 'advisory',
-    knee_valgus: 'advisory', head_tilt: 'advisory', hip_uneven: 'advisory', tempo_fast: 'advisory',
+    knee_valgus: 'advisory', head_tilt: 'advisory', tempo_fast: 'advisory',
   },
   // 開啟節奏判定（BSA ⑩）。時序特徵，不受機位影響。
   tempoAdvisory: true,
@@ -103,7 +115,6 @@ export const squat = {
     torso_lean: { text: '背部打直，不要彎腰，用臀部往後坐下', priority: 'high' },
     knee_valgus: { text: '膝蓋往外推，對齊腳尖方向', priority: 'high' },
     head_tilt: { text: '頭擺正，視線看前方', priority: 'mid' },
-    hip_uneven: { text: '兩邊髖部放平，重心平均分配', priority: 'mid' },
     tempo_fast: { text: '下蹲慢一點，控制著往下', priority: 'mid' },
     deeper: { text: '再往下蹲，讓髖部低於膝蓋', priority: 'mid' },
   },
@@ -201,13 +212,6 @@ export const squat = {
       if (Math.abs(nose.x - shC.x) / s.shoulderWidth > HEAD_TILT_RATIO) faults.push('head_tilt');
     }
 
-    // —— 骨盆水平（BSA ④）——
-    // 依據：BSA 第④項「髖部位置」，正確為兩側髖平行於地面、對稱；異常為一側下降。
-    // 正面機位可靠：左右髖的垂直落差是冠狀面的量，落在畫面平面內。
-    if (progress >= 0.15 && s.shoulderWidth > 1e-6) {
-      const dy = Math.abs(f[LM.LEFT_HIP].y - f[LM.RIGHT_HIP].y);
-      if (dy / s.shoulderWidth > HIP_UNEVEN_RATIO) faults.push('hip_uneven');
-    }
 
     const kneeSpan = Math.abs(f[LM.RIGHT_KNEE].x - f[LM.LEFT_KNEE].x);
     // 只在蹲到一定深度後才判：站直時膝自然併攏，淺處判定會誤觸發。

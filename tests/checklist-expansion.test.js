@@ -10,7 +10,7 @@ import { test, eq, assert } from './harness.js';
 import { makeSequence } from '../app/core/synth.js';
 import { createDetector, TEMPO_MIN_RATIO } from '../app/core/engine.js';
 import { EXERCISES } from '../app/core/exercises/index.js';
-import { HEAD_TILT_RATIO, HIP_UNEVEN_RATIO } from '../app/core/exercises/squat.js';
+import { HEAD_TILT_RATIO } from '../app/core/exercises/squat.js';
 import { LOCKOUT_ANGLE, HEAD_FORWARD_RATIO } from '../app/core/exercises/pushup.js';
 import { TORSO_UPRIGHT_RATIO } from '../app/core/exercises/highknees.js';
 
@@ -29,10 +29,18 @@ test('checklist: 頭部側傾抓得到，正常樣本不誤報', () => {
   assert(adv(run('squat', { variant: 'headtilt', tempoRatio: 3 }), 'head_tilt') > 0, '側傾樣本應被抓到');
 });
 
-// —— 深蹲：骨盆水平（BSA ④）——
-test('checklist: 骨盆傾斜抓得到，正常樣本不誤報', () => {
-  eq(adv(run('squat', { variant: 'clean', tempoRatio: 3 }), 'hip_uneven'), 0, '正常深蹲不得誤報骨盆傾斜');
-  assert(adv(run('squat', { variant: 'hipuneven', tempoRatio: 3 }), 'hip_uneven') > 0, '傾斜樣本應被抓到');
+// —— 深蹲：骨盆水平（BSA ④）已於 2026-08-30 移除 ——
+// 兩個獨立真人資料集都無法證明該判定具鑑別力（UI-PRMD 正確組觸發率反而高於不正確組；
+// REHAB24-6 兩組皆完全不觸發），且無法靠真人測試補救（需要真正單側骨盆下沉的受試者）。
+// 理由完整記錄於 squat.js 的說明區塊。以下改為鎖住「確實已移除」，防止有人不知情又加回來。
+test('checklist: 骨盆水平判定確實已移除（移除理由見 squat.js）', () => {
+  assert(!('hip_uneven' in (EXERCISES.squat.faultSeverity || {})), 'hip_uneven 不應留在 faultSeverity');
+  assert(!('hip_uneven' in (EXERCISES.squat.cues || {})), 'hip_uneven 不應留在 cues');
+  for (const v of ['clean', 'compensation', 'valgus', 'headtilt']) {
+    const s = run('squat', { variant: v, tempoRatio: 3 });
+    eq(adv(s, 'hip_uneven'), 0, `variant=${v} 不應再產生 hip_uneven`);
+    eq((s.faultCounts || {}).hip_uneven, undefined, `variant=${v} 不應有 hip_uneven 無效原因`);
+  }
 });
 
 // —— 深蹲：動作節奏（BSA ⑩）——
@@ -87,10 +95,9 @@ test('checklist: 高抬腿軀幹前傾抓得到，正常樣本不誤報', () => 
 });
 
 // —— 共同性質：全部為 advisory ——
-test('checklist: 六項新判定一律不取消有效次數（門檻未標定前的一致處置）', () => {
+test('checklist: 這些判定一律不取消有效次數（提示而非阻擋）', () => {
   const cases = [
     ['squat', { variant: 'headtilt', tempoRatio: 3 }],
-    ['squat', { variant: 'hipuneven', tempoRatio: 3 }],
     ['squat', { variant: 'clean', tempoRatio: 1 }],
     ['pushup', { variant: 'nolockout' }],
     ['pushup', { variant: 'headfwd' }],
@@ -103,9 +110,9 @@ test('checklist: 六項新判定一律不取消有效次數（門檻未標定前
 });
 
 test('checklist: 新判定不得混入 faultCounts（無效原因統計須維持精確）', () => {
-  const keys = ['head_tilt', 'hip_uneven', 'tempo_fast', 'no_lockout', 'head_forward'];
+  const keys = ['head_tilt', 'tempo_fast', 'no_lockout', 'head_forward'];
   for (const [id, opts] of [['squat', { variant: 'headtilt', tempoRatio: 3 }],
-    ['squat', { variant: 'hipuneven', tempoRatio: 3 }], ['pushup', { variant: 'nolockout' }]]) {
+    ['pushup', { variant: 'nolockout' }]]) {
     const fc = run(id, opts).faultCounts || {};
     for (const k of keys) {
       eq(fc[k], undefined, `${k} 屬 advisory，不得出現在 faultCounts`);
@@ -115,7 +122,6 @@ test('checklist: 新判定不得混入 faultCounts（無效原因統計須維持
 
 test('checklist: 門檻常數皆為合理範圍（防手殘改壞）', () => {
   assert(HEAD_TILT_RATIO > 0 && HEAD_TILT_RATIO < 1, `頭部側傾門檻應在 (0,1)，實得 ${HEAD_TILT_RATIO}`);
-  assert(HIP_UNEVEN_RATIO > 0 && HIP_UNEVEN_RATIO < 1, `骨盆門檻應在 (0,1)，實得 ${HIP_UNEVEN_RATIO}`);
   assert(LOCKOUT_ANGLE > 90 && LOCKOUT_ANGLE <= 180, `伸展角度應在 (90,180]，實得 ${LOCKOUT_ANGLE}`);
   assert(HEAD_FORWARD_RATIO > 0, `頭頸前伸門檻應為正，實得 ${HEAD_FORWARD_RATIO}`);
   assert(TORSO_UPRIGHT_RATIO > 0 && TORSO_UPRIGHT_RATIO < 1, `軀幹門檻應在 (0,1)，實得 ${TORSO_UPRIGHT_RATIO}`);
@@ -126,8 +132,6 @@ test('checklist: 判定在不同體型與鏡頭距離下仍成立（比值不受
   for (const scale of [0.7, 1.15]) {
     assert(adv(run('squat', { variant: 'headtilt', tempoRatio: 3, scale }), 'head_tilt') > 0,
       `scale=${scale} 時頭部側傾應仍被抓到`);
-    assert(adv(run('squat', { variant: 'hipuneven', tempoRatio: 3, scale }), 'hip_uneven') > 0,
-      `scale=${scale} 時骨盆傾斜應仍被抓到`);
     eq(adv(run('squat', { variant: 'clean', tempoRatio: 3, scale }), 'head_tilt'), 0,
       `scale=${scale} 時正常樣本仍不得誤報`);
   }
@@ -222,7 +226,6 @@ test('checklist: 六項判定在訓練當下都會發出提示', () => {
   };
   const cases = [
     ['squat', { variant: 'headtilt', tempoRatio: 3 }, 'head_tilt'],
-    ['squat', { variant: 'hipuneven', tempoRatio: 3 }, 'hip_uneven'],
     ['squat', { variant: 'clean', tempoRatio: 1 }, 'tempo_fast'],
     ['pushup', { variant: 'nolockout' }, 'no_lockout'],
     ['pushup', { variant: 'headfwd' }, 'head_forward'],
@@ -248,7 +251,6 @@ test('checklist: 正常樣本在訓練中不得發出這些提示', () => {
   for (const [id, opts, key] of [
     ['squat', { variant: 'clean', tempoRatio: 4 }, 'tempo_fast'],
     ['squat', { variant: 'clean', tempoRatio: 3 }, 'head_tilt'],
-    ['squat', { variant: 'clean', tempoRatio: 3 }, 'hip_uneven'],
     ['pushup', { variant: 'clean' }, 'no_lockout'],
     ['pushup', { variant: 'clean' }, 'head_forward'],
     ['highknees', { variant: 'clean' }, 'torso_lean'],

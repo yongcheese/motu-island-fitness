@@ -92,10 +92,6 @@ function poseSquat(d, variant) {
     const tilt = 0.09 * d;
     for (const i of [LM.NOSE, LM.LEFT_EAR, LM.RIGHT_EAR]) sk[i].x += tilt;
   }
-  if (variant === 'hipuneven') {
-    // 骨盆傾斜：單側髖下沉。冠狀面的垂直落差，正面投影可見。
-    sk[LM.LEFT_HIP].y += 0.05 * d;
-  }
   if (variant === 'compensation') {
     // 只彎腰代替下蹲：不夠深 ＋ 軀幹大幅前傾。
     // ⚠️ 2026-08-28 修正：舊版以 sk[i].x += lean 模擬彎腰 —— 那是「往側邊倒」，

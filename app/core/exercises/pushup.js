@@ -21,8 +21,13 @@ function pointLineDist(P, A, B) {
 //    progress 經平滑與 clamp，且動作週期在 readyReturn 就結束，永遠降不到對應的值。
 export const LOCKOUT_ANGLE = 160;
 
-// 頭頸前伸門檻：耳相對肩的水平偏移 ÷ 軀幹長。NASM Pushing Assessment 列
-// 「head jutting forward」為代償項。⚠️ 0.35 為工程判斷，未經真人標定。
+// 頭頸前伸門檻：耳相對肩的水平偏移 ÷ 軀幹長。
+// ⚠️ 2026-08-30 改述依據，勿改回：先前把 NASM Pushing Assessment 當作依據，
+//   但該評估的受測動作是**站姿推舉**，不是伏地挺身 —— 那是相鄰動作的外推，
+//   而外推這件事**不是資料能補的**（拍再多伏地挺身，也不會讓一個為站姿推舉
+//   訂的標準變成伏地挺身的標準）。故本項依據改列為「動作定義與教學慣例」（II 類），
+//   NASM 僅作為「頭頸前伸屬推類動作之常見代償」的旁證，不作為本動作的標準來源。
+// ⚠️ 0.35 為工程判斷，未經真人標定。
 export const HEAD_FORWARD_RATIO = 0.35;
 
 // 塌腰門檻：髖偏離「肩—踝」連線的距離 ÷ 軀幹長。詳細標定依據見 evaluate 內註解。
@@ -117,9 +122,9 @@ export const pushup = {
     const faults = [];
 
 
-    // —— 頭頸前伸（NASM Pushing Assessment）——
+    // —— 頭頸前伸 ——
     // 側面機位即矢狀面，故此量可靠。耳相對肩的水平偏移，以軀幹長正規化。
-    // ⚠️ NASM 該評估使用站姿推舉而非伏地挺身，屬相鄰動作之外推，已於依據總表記錄。
+    // 依據等級 II（動作定義與教學慣例）；不引 NASM 為本動作之標準來源，理由見檔頭常數處。
     const ear = f[LM.LEFT_EAR]?.visibility >= (f[LM.RIGHT_EAR]?.visibility ?? 0)
       ? f[LM.LEFT_EAR] : f[LM.RIGHT_EAR];
     if ((ear?.visibility ?? 0) >= 0.5 && torso > 1e-6) {
