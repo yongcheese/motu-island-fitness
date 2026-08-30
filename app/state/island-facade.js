@@ -20,16 +20,22 @@
 
 /** 島嶼模組可用的方法。目前這份名單即為我方 island 模組實際使用的集合加上合理擴充。 */
 export const ISLAND_ALLOWED = [
-  'getState',        // 唯讀狀態
+  'getState',        // 唯讀狀態（回傳凍結快照，見 createIslandFacade）
   'subscribe',       // 訂閱變更
   'spendCoins',      // 消費金幣（只減不增）
-  'consumeBoost',    // 宣告使用一張已持有的雙倍卡（只設旗標，不動餘額）
-  'isBoostArmed',    // 查詢旗標
+  'isBoostArmed',    // 查詢雙倍卡旗標（唯讀）
   'placeBuilding',   // 島嶼建設
   'moveBuilding',
+  'rotateBuilding',
   'removeBuilding',
   'unlock',
 ];
+
+// ⚠️ `consumeBoost` **刻意不在白名單上**（2026-08-30 互審共識）。
+//   它目前只設一個 boolean 旗標，不驗證也不扣除遊戲端的卡片庫存 ——
+//   而「扣卡」與「設旗標」的事務邊界正是尚未定案的 Slice 10。
+//   在該邊界凍結前開放它，等於允許「不扣卡就拿到雙倍」。
+//   待 Slice 10 定出高階事務操作後，開放那個操作而非開放這個裸旗標。
 
 /** 永遠不得開放給島嶼模組的方法，以及各自的理由。 */
 export const ISLAND_DENIED = {
@@ -50,15 +56,53 @@ export const ISLAND_DENIED = {
  * @returns {object} 受限介面（凍結，防止掛進來的模組自行補上方法）
  */
 export function createIslandFacade(store) {
+  // 快取一份凍結快照，狀態變更時失效。
+  // 若每次 getState 都深拷貝，島嶼的事件處理與重繪會反覆付出成本；
+  // 但「回傳同一份可變參考」正是 Slice 8 被互審抓到的繞過路徑，故不能直接轉發。
+  let snap = null;
+  const invalidate = () => { snap = null; };
+  if (typeof store?.subscribe === 'function') store.subscribe(invalidate);
+
+  const readState = () => {
+    if (snap === null) snap = deepFreeze(clone(store.getState()));
+    return snap;
+  };
+
   const facade = {};
   for (const k of ISLAND_ALLOWED) {
+    if (k === 'getState') { facade.getState = readState; continue; }
+    if (k === 'subscribe') {
+      // 回呼參數一律不轉發 —— store 的 emit 若哪天開始帶參數（例如整包 state），
+      // 直接轉發會讓可變參考從這條路漏出去。島嶼要資料就自己呼叫 getState()。
+      facade.subscribe = (fn) => store.subscribe(() => { fn(); });
+      continue;
+    }
     const v = store?.[k];
     if (typeof v === 'function') facade[k] = (...args) => v.apply(store, args);
     else if (v !== undefined) facade[k] = v;
   }
   // derived 是唯讀的衍生計算，島嶼要顯示等級進度會用到；逐項轉發避免整包外流。
   if (store?.derived) {
-    facade.derived = Object.freeze({ ...store.derived });
+    const d = {};
+    for (const [k, v] of Object.entries(store.derived)) {
+      d[k] = typeof v === 'function' ? (...a) => v.apply(store.derived, a) : v;
+    }
+    facade.derived = Object.freeze(d);
   }
   return Object.freeze(facade);
+}
+
+/** 深拷貝。structuredClone 在 Node 17+ 與現代瀏覽器皆有；退回 JSON 供極舊環境。 */
+function clone(v) {
+  try { return structuredClone(v); } catch { return JSON.parse(JSON.stringify(v)); }
+}
+
+/** 遞迴凍結。凍結而非只拷貝的理由：讓誤寫**當場失敗**（strict mode 拋錯），
+ *  而不是靜默地寫進一份沒人看的副本 —— 後者會讓模組以為自己改成功了。 */
+function deepFreeze(o) {
+  if (o && typeof o === 'object' && !Object.isFrozen(o)) {
+    Object.freeze(o);
+    for (const k of Object.keys(o)) deepFreeze(o[k]);
+  }
+  return o;
 }

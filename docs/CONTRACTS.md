@@ -226,13 +226,22 @@ export default {
 
 | | 內容 |
 |---|---|
-| **可用** | `getState`、`subscribe`、`spendCoins`、`consumeBoost`、`isBoostArmed`、`placeBuilding`、`moveBuilding`、`removeBuilding`、`unlock`、`derived`（唯讀複本） |
+| **可用** | `getState`（回傳**遞迴凍結之深拷貝快照**）、`subscribe`（回呼不帶參數）、`spendCoins`、`isBoostArmed`、`placeBuilding`、`moveBuilding`、`rotateBuilding`、`removeBuilding`、`unlock`、`derived`（唯讀複本） |
+| **暫緩** | `consumeBoost` —— 只設旗標、不扣遊戲端卡片庫存，而該事務邊界是尚未定案的 Slice 10；提前開放等於允許「不扣卡就拿到雙倍」 |
 | **不可用** | `commitSession`（唯一的金幣與經驗值產出入口）、`importJSON`（可整包覆寫含 wallet）、`reset`、`exportJSON`、`updateProfile`、`updatePrefs` |
 
 實作要點：
 - **白名單而非黑名單** —— 名單外的方法在介面上**根本不存在**（不是丟錯）。
   故 `typeof ctx.store.commitSession === 'function'` 為 `false`，模組不會誤以為可用。
 - 介面經 `Object.freeze`，掛載的模組無法自行補上被擋掉的方法。
+- **`getState()` 回傳遞迴凍結的深拷貝快照**，不是內部物件參考。
+  （2026-08-30 互審抓出：先前直接轉發內部 state，`getState().wallet.coins = 9999` 可直接改動正式餘額。）
+  快照有快取、狀態變更時失效，故重複讀取不會反覆付出深拷貝成本。
+- **`subscribe()` 的回呼不帶任何參數** —— 要資料就自己呼叫 `getState()`。
+  避免 store 的 emit 日後若開始帶參數時，可變參考從這條路漏出去。
+- **可替換模組不得直接 `import` store 模組的 `store` 綁定** ——
+  否則整個繞過本介面（互審抓出時，我方 island.js 正是如此，根本沒用 `ctx.store`）。
+  `tests/island-facade.test.js` 有靜態邊界測試把關；常數（如 `ACHIEVEMENTS`）可以 import，那不是狀態存取管道。
 - 其餘四個分頁（today／workout／tracking／settings）仍取得完整 store ——
   `workout` 需要 `commitSession`，`settings` 需要匯入匯出與重設。
 

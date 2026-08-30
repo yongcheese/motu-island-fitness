@@ -130,6 +130,12 @@ export const store = {
   moveBuilding(id, x, y) {
     const it = state.island.placed.find(p => p.id === id); if (it) { it.x = x; it.y = y; emit(); }
   },
+  // 旋轉建築。Slice 8b 新增：島嶼原本直接改 `getState().island.placed[].rot`，
+  // 那是繞過 store 的直接寫入；受限介面改回傳凍結快照後該寫法必然失敗，故補正式方法。
+  rotateBuilding(id) {
+    const it = state.island.placed.find(p => p.id === id);
+    if (it) { it.rot = ((it.rot || 0) + 1) % 4; emit(); }
+  },
   removeBuilding(id) {
     state.island.placed = state.island.placed.filter(p => p.id !== id); emit();
   },

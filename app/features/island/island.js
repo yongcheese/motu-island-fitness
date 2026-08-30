@@ -2,7 +2,11 @@
 // 用訓練賺來的金幣建設島嶼；金幣只能花、不能加（防刷）。
 import * as THREE from '../../../vendor/three/three.module.min.js';
 import { OrbitControls } from '../../../vendor/three/OrbitControls.js';
-import { store, ACHIEVEMENTS } from '../../state/store.js';
+// ⚠️ Slice 8b：**不得** import `store` 本身。
+// 島嶼是唯一開放替換的插槽，必須只透過 mount 傳入的受限介面存取狀態 ——
+// 直接 import 會整個繞過權限邊界（互審 2026-08-30 抓出，當時本檔正是如此）。
+// ACHIEVEMENTS 是常數表，不是狀態存取管道，可以直接 import。
+import { ACHIEVEMENTS } from '../../state/store.js';
 // 型錄與「下一個目標」邏輯移至 goals.js（Slice4 R3：與結算第二幕共用單一來源）
 import { CATALOG, CAT, UNLOCK_HINT, canBuy, nextGoal } from './goals.js';
 
@@ -11,6 +15,10 @@ const PLAT = 6.4;          // 平台邊長（世界單位）
 const CELL = PLAT / GRID;
 
 let S = null; // 場景 runtime
+// 受限 store 介面，由 mount 從 ctx 注入（見上方 import 處的說明）。
+// 用模組層變數而非逐處改寫 ctx.store，是為了讓既有 13 個呼叫點維持原狀，
+// 降低這次權限收斂改動出錯的機會。
+let store = null;
 
 export default {
   id: 'island', label: '島嶼', icon: '🏝️',
@@ -56,6 +64,7 @@ function mountIsland(root, ctx) {
       </div>
     </div>`;
 
+  store = ctx.store;   // 受限介面（main.js 對 island 分頁傳入 islandStore）
   S = { ctx, root, raf: 0, placing: null, editing: false, selected: null, unsub: null, ro: null };
   initThree();
   buildWorld();
@@ -470,7 +479,10 @@ function selectBuilding(obj) {
   bar.innerHTML = `<span>「${CAT[obj.userData.type]?.name || '建築'}」</span>
     <button class="btn secondary" id="isl-rot">↻ 旋轉</button>
     <button class="btn" id="isl-del" style="background:var(--red);color:#fff">移除</button>`;
-  bar.querySelector('#isl-rot').onclick = () => { obj.rotation.y += Math.PI / 2; const it = store.getState().island.placed.find(p => p.id === obj.userData.id); if (it) it.rot = (it.rot + 1) % 4; };
+  // 旋轉：改走 store.rotateBuilding（Slice 8b）。
+  // 原本是 `getState().island.placed.find(...).rot = ...` —— 直接寫入內部狀態，
+  // 繞過 store 也繞過受限介面；快照改為凍結後該寫法必然失敗。
+  bar.querySelector('#isl-rot').onclick = () => { obj.rotation.y += Math.PI / 2; store.rotateBuilding(obj.userData.id); };
   bar.querySelector('#isl-del').onclick = () => { store.removeBuilding(obj.userData.id); refreshPlaced(); clearSelect(); S.ctx.toast('已移除'); };
 }
 function clearSelect() {

@@ -102,6 +102,62 @@ test('facade: main.js 只對島嶼插槽套用受限介面（其餘分頁維持�
     'workout 不得被套上受限介面（它需要 commitSession）');
 });
 
+// ── 以下五條為 Slice 8b：互審抓出「防線可繞過」後補的 ──
+// 原本的測試組沒有任何一條會紅，因為它們只驗介面本身，沒驗**繞過路徑**。
+
+test('facade: getState 回傳凍結快照，改不動正式狀態（繞過路徑 1）', () => {
+  const f = fresh();
+  const before = f.getState().wallet.coins;
+  const snap = f.getState();
+  assert(Object.isFrozen(snap), '快照本身應凍結');
+  assert(Object.isFrozen(snap.wallet), '巢狀物件也應凍結（淺凍結擋不住 wallet.coins = 9999）');
+  try { snap.wallet.coins = 9999; } catch { /* strict mode 會拋 */ }
+  eq(store.getState().wallet.coins, before, '透過 getState 的回傳值不得改動正式餘額');
+});
+
+test('facade: 快照在狀態變更後會更新（凍結不得讓島嶼讀到過期資料）', () => {
+  const f = fresh();
+  const n0 = f.getState().island.placed.length;
+  f.placeBuilding({ type: 'house', x: 1, y: 1 });
+  eq(f.getState().island.placed.length, n0 + 1, '變更後 getState 應反映新狀態');
+});
+
+test('facade: subscribe 的回呼不得收到任何可變參考（繞過路徑 2）', () => {
+  const f = fresh();
+  const seen = [];
+  const off = f.subscribe((...args) => seen.push(args));
+  f.placeBuilding({ type: 'house', x: 3, y: 3 });
+  off();
+  assert(seen.length > 0, '前提：回呼應被觸發');
+  for (const args of seen) eq(args.length, 0, 'subscribe 的回呼不應收到任何參數');
+});
+
+test('facade: 可替換模組不得直接 import store（繞過路徑 3 —— 本次互審的主要發現）', async () => {
+  const { readFileSync, readdirSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const dir = fileURLToPath(new URL('../app/features/island/', import.meta.url));
+  for (const fn of readdirSync(dir).filter(n => n.endsWith('.js'))) {
+    const src = readFileSync(dir + fn, 'utf8');
+    for (const m of src.matchAll(/^\s*import\s*\{([^}]*)\}\s*from\s*['"][^'"]*state\/store\.js['"]/gm)) {
+      const names = m[1].split(',').map(x => x.trim().split(/\s+as\s+/)[0].trim()).filter(Boolean);
+      assert(!names.includes('store'),
+        `${fn} 直接 import 了 store —— 那會整個繞過受限介面。`
+        + '島嶼必須只透過 mount 傳入的 ctx.store 存取狀態。'
+        + '（常數如 ACHIEVEMENTS 可以 import，那不是狀態存取管道）');
+    }
+    assert(!/import\s+\*\s+as\s+\w+\s+from\s*['"][^'"]*state\/store\.js/.test(src),
+      `${fn} 以 namespace import 取得 store 模組 —— 同樣繞過受限介面`);
+  }
+});
+
+test('facade: consumeBoost 未開放（待 Slice 10 定出事務邊界）', () => {
+  const f = fresh();
+  eq(typeof f.consumeBoost, 'undefined',
+    'consumeBoost 只設旗標、不扣卡片庫存；在 Slice 10 凍結扣卡與設旗標的事務邊界前開放它，'
+    + '等於允許「不扣卡就拿到雙倍」');
+  assert(typeof f.isBoostArmed === 'function', '唯讀查詢旗標仍可用');
+});
+
 test('facade: 我方 island 模組實際用到的方法都在白名單內（換介面不會弄壞自家功能）', async () => {
   const { readFileSync } = await import('node:fs');
   const { fileURLToPath } = await import('node:url');
