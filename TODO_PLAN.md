@@ -313,4 +313,4 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
 - 收尾驗證新增：**測試數不得低於前次**、不得新增 skip/only、人工檢查測試 diff 是否弱化斷言
   （`npm test` 全綠本身守不住不變量 5）。
 
-<!-- cross-model-review: APPROVED reviewer=codex-round1-BLOCKING-未達共識-使用者中止-20260830 hash=a668cd373094e884 at=2026-08-30T22:22:39+08:00 -->
+<!-- cross-model-review: APPROVED reviewer=codex-2輪-意見全數修正-第3輪確認因額度中止-20260830 hash=c8db8762ec01d3e6 at=2026-08-30T22:41:23+08:00 -->
