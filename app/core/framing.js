@@ -101,6 +101,8 @@ function fail(issue, parts, text, span = 0) { return { ok: false, issue, parts, 
  *   visMin         可見度門檻
  *   requireHead    是否要求看得到頭（預設 true —— Bug1(a) 的直接修正）
  *   needsHeadroom  跳躍類動作：額外要求上緣留白，讓人跳起來時頭不會衝出畫面（Bug2(c)）
+ *   baselineSpan   使用者「站直時」的人體跨幅（由 engine 以站立基準 EMA 提供，未建立時為 null）。
+ *                  提供且已達 minSpan 時，不再逐幀判「太遠」—— 理由見下方 too_far 的註解。
  * @returns {{ok, issue, parts, text, span}}
  *   issue ∈ null | 'no_pose' | 'no_head' | 'too_close' | 'missing' | 'turned_away'
  *                | 'too_far' | 'no_headroom' | 'no_footroom'
@@ -111,6 +113,7 @@ export function framingReport(frame, opts = {}) {
     requireHead = true, needsHeadroom = false,
     maxSpan = FRAMING.maxSpan, minSpan = FRAMING.minSpan,
     headroom = FRAMING.headroom, footroom = FRAMING.footroom,
+    baselineSpan = null,
   } = opts;
 
   if (!frame || !frame.length) return fail('no_pose', [], '找不到人，請站到鏡頭中');
@@ -168,7 +171,13 @@ export function framingReport(frame, opts = {}) {
   // 可信的核心點太少 → fail-closed。資料不足就放行等於整段距離判定靜默失效。
   if (box.n < 3) return fail('missing', [], '看不清楚您的身體，請站到鏡頭中、讓全身入鏡');
   if (box.span > maxSpan) return fail('too_close', [], '太近了，請往後退一步讓全身入鏡', box.span);
-  if (box.span < minSpan) return fail('too_far', [], '離鏡頭有點遠，請往前一步', box.span);
+  // 「太遠」是**站姿時**的前置條件，不是逐幀條件 —— 與上方 needsHeadroom 同一個道理。
+  // 深蹲到最低點時人體高度會少掉一半以上（UI-PRMD 真人實測：站立 span 0.67 → 蹲底 0.29），
+  // 逐幀判的話，蹲底那幾幀與「站得很遠」在數值上完全一樣，於是引擎正好在最該判定的
+  // 深處停止判定。故一旦站立基準已確認距離足夠，就不再用當幀跨幅判太遠。
+  // 使用者真的走遠時仍會被抓到：站立基準只在身體直立時更新，人走遠後站著，基準會隨之下降。
+  const farRef = baselineSpan == null ? box.span : Math.max(box.span, baselineSpan);
+  if (farRef < minSpan) return fail('too_far', [], '離鏡頭有點遠，請往前一步', box.span);
   // 5) 跳躍類動作的上下留白：站姿就貼著畫面邊緣的話，一跳起來就會出框、偵測會亂掉。
   //    上下緣分開回報 —— 問題在腳卻叫使用者「讓頭頂留空間」，使用者只會愈調愈錯。
   if (needsHeadroom) {

@@ -131,6 +131,10 @@ export function createDetector(spec, opts = {}) {
   // 為何不能沿用 scaleEma：其 a=0.12，半衰期約 5 幀，彎腰持續一秒基準就跟著縮短，
   // 比值恆為 1，等於量不到。故另立一個「只在身體直立時才更新」的基準。
   let standTorso = null;
+  // 站立基準人體跨幅：判「離鏡頭太遠」用。與 standTorso 同一個道理 ——
+  // 深蹲/伏地挺身會讓當幀跨幅大幅縮小，逐幀判距離會在動作最深處誤判成「站太遠」。
+  // （UI-PRMD 真人實測：站立 0.67 → 蹲底 0.29，minSpan 0.30，19.3% 的幀因此停止判定）
+  let standSpan = null;
   function stableScale(frame) {
     const s = bodyScale(frame);
     if (!scaleEma) {
@@ -146,9 +150,12 @@ export function createDetector(spec, opts = {}) {
     return { ...s, ...scaleEma, frameTorso, torsoRatio: standTorso ? frameTorso / standTorso : 1 };
   }
   /** 由 update 在確認身體直立（動作尚未展開）時呼叫，緩慢更新站立基準。 */
-  function updateStandBaseline(frameTorso, isUpright) {
+  function updateStandBaseline(frameTorso, isUpright, frameSpan) {
     if (!isUpright) return;
     standTorso = standTorso === null ? frameTorso : 0.05 * frameTorso + 0.95 * standTorso;
+    if (Number.isFinite(frameSpan) && frameSpan > 0) {
+      standSpan = standSpan === null ? frameSpan : 0.05 * frameSpan + 0.95 * standSpan;
+    }
   }
 
   function idleResult() {
@@ -283,7 +290,7 @@ export function createDetector(spec, opts = {}) {
     _flag = null;
     // 取景判定（framing.js 單一事實來源）：可見度 + 座標真的在框內 + 頭部 + 跨幅。
     // 舊版只看 visibility，MediaPipe 對出框點的外插值會讓「人太近」照樣通過 —— 這是 Bug1 的根因。
-    const report = framingReport(frame, framingOpts);
+    const report = framingReport(frame, { ...framingOpts, baselineSpan: standSpan });
     framingWin.push(report.ok ? 0 : 1);
     if (framingWin.length > cfg.framingWindow) framingWin.shift();
     const framingBad = framingWin.reduce((a, b) => a + b, 0) >= cfg.framingBadNeed;
@@ -298,7 +305,7 @@ export function createDetector(spec, opts = {}) {
       // 短暫掉幀 vs 真的離開畫面：前者只是凍結（保住進行中的那一下），後者才重置狀態機。
       if (lostSinceMs === null) lostSinceMs = tMs;
       if (tMs - lostSinceMs >= cfg.abortAfterMs) {
-        scaleEma = null; standTorso = null;   // 重新進入畫面時重新校準尺度與站立基準
+        scaleEma = null; standTorso = null; standSpan = null;   // 重新進入畫面時重新校準尺度與站立基準
         for (const k in tracks) { tracks[k].tk.abort(); tracks[k].buf = []; tracks[k].faults.clear(); }
       }
       const seg = {}; for (const k of SEG_KEYS) seg[k] = 'red';
@@ -334,7 +341,7 @@ export function createDetector(spec, opts = {}) {
     }
     // 站立基準只在「動作尚未展開」時更新：progress 低代表人還站著，
     // 此時的軀幹投影長才是直立基準。動作進行中更新會讓基準被彎腰污染。
-    updateStandBaseline(scale.frameTorso, (ev.progress ?? Math.max(ev.progressL ?? 0, ev.progressR ?? 0)) < 0.15);
+    updateStandBaseline(scale.frameTorso, (ev.progress ?? Math.max(ev.progressL ?? 0, ev.progressR ?? 0)) < 0.15, report.span);
     let phase = 'READY';
     let signal = 0;
 
@@ -400,7 +407,7 @@ export function createDetector(spec, opts = {}) {
 
   function reset() {
     validReps = invalidReps = attempts = 0; lastCountTime = -1e9; lastSide = null; visStreak = 0; scaleEma = null;
-    unconfirmedFirstAlt = false; prevAttemptSide = null; standTorso = null;
+    unconfirmedFirstAlt = false; prevAttemptSide = null; standTorso = null; standSpan = null;
     framingWin = []; lostSinceMs = null;
     for (const k in faultCounts) delete faultCounts[k];
     for (const k in advisoryCounts) delete advisoryCounts[k];

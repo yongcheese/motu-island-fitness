@@ -192,17 +192,23 @@ test('squat: 軀幹前傾改用投影長度比後的判別餘裕（鎖住實測�
     }
     return min;
   };
+  // 2026-08-29 更新：合成器的正常深蹲已加入自然前傾（真人 3D 實測前傾峰值 38°），
+  // 不再是「軀幹恆為打直」的假樣本，故 clean 的投影比不再接近 1。
   const comp = minRatio('compensation');
-  between(comp, 0.30, 0.40, `代償樣本投影比最低應在 0.30–0.40（實測 0.336），實得 ${comp.toFixed(3)}`);
-  assert(TORSO_FOLD_RATIO - comp > 0.4,
-    `門檻 ${TORSO_FOLD_RATIO} 與代償樣本 ${comp.toFixed(3)} 的餘裕應大於 0.4 —— `
-    + '相較舊量測方式的 1.4°，此餘裕大得多，但仍須真人資料確認');
-
   const clean = minRatio('clean');
-  assert(clean > 0.99,
-    `合成器的正常深蹲軀幹恆為打直（實得投影比 ${clean.toFixed(3)}）——`
-    + '這代表「不會誤殺正常動作」在合成資料上是必然成立的，不能當作證據。'
-    + '真人正常深蹲的自然前傾使該比值落在約 0.96–1.06，與門檻 0.86 的實際餘裕未知。');
+  between(comp, 0.15, 0.28, `代償樣本投影比最低應在 0.15–0.28，實得 ${comp.toFixed(3)}`);
+  between(clean, 0.72, 0.86, `正常深蹲（含自然前傾）投影比最低應在 0.72–0.86，實得 ${clean.toFixed(3)}`);
+
+  // 門檻必須落在兩者之間，且兩側都要有餘裕 —— 這是本測試真正在守的不變量。
+  assert(comp < TORSO_FOLD_RATIO && TORSO_FOLD_RATIO < clean,
+    `門檻 ${TORSO_FOLD_RATIO} 應落在代償 ${comp.toFixed(3)} 與正常 ${clean.toFixed(3)} 之間`);
+  assert(TORSO_FOLD_RATIO - comp > 0.2, `與代償樣本的餘裕不足：${(TORSO_FOLD_RATIO - comp).toFixed(3)}`);
+  assert(clean - TORSO_FOLD_RATIO > 0.1, `與正常樣本的餘裕不足：${(clean - TORSO_FOLD_RATIO).toFixed(3)}`);
+
+  // ⚠️ 合成器上的餘裕不是「不會誤殺真人」的證據。真人資料（UI-PRMD Vicon，3D 真值）
+  //    已證明此量會隨鏡頭高度大幅漂移：同一次正確深蹲的最小比值為
+  //    地板 0.892 ／ 800mm 0.751 ／ 筆電 1150mm 0.686 ／ 1500mm 0.618。
+  //    門檻 0.58 即是取「最不利機位仍不誤判」而定，且 torso_lean 已因此降為 advisory。
 });
 
 // —— 膝內夾（knee valgus）——
@@ -241,15 +247,27 @@ test('squat: 膝內夾判定在不同體型與鏡頭距離下一致（比值不�
   assert(base > 0, '基準組應有膝內夾');
 });
 
-test('squat: 腳踝不可信時不判膝內夾（踝距失真則比值無意義）', () => {
-  const seq = makeSequence('squat', { reps: 3, variant: 'valgus' });
-  for (const f of seq.frames) {
-    f[LM.LEFT_ANKLE].visibility = 0.2;
-    f[LM.RIGHT_ANKLE].visibility = 0.2;
-  }
-  const det = createDetector(EXERCISES.squat);
-  let t = 0;
-  for (const f of seq.frames) { det.update(f, t); t += seq.dtMs; }
-  const n = (det.summary().advisoryCounts || {}).knee_valgus || 0;
-  eq(n, 0, `腳踝不可信時不應判膝內夾，實得 ${n} 次`);
+// 2026-08-29：量測方式由 KASR（膝距÷踝距）改為 膝距÷肩寬，理由見 squat.js。
+// 舊測試鎖的是「踝不可信時不判」——那是舊量測方式的必要防護（踝在分母）。
+// 新量測方式不含踝點，該防護不再需要；改鎖新設計真正該有的性質：
+//   踝點不可信**不應該**讓膝內夾判定失效（那正是換掉 KASR 想解決的脆弱性）。
+test('squat: 膝內夾判定不依賴腳踝可信度（新量測方式的健壯性）', () => {
+  const run = (variant, blindAnkles) => {
+    const seq = makeSequence('squat', { reps: 3, variant });
+    if (blindAnkles) {
+      for (const f of seq.frames) {
+        f[LM.LEFT_ANKLE].visibility = 0.2;
+        f[LM.RIGHT_ANKLE].visibility = 0.2;
+      }
+    }
+    const det = createDetector(EXERCISES.squat);
+    let t = 0;
+    for (const f of seq.frames) { det.update(f, t); t += seq.dtMs; }
+    return (det.summary().advisoryCounts || {}).knee_valgus || 0;
+  };
+  const seen = run('valgus', false);
+  const blind = run('valgus', true);
+  assert(seen > 0, '前提：正常可見度下應偵測到膝內夾');
+  assert(blind > 0, `踝點不可信時仍應偵測到膝內夾（新量測不使用踝點），實得 ${blind} 次`);
+  eq(run('clean', true), 0, '腳踝不可信不得使正常深蹲被誤判為膝內夾');
 });

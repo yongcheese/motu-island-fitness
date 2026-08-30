@@ -53,22 +53,39 @@ function ik(S, W, L1, L2, bowX) {
 // 上半身與手臂隨髖等量平移（軀幹/手臂長度不變、保持直立），看起來像真的深蹲。
 function poseSquat(d, variant) {
   const sk = baseSkeleton();
+  // 深蹲站距：UI-PRMD 真人實測，踝距約為肩寬的 1.85 倍（10 位受試者，3D Vicon 絕對座標）。
+  // baseSkeleton 的預設 0.45/0.55（踝距僅 0.63 倍肩寬）對深蹲而言過窄，是合成器缺陷 #5
+  // 的一半成因：過窄的踝距使深蹲時膝顯得外開得離譜（KASR 達 2.8，人做不出來的姿勢）。
+  // ⚠️ 只改深蹲。開合跳的「併攏」姿勢正是靠 baseSkeleton 的窄站距定義，不可一起動。
+  for (const [i, x] of [[LM.LEFT_ANKLE, 0.35], [LM.RIGHT_ANKLE, 0.65], [LM.LEFT_HEEL, 0.34],
+    [LM.RIGHT_HEEL, 0.66], [LM.LEFT_FOOT_INDEX, 0.36], [LM.RIGHT_FOOT_INDEX, 0.64]]) sk[i].x = x;
   const hipY = lerp(0.55, 0.82, d);      // 髖：站→蹲（底部略低於膝）
   const kneeY = lerp(0.73, 0.78, d);     // 膝：略下沉以配合前縮
-  const kneeOut = 0.09 * d;              // 膝外開
-  const drop = hipY - 0.55;              // 上半身整體下移量（保持軀幹長度）
-  const down = [LM.NOSE, LM.LEFT_EAR, LM.RIGHT_EAR, LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER,
-    LM.LEFT_ELBOW, LM.RIGHT_ELBOW, LM.LEFT_WRIST, LM.RIGHT_WRIST, LM.LEFT_HIP, LM.RIGHT_HIP];
-  for (const i of down) sk[i].y += drop;
-  sk[LM.LEFT_KNEE].x = 0.45 - kneeOut; sk[LM.RIGHT_KNEE].x = 0.55 + kneeOut;
+  const drop = hipY - 0.55;              // 髖的下移量
+  // 自然前傾（合成器缺陷 #6 的修正）：
+  //   真人深蹲**必然**前傾 —— UI-PRMD 的 3D 真值實測，正確深蹲的軀幹前傾峰值達 38°。
+  //   舊版讓軀幹全程保持垂直，導致人體外框只縮 33%，而真人縮 58%（0.67→0.29）。
+  //   外框縮不下來，就永遠踩不到取景的 minSpan，於是「深蹲最低點被判成站太遠」
+  //   這個真實 bug 從來沒被測出來。
+  //   此處以 cos(38°)≈0.79 縮短軀幹在畫面上的投影長度（頭肩往髖靠近）。
+  const leanShrink = lerp(1, 0.79, d);
+  const upper = [LM.NOSE, LM.LEFT_EAR, LM.RIGHT_EAR, LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER,
+    LM.LEFT_ELBOW, LM.RIGHT_ELBOW, LM.LEFT_WRIST, LM.RIGHT_WRIST];
+  for (const i of [LM.LEFT_HIP, LM.RIGHT_HIP]) sk[i].y += drop;
+  const newHipY = sk[LM.LEFT_HIP].y;
+  for (const i of upper) sk[i].y = newHipY - (0.55 - sk[i].y) * leanShrink;
+  // 膝：追蹤在腳的上方（真人實測 深蹲最低點的膝距 ≈ 0.96 × 踝距），
+  // 站立時略窄於腳、下蹲時外開到與腳同寬。舊版讓膝外開到踝距的 2.8 倍 —— 缺陷 #5。
+  const kneeOut = 0.02 * d;
+  sk[LM.LEFT_KNEE].x = 0.37 - kneeOut; sk[LM.RIGHT_KNEE].x = 0.63 + kneeOut;
   sk[LM.LEFT_KNEE].y = kneeY; sk[LM.RIGHT_KNEE].y = kneeY;
   if (variant === 'valgus') {
-    // 膝內夾：膝往中線移動、踝不動，使膝距窄於踝距。深度與軀幹皆正常，
+    // 膝內夾：膝往中線移動、踝不動，使膝距明顯窄於踝距。深度與軀幹皆正常，
     // 藉此隔離出「只有膝內夾」這一項 —— 若引擎把它判成有效，就是漏抓而非誤判其他規則。
-    // 位移量 0.16×d 使底部 KASR 降至約 0.4，是「明顯內夾」而非邊界案例。
-    const inward = 0.16 * d;
-    sk[LM.LEFT_KNEE].x = 0.45 - kneeOut + inward;
-    sk[LM.RIGHT_KNEE].x = 0.55 + kneeOut - inward;
+    // 位移量使底部的「膝距/肩寬」降到約 0.9，遠低於門檻 1.70，是明顯內夾而非邊界案例。
+    const inward = 0.09 * d;
+    sk[LM.LEFT_KNEE].x = 0.37 - kneeOut + inward;
+    sk[LM.RIGHT_KNEE].x = 0.63 + kneeOut - inward;
   }
   if (variant === 'headtilt') {
     // 頭部側傾：鼻與耳往同一側水平位移。冠狀面的量，正面投影可見。

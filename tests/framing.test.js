@@ -54,6 +54,26 @@ test('framing: 太遠 → too_far', () => {
   eq(r.issue, 'too_far');
 });
 
+// —— 2026-08-29：too_far 改以「站立基準跨幅」判定 ——
+// 起因（UI-PRMD 真人資料）：深蹲最低點的人體外框會縮到站立的一半以下
+//（實測 span 0.67 → 0.29，低於 minSpan 0.30），逐幀判會在動作最深處誤判成「站太遠」，
+// 影響 19.3% 的幀。與 needsHeadroom 當初改為「站姿驗一次」是同一個道理。
+// 以下兩條把「修好了」與「沒修壞」同時鎖住。
+test('framing: 有站立基準時，動作中途縮小的外框不得被誤判為太遠', () => {
+  // scale 0.35 → span 0.283（實測），低於 minSpan 0.30；比例接近真人蹲底時的縮小幅度
+  const small = _internal.transform(baseSkeleton(), { scale: 0.35 });
+  const bare = framingReport(small, { gateLandmarks: SQUAT_GATE });
+  eq(bare.issue, 'too_far', '前提：沒有基準時這種跨幅確實會被判太遠');
+  const withBase = framingReport(small, { gateLandmarks: SQUAT_GATE, baselineSpan: 0.66 });
+  eq(withBase.ok, true, `站立時距離足夠，蹲下不該被判太遠（實得 ${withBase.issue}）`);
+});
+
+test('framing: 站立基準本身就不足時，仍要判太遠（使用者真的走遠）', () => {
+  const small = _internal.transform(baseSkeleton(), { scale: 0.3 });
+  const r = framingReport(small, { gateLandmarks: SQUAT_GATE, baselineSpan: 0.24 });
+  eq(r.issue, 'too_far', '基準也不足＝人真的離太遠，不得因為有基準就放行');
+});
+
 // 這條是 Bug1 的根因鎖：舊版只看 visibility，這種幀會被判「看得到人」而繼續辨識。
 test('framing 回歸鎖: visibility 全 1 但座標在畫面外 → 仍判 too_close', () => {
   const sk = shift(baseSkeleton(), -0.20).map(p => ({ ...p, visibility: 1 }));
@@ -186,6 +206,16 @@ test('每個動作都有 phaseCues（Bug2(b)：使用者要知道下一步做什
 });
 
 /* ---------- engine 端到端 ---------- */
+// 2026-08-29：squat 的 torso_lean 已由 block 降為 advisory（真人 3D 驗證顯示該量會隨
+// 鏡頭高度大幅漂移，不該有權取消有效次數；理由見 squat.js 的註解）。
+// 但以下幾個測試守的是**引擎層機制**（unseen 記帳、repReason 的優先序），
+// 需要一個 block 級 fault 才能驗證。故在測試內把嚴重度覆寫回 block ——
+// 這是刻意的機制隔離，不代表正式設定，也不得反過來當成「深蹲該用 block」的依據。
+const SQUAT_BLOCKING = {
+  ...EXERCISES.squat,
+  faultSeverity: { ...EXERCISES.squat.faultSeverity, torso_lean: 'block' },
+};
+
 const runSeq = (id, seq, opts) => {
   const det = createDetector(EXERCISES[id], opts);
   let t = 0, last;
@@ -303,8 +333,9 @@ test('engine 防作弊: 錯誤發生的那幾幀剛好掉幀，不得把無效�
   // 正面機位的彎腰：繞髖前傾使軀幹的畫面投影縮短，水平位置不動。
   // ⚠️ 舊版以 x += k 注入 —— 那是側傾。2026-08-28 判定改用投影長度比後，
   //   側傾不再觸發 torso_lean，故注入方式必須一併修正（見 docs/verification/）。
-  // 40°（投影比 0.766）：低於門檻 0.86 足以觸發，又不致因單幀劇變被取景穩定性檢查凍結
-  //（實測 50° 以上會被判為訊號不可信而記成 unseen —— 真人彎腰是漸進的，不會兩幀內對折）。
+  // 2026-08-29：門檻由 0.86 改為 0.58（依 UI-PRMD 真人資料重新標定），且合成器的正常深蹲
+  //   已加入自然前傾（投影比約 0.79），兩者相乘後 40° 不再足以觸發 —— 注入角度隨之上調。
+  //   實測掃描（45/50/55/60/65°）皆為「有效 2、torso_lean 1、unseen 0」，取 55° 居中留餘裕。
   const lean = (f, deg) => {
     const o = f.map(p => ({ ...p }));
     const hipY = (o[LM.LEFT_HIP].y + o[LM.RIGHT_HIP].y) / 2;
@@ -320,13 +351,19 @@ test('engine 防作弊: 錯誤發生的那幾幀剛好掉幀，不得把無效�
   let t = 0; const peak = [];
   seq.frames.forEach((f) => { if (probe.update(f, t).phase === 'TARGET') peak.push(seq.frames.indexOf(f)); t += seq.dtMs; });
   const inject = [peak[2], peak[3]];
-  const withFault = { ...seq, frames: seq.frames.map((f, i) => (inject.includes(i) ? lean(f, 40) : f)) };
-  const faulted = runSeq('squat', withFault).s;
+  const runBlocking = (sq) => {
+    const det = createDetector(SQUAT_BLOCKING);
+    let tt = 0;
+    for (const f of sq.frames) { det.update(f, tt); tt += sq.dtMs; }
+    return det.summary();
+  };
+  const withFault = { ...seq, frames: seq.frames.map((f, i) => (inject.includes(i) ? lean(f, 55) : f)) };
+  const faulted = runBlocking(withFault);
   eq(faulted.validReps, 2, '前提：這個彎腰確實會讓那一下無效');
   eq(faulted.faultCounts.torso_lean || 0, 1);
   // 把「彎腰的那兩幀」變成看不到 —— 有效次數不得因此變多
   const hidden = dropFrames(withFault, inject);
-  const s = runSeq('squat', hidden).s;
+  const s = runBlocking(hidden);
   eq(s.validReps, 2, '沒看到的那一下不該被升級成有效');
   eq(s.faultCounts.unseen || 0, 1, '應誠實記成沒看清楚');
 });
@@ -391,8 +428,9 @@ test('repReason: 瞬間發生的錯誤不得被誤報成「半程未達標」', 
   // 正面機位的彎腰：繞髖前傾使軀幹的畫面投影縮短，水平位置不動。
   // ⚠️ 舊版以 x += k 注入 —— 那是側傾。2026-08-28 判定改用投影長度比後，
   //   側傾不再觸發 torso_lean，故注入方式必須一併修正（見 docs/verification/）。
-  // 40°（投影比 0.766）：低於門檻 0.86 足以觸發，又不致因單幀劇變被取景穩定性檢查凍結
-  //（實測 50° 以上會被判為訊號不可信而記成 unseen —— 真人彎腰是漸進的，不會兩幀內對折）。
+  // 2026-08-29：門檻由 0.86 改為 0.58（依 UI-PRMD 真人資料重新標定），且合成器的正常深蹲
+  //   已加入自然前傾（投影比約 0.79），兩者相乘後 40° 不再足以觸發 —— 注入角度隨之上調。
+  //   實測掃描（45/50/55/60/65°）皆為「有效 2、torso_lean 1、unseen 0」，取 55° 居中留餘裕。
   const lean = (f, deg) => {
     const o = f.map(p => ({ ...p }));
     const hipY = (o[LM.LEFT_HIP].y + o[LM.RIGHT_HIP].y) / 2;
@@ -409,7 +447,7 @@ test('repReason: 瞬間發生的錯誤不得被誤報成「半程未達標」', 
   const inject = [peak[2], peak[3]];
 
   const reasonsOf = (frames) => {
-    const det = createDetector(EXERCISES.squat);
+    const det = createDetector(SQUAT_BLOCKING);
     let tt = 0; const out = [];
     for (const f of frames) {
       const r = det.update(f, tt); tt += seq.dtMs;
@@ -418,7 +456,7 @@ test('repReason: 瞬間發生的錯誤不得被誤報成「半程未達標」', 
     return out;
   };
   // 只在最深處彎腰 → 原因要是 torso_lean，不是 half_rep
-  const leaned = seq.frames.map((f, i) => (inject.includes(i) ? lean(f, 40) : f));
+  const leaned = seq.frames.map((f, i) => (inject.includes(i) ? lean(f, 55) : f));
   eq(reasonsOf(leaned)[0], 'torso_lean', '蹲夠深了卻被說沒蹲夠，使用者會照錯的方向改');
   // 那幾幀剛好掉幀 → 原因要是 unseen
   const hidden = leaned.map((f, i) => (inject.includes(i) ? f.map(p => ({ ...p, visibility: 0.05 })) : f));
@@ -530,7 +568,7 @@ test('彈跳類動作: 從通過關卡的取景起算，騰空 0.15 畫面高仍
 
 // 提示方向錯誤會害人：用彎腰代替下蹲的人被告知「再往下蹲」，只會彎得更厲害。
 test('repReason: 做不到底但同時有 block 級錯誤時，回報那個錯誤而不是「半程」', () => {
-  const det = createDetector(EXERCISES.squat);
+  const det = createDetector(SQUAT_BLOCKING);
   const seq = makeSequence('squat', { reps: 4, variant: 'compensation' });
   let t = 0; const reasons = [];
   for (const f of seq.frames) {
