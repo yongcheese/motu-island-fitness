@@ -213,11 +213,36 @@ export default {
 ### `ctx` 提供的內容（`main.js:52-65`）
 | 欄位 | 型別 | 說明 |
 |---|---|---|
-| `ctx.store` | Store | 上述 store，**唯一**的狀態來源 |
+| `ctx.store` | Store 或受限介面 | 上述 store，**唯一**的狀態來源。⚠️ **島嶼分頁例外**，見下方「島嶼插槽的受限介面」 |
 | `ctx.coach` | Coach | 語音教練：`say(text, priority)`、`stop()` |
 | `ctx.navigate(id)` | `(string) => void` | 切換到指定分頁 |
 | `ctx.toast(msg)` | `(string) => void` | 顯示 2.2 秒提示 |
 | `ctx.setChrome(visible)` | `(boolean) => void` | 隱藏／顯示 topbar 與 tabbar（全螢幕沉浸用） |
+
+#### 島嶼插槽的受限介面（Slice 8，2026-08-30）
+
+島嶼分頁是本系統**唯一開放替換**的插槽（遊戲組模組將掛載於此，見 `features/island/registry.js`）。
+該插槽的 `ctx.store` **不是完整 store**，而是 `state/island-facade.js` 產生的白名單介面。
+
+| | 內容 |
+|---|---|
+| **可用** | `getState`、`subscribe`、`spendCoins`、`consumeBoost`、`isBoostArmed`、`placeBuilding`、`moveBuilding`、`removeBuilding`、`unlock`、`derived`（唯讀複本） |
+| **不可用** | `commitSession`（唯一的金幣與經驗值產出入口）、`importJSON`（可整包覆寫含 wallet）、`reset`、`exportJSON`、`updateProfile`、`updatePrefs` |
+
+實作要點：
+- **白名單而非黑名單** —— 名單外的方法在介面上**根本不存在**（不是丟錯）。
+  故 `typeof ctx.store.commitSession === 'function'` 為 `false`，模組不會誤以為可用。
+- 介面經 `Object.freeze`，掛載的模組無法自行補上被擋掉的方法。
+- 其餘四個分頁（today／workout／tracking／settings）仍取得完整 store ——
+  `workout` 需要 `commitSession`，`settings` 需要匯入匯出與重設。
+
+⚠️ **界線（對外描述不得放大）**：純前端網頁擋不了 DevTools、直接修改 localStorage、
+或使用者自行注入腳本。本介面防的是**合作模組的誤用與越權**，**不是惡意使用者**。
+對外只能說「在正常應用流程與模組權限邊界內成立」。
+
+⚠️ 白名單的擴充規則：遊戲組若需更多權限，逐項評估後加入 `ISLAND_ALLOWED`；
+但 `ISLAND_DENIED` 上的方法**永遠不得加入** —— 它們是「金幣唯一來源為訓練結算」這條承諾的守門本身。
+`tests/island-facade.test.js` 有一條靜態核對：我方 island 模組若用到白名單外的方法會立刻紅燈。
 
 ### 五個現有分頁
 `today`（今日 ☀️）、`island`（島嶼 🏝️）、`workout`（訓練 🏋️）、`tracking`（健康 📊）、`settings`（設定 ⚙️）
