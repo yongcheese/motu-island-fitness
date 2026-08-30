@@ -20,6 +20,9 @@ export const LOCKOUT_ANGLE = 160;
 // 「head jutting forward」為代償項。⚠️ 0.35 為工程判斷，未經真人標定。
 export const HEAD_FORWARD_RATIO = 0.35;
 
+// 塌腰門檻：髖偏離「肩—踝」連線的距離 ÷ 軀幹長。詳細標定依據見 evaluate 內註解。
+export const SAG_RATIO = 0.30;
+
 export const pushup = {
   id: 'pushup', name: '伏地挺身', group: 'upper',
   met: 8.0, baseCoinPerRep: 8, intensity: 1.05,
@@ -79,9 +82,27 @@ export const pushup = {
     // ⚠️ HRP 額外要求底部雙手離地成 T 字，與一般伏地挺身非完全同一動作；共通者為「維持身體直線」此項要求。
     // ⚠️ 界線：軍方標準規範的是「怎樣算一次」，不是傷害研究。不得對外宣稱「塌腰會造成傷害」——
     //   直接針對伏地挺身塌腰之傷害研究，本團隊未查得。
-    // ⚠️ 門檻 0.18 為工程判斷（III 類），無外部依據：軍方以目視判斷「是否成一直線」，未給量化閾值。
-    //   待標定來源：真人測試加拍之塌腰組。
-    const gatePass = sagRatio < 0.18;
+    // 門檻 SAG_RATIO：軍方以目視判斷「是否成一直線」，未給量化閾值，故數值須自行標定。
+    //
+    // ✅ 2026-08-30 已用真人資料標定（前一版 0.18 為工程判斷，實測證明過緊）：
+    //   資料 REHAB24-6（DOI 10.5281/zenodo.13305826，CC BY-NC 4.0），Ex3 桌上伏地挺身，
+    //   10 位受試者、46 次正確 + 50 次不正確，物理治療師標註正確與否，光學動捕 3D 真值。
+    //   實測（每次動作取峰值）：正確組 中位 0.167／p95 0.283；不正確組 中位 0.361。
+    //     · 舊門檻 0.18 恰好落在正確組的中位數上 → **在正確動作上誤判 45.7%**，
+    //       而本項是 block 級（會取消使用者的有效次數）。
+    //     · 0.30 取正確組 p95 附近：誤判 4.3%，仍觸發 62% 的不正確動作。
+    //
+    // ✅ 本量對機位穩健（與深蹲深度、高抬腿抬腿高度形成對比）：
+    //   側面機位高度 0.6／1.0／1.5 m 三種下，正確組中位數差異僅 0.0015；
+    //   且投影量到的值（0.166）與 3D 真值（0.167）幾乎相同。
+    //   原因：它是沿身體長軸的形狀比值，側面機位正對該平面，不受俯角影響。
+    //   故維持 block 級是站得住的 —— 與 torso_lean 因機位不穩而降級的情況不同。
+    //
+    // ⚠️ 限制：REHAB24-6 的 Ex3 是**桌上**伏地挺身（身體與鉛垂線夾約 43°），
+    //   非本 App 預期的地板平板姿勢。地板姿勢下重力對身體的垂直分量較大，
+    //   正確動作的自然下沉可能高於此處實測值，門檻仍須以真人測試複核。
+    // ⚠️ 只有誤判率經標定；「不正確組觸發率 62%」不等於塌腰偵測率（該組未細分錯誤型別）。
+    const gatePass = sagRatio < SAG_RATIO;
     const faults = [];
 
 
@@ -94,10 +115,10 @@ export const pushup = {
       // 側面拍攝時身體沿 x 軸水平：頭在肩的前方（x 較小），偏移過大即前伸
       if ((shC.x - ear.x) / torso > HEAD_FORWARD_RATIO) faults.push('head_forward');
     }
-    if (sagRatio >= 0.18) faults.push('sag');
+    if (sagRatio >= SAG_RATIO) faults.push('sag');
     const armColor = progress >= 0.8 ? 'green' : (progress > 0.4 ? 'yellow' : 'green');
     const segments = {
-      torso: sagRatio >= 0.18 ? 'red' : (sagRatio > 0.1 ? 'yellow' : 'green'),
+      torso: sagRatio >= SAG_RATIO ? 'red' : (sagRatio > SAG_RATIO * 0.55 ? 'yellow' : 'green'),
       leftArm: armColor, rightArm: armColor, leftLeg: 'green', rightLeg: 'green',
     };
     return { progress, gatePass, faults, segments, lockoutOk: elbowAngle >= LOCKOUT_ANGLE };

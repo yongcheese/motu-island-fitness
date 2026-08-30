@@ -2,10 +2,17 @@
 import { LM } from '../landmarks.js';
 import { midpoint, angle, norm } from '../geometry.js';
 
-// 軀幹挺直門檻：軀幹畫面投影長 ÷ 站立基準。與深蹲 TORSO_FOLD_RATIO 同一方法，
-// 但門檻較寬（0.80 vs 0.86）—— 高抬腿是有氧動作，自然前傾幅度大於深蹲，
-// 沿用深蹲門檻會誤殺。⚠️ 0.80 為工程判斷，未經真人標定。
+// 軀幹挺直門檻：軀幹畫面投影長 ÷ 站立基準。與深蹲 TORSO_FOLD_RATIO 同一方法。
 // 依據：田徑與健身教學材料通行描述「torso upright / 保持軀幹挺直」（II 類，僅教學慣例）。
+//
+// ✅ 2026-08-30 已用真人資料驗證（UI-PRMD m02 跨欄步，Vicon 3D，10 位受試者）：
+//    正確動作的軀幹投影比 p01=0.962、中位 0.985 → **本門檻誤判 0.0%**（800mm 與 1150mm 兩機位皆是）。
+//
+// ⚠️ 為什麼深蹲的同一個量出了大問題、這裡卻沒有 —— 這個區別很重要，別誤刪：
+//    torsoRatio 會漂移的成因是**軀幹在動作中大幅上下移動**（人下沉時俯角變大，
+//    軀幹投影本來就縮短，與前傾無關）。深蹲軀幹下沉逾 500mm，故其門檻隨機位由
+//    0.892(地板) 漂到 0.618(1500mm)；高抬腿軀幹幾乎不下沉，實測同一量在四種機位
+//    的差異僅 0.001。故「torsoRatio 不可靠」只成立於軀幹有大幅垂直位移的動作。
 export const TORSO_UPRIGHT_RATIO = 0.80;
 
 export const highknees = {
@@ -38,11 +45,18 @@ export const highknees = {
     voiceIntro: '開始高抬腿。原地左右輪流，把膝蓋抬高到髖部的高度，上半身保持挺直。' },
   evaluate(f, s) {
     const hipC = midpoint(f[LM.LEFT_HIP], f[LM.RIGHT_HIP]);
+    // ⚠️ 抬腿深度與深蹲的深度判定同屬「垂直高低關係」，同樣受鏡頭高度影響（2026-08-30 實測）：
+    //    同一個真實動作的 progress 峰值 p05 在 800mm 為 0.517、在 1150mm 只剩 0.305，
+    //    達 targetEnter(0.80) 的比例由 100%(地板) 掉到 60%(1500mm)。
+    //    與深蹲相同，此偏差無法從畫面消除 → 靠設定要求控制機位（鏡頭放低約 0.8–1.0m）。
     const kneeAbove = (kY) => norm((hipC.y - kY) / s.torsoLength, -0.6, 0.0);
     const progressL = kneeAbove(f[LM.LEFT_KNEE].y);
     const progressR = kneeAbove(f[LM.RIGHT_KNEE].y);
     const side = progressL >= progressR ? 'L' : 'R';
     // 支撐腳（未抬起那側）膝角應接近打直。腳踝為非 gate 點：看不清時跳過此檢查（不誤判 block）。
+    // ✅ 2026-08-30 真人驗證（同上資料）：正確動作的支撐腳膝角 p05=167.8°、中位 169.5°，
+    //    對門檻 150° 有 18° 餘裕，**誤判 0.0%**；且四種機位間的差異僅 0.4°，
+    //    是本專案目前**唯一對鏡頭高度近乎完全不敏感**的判定量（因為量的是角度不是高低關係）。
     const standAnkle = side === 'L' ? f[LM.RIGHT_ANKLE] : f[LM.LEFT_ANKLE];
     const standKnee = side === 'L' ? f[LM.RIGHT_KNEE] : f[LM.LEFT_KNEE];
     const standHip = side === 'L' ? f[LM.RIGHT_HIP] : f[LM.LEFT_HIP];
