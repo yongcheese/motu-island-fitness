@@ -11,7 +11,12 @@ function pointLineDist(P, A, B) {
 
 // 頂點伸展角度：一次動作中肘角須至少回到此值，才算「推到頂手臂打直」。
 // 依據：美軍 AFT／ACFT 官方標準「fully extending the elbows (front leaning rest)」。
-// ⚠️ 160 為工程判斷 —— AFT 以目視判斷伸直與否，未給角度值。未經真人標定。
+// 160 原為工程判斷（AFT 以目視判斷伸直與否，未給角度值）。
+// ✅ 2026-08-30 已用真人資料驗證（REHAB24-6 Ex3，46 次物理治療師標為正確的伏地挺身）：
+//   正確動作的頂點肘角 3D 真值 p05=162.9°、中位 173.5° → **本門檻誤判 0.0%**。
+//   側面投影量到 p05=165.4°，與 3D 真值的絕對差中位僅 3.0° ——
+//   即「用側面鏡頭量肘角」這個量測方法本身是可靠的，不只是門檻剛好可用。
+// ⚠️ 資料為斜板姿勢；但「肘是否伸直」與身體傾角無關，此項的移轉性風險低。
 // ⚠️ 必須用「該次是否曾達到」判定，不能逐幀判也不能用 progress 推斷：
 //    progress 經平滑與 clamp，且動作週期在 readyReturn 就結束，永遠降不到對應的值。
 export const LOCKOUT_ANGLE = 160;
@@ -67,6 +72,12 @@ export const pushup = {
       angle(f[LM.LEFT_SHOULDER], f[LM.LEFT_ELBOW], f[LM.LEFT_WRIST]) +
       angle(f[LM.RIGHT_SHOULDER], f[LM.RIGHT_ELBOW], f[LM.RIGHT_WRIST])
     ) / 2;
+    // progress：165°→0、90°→1。targetEnter 0.75 對應肘角約 108.8°。
+    // ✅ 2026-08-30 真人驗證（REHAB24-6 Ex3）：正確動作的底部肘角 3D 真值 p95=86.8°、
+    //   中位 63.7°，側面投影 p95=97.8° → 門檻 108.8° 的誤判率 **0.0%**，餘裕約 11–22°。
+    //   側面投影與 3D 真值的絕對差中位 4.0°。
+    // ⚠️ 資料為斜板姿勢，動作較省力、下沉幅度可能大於地板姿勢；地板姿勢下的餘裕
+    //   應會縮小，惟 108.8° 本身很淺（中位 63.7° 遠低於此），移轉性風險仍低。待真人測試複核。
     const progress = norm(165 - elbowAngle, 0, 75);   // 165°→0，90°→1
     const shC = midpoint(f[LM.LEFT_SHOULDER], f[LM.RIGHT_SHOULDER]);
     const hipC = midpoint(f[LM.LEFT_HIP], f[LM.RIGHT_HIP]);
