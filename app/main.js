@@ -148,4 +148,8 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 else boot();
 
 // 給 console 偵錯用
-window.__app = { store, ctx, show };
+// ⚠️ 2026-08-30 互審抓出並移除：此處原為 `window.__app = { store, ctx, show }`。
+// 那是一條**不需要 DevTools 的繞過路徑** —— 掛載進來的模組只要呼叫
+// `window.__app.store.commitSession({ validReps: 9999 })` 就能憑空產出金幣，
+// 受限介面等於形同虛設。全站無任何程式依賴此物件（互審後實測確認），故直接移除。
+// 若日後需要除錯掛勾，必須只暴露不具權限的東西，絕不可再把完整 store 掛上全域。

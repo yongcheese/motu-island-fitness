@@ -133,10 +133,17 @@ test('facade: subscribe 的回呼不得收到任何可變參考（繞過路徑 2
 });
 
 test('facade: 可替換模組不得直接 import store（繞過路徑 3 —— 本次互審的主要發現）', async () => {
-  const { readFileSync, readdirSync } = await import('node:fs');
+  const { readFileSync, readdirSync, existsSync } = await import('node:fs');
   const { fileURLToPath } = await import('node:url');
-  const dir = fileURLToPath(new URL('../app/features/island/', import.meta.url));
-  for (const fn of readdirSync(dir).filter(n => n.endsWith('.js'))) {
+  // ⚠️ 必須涵蓋**所有可能的島嶼來源目錄**，不能只掃我方那個。
+  //   互審第二輪指出：正式模組預定放在 `island-game/`（見 main.js 的接入說明），
+  //   只掃 `island/` 的話，遊戲組模組直接 import store 時這條測試不會紅 —— 等於白守。
+  const dirs = ['island', 'island-game']
+    .map(d => fileURLToPath(new URL(`../app/features/${d}/`, import.meta.url)))
+    .filter(existsSync);
+  assert(dirs.length > 0, '至少應有一個島嶼來源目錄');
+  const files = dirs.flatMap(d => readdirSync(d).filter(n => n.endsWith('.js')).map(n => [d, n]));
+  for (const [dir, fn] of files) {
     const src = readFileSync(dir + fn, 'utf8');
     for (const m of src.matchAll(/^\s*import\s*\{([^}]*)\}\s*from\s*['"][^'"]*state\/store\.js['"]/gm)) {
       const names = m[1].split(',').map(x => x.trim().split(/\s+as\s+/)[0].trim()).filter(Boolean);
@@ -148,6 +155,17 @@ test('facade: 可替換模組不得直接 import store（繞過路徑 3 —— �
     assert(!/import\s+\*\s+as\s+\w+\s+from\s*['"][^'"]*state\/store\.js/.test(src),
       `${fn} 以 namespace import 取得 store 模組 —— 同樣繞過受限介面`);
   }
+});
+
+test('facade: 全域物件不得暴露完整 store（繞過路徑 4 —— 互審第二輪抓出）', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const src = readFileSync(fileURLToPath(new URL('../app/main.js', import.meta.url)), 'utf8')
+    .split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');   // 去掉註解行，只看實際程式
+  assert(!/window\.\w+\s*=\s*\{[^}]*\bstore\b/.test(src),
+    'main.js 不得把完整 store 掛到全域 —— 掛載的模組只要呼叫 window.X.store.commitSession() '
+    + '就能繞過受限介面，且**不需要 DevTools**，不屬於已聲明不防的情境');
+  assert(!/window\.\w+\s*=\s*store\b/.test(src), 'main.js 不得把 store 直接掛到全域');
 });
 
 test('facade: consumeBoost 未開放（待 Slice 10 定出事務邊界）', () => {

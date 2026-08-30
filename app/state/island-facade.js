@@ -19,17 +19,22 @@
 //   但 DENIED 那份名單上的方法**永遠不得加入**——它們是這條承諾的守門本身。
 
 /** 島嶼模組可用的方法。目前這份名單即為我方 island 模組實際使用的集合加上合理擴充。 */
+// 原則：**取實測最小集合，事後依需求逐項放寬**。從嚴起步、事後放寬是安全的；反之則否。
+// 下列即為我方 island 模組實測用到的全部方法（2026-08-30 掃描確認），未多給。
 export const ISLAND_ALLOWED = [
-  'getState',        // 唯讀狀態（回傳凍結快照，見 createIslandFacade）
-  'subscribe',       // 訂閱變更
+  'getState',        // 唯讀狀態（回傳遞迴凍結的深拷貝快照，見 createIslandFacade）
+  'subscribe',       // 訂閱變更（回呼不帶參數）
   'spendCoins',      // 消費金幣（只減不增）
-  'isBoostArmed',    // 查詢雙倍卡旗標（唯讀）
+  'isBoostArmed',    // 查詢雙倍卡旗標（唯讀，無副作用）
   'placeBuilding',   // 島嶼建設
-  'moveBuilding',
   'rotateBuilding',
   'removeBuilding',
-  'unlock',
 ];
+
+// ⚠️ `moveBuilding` 與 `unlock` **刻意不在白名單上**（2026-08-30 互審共識）。
+//   兩者都會改變狀態，而我方 island 模組實測**一次都沒用到**。
+//   `unlock` 尤其敏感 —— 它直接改變建築解鎖進度，等於繞過「靠訓練解鎖」的設計。
+//   遊戲組若確實需要，取得明確需求後再逐項加入。
 
 // ⚠️ `consumeBoost` **刻意不在白名單上**（2026-08-30 互審共識）。
 //   它目前只設一個 boolean 旗標，不驗證也不扣除遊戲端的卡片庫存 ——
