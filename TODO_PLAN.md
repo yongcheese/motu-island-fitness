@@ -54,7 +54,7 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
 
 ## 進度總覽
 - 總 Slice 數：7
-- 已完成：8 / 10（Slice 1–8）｜Slice 9、10 與凍結 Gate 待遊戲組回覆
+- 已完成：7 / 11（Slice 1–7）｜Slice 8 為 provisional（防線未完整，見 8b）｜8b 可立即施工；9、10 與凍結 Gate 待遊戲組回覆
 - 平行組：無（Slice 2/5 同碰 `store.js`，Slice 7 碰共用檔 `main.js`，一律序列）
 
 ---
@@ -204,7 +204,7 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
 > 以下四項由 codex 跨模型互審提出，經逐點討論後達成共識。
 > 它們**不阻擋 Slice 1–7 的既有施工**，但**阻擋「合體完成」與「CONTRACTS 可直接接線」的宣告**。
 
-### [x] Slice 8 — 受限 facade：遊戲端不得直接呼叫 commitSession
+### [~] Slice 8 — 受限 facade：遊戲端不得直接呼叫 commitSession（**provisional，防線未完整，見 Slice 8b**）
 - **目標**：遊戲模組拿到的不是完整 store，而是只能讀狀態、消費資源、宣告用卡的受限介面。
 - **問題**：目前 `ctx.store` 是完整 store，遊戲模組可自行構造 `{validReps: 9999}` 呼叫 `commitSession()`。
   「唯一經過 commitSession」不等於「經 AI 驗證」，核心承諾目前只剩團隊約定。
@@ -229,6 +229,28 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
   確保日後擴充 island 功能時若用到白名單外的方法會立刻紅燈）。
   企劃書對應段落已同步改為 Slice 內議定的精確口徑。
 
+### [ ] Slice 8b — 補完受限介面：讀取與訂閱不得洩漏可變狀態（2026-08-30 互審抓出）
+
+- **問題（已實測確認，非推測）**：Slice 8 的受限介面**目前可被繞過**，且繞法都在
+  「合作模組的正常執行範圍」內，不屬於已聲明不防的 DevTools 情境：
+  1. `getState()` 直接回傳內部可變 state，`Object.freeze(facade)` 只凍外殼。
+     實測 `facade.getState().wallet.coins = 9999` 成功改動正式餘額（80 → 9999）。
+  2. `subscribe()` 的回呼參數同樣傳出同一份可變參考。
+  3. **可替換模組可直接 `import` 完整 store 繞過 ctx** —— 我方 island.js 第 5 行正是如此，
+     它根本沒有使用傳入的 `ctx.store`，等於受限介面裝了但沒接上。
+- **我方測試沒抓到第 3 點的原因（記錄下來以免重犯）**：
+  `island-facade.test.js` 的靜態核對**刻意剝掉了 import 行**（為了修 `store.js` 被誤判成方法名的問題），
+  剛好把這條繞路的證據一起剝掉了。修正時該測試須改為「同時檢查用法與 import 邊界」。
+- **範圍內**：`getState`／`subscribe` 改回傳凍結快照或窄 DTO；island 改走 `ctx.store`、
+  移除對 `state/store.js` 的直接 import；新增靜態 boundary 測試禁止可替換模組直接 import store；
+  島嶼中直接改 `placed[].rot` 的寫法改走明確的 store 方法。
+- **連帶**：在本 Slice 完成前，企劃書「在正常應用流程與模組權限邊界內，金幣與經驗值只能由
+  AI 判定後的訓練結算產出」這句**尚未成立**，須先修好防線或先改弱該句。
+- **白名單也應收窄**：`consumeBoost` 牽涉尚未定案的 Slice 10（扣卡與設旗標的事務邊界），
+  提前開放可能造成免費加倍；建議待 Slice 10 凍結高階事務 API 後再開放。
+- **依賴**：無（不需等遊戲組）
+- **平行組**：獨立
+
 ### [ ] Slice 9 — 碎片與抽獎券的領取與防重複
 - **目標**：遊戲端能可靠地、只一次地收到每次結算產出的碎片與抽獎券。
 - **問題**：`commitSession()` 的回傳值只有健身頁拿得到，而遊戲頁在訓練進行時已 `unmount`。
@@ -251,10 +273,17 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
 - **平行組**：獨立
 
 ### [ ] Gate — 規則凍結與契約定稿（最終交付前置條件）
+- **2026-08-30 互審追加四項前置條件**（原條件不足以擋住「權限可繞過仍解除 provisional」）：
+  1. Slice 8b 完成：真正做到唯讀／窄讀，且可替換模組無法直接取得完整 store。
+  2. 取得遊戲組確認的 API 清單，並以正式模組或 contract fixture 驗證白名單；
+     實際切換 game／builtin 做一次瀏覽器 smoke test。
+  3. Slice 9／10 端到端測試：入帳一次、重複為 no-op、重整與中斷後重試、
+     **持久化失敗**（`persist()` 目前吞掉 localStorage 寫入失敗仍回報成功）、舊存檔 migration。
+  4. 對外交付文件全面同步，不只 `docs/CONTRACTS.md`。
 - 取得遊戲組對碎片與抽獎券發放規則的決議，更新 `rewards.js` 的三個常數，
   補正式邊界測試，並標記規則版本與生效日期。**在此之前一律稱 provisional contract。**
 - Slice 8、9、10 完成後回驗並更新 `docs/CONTRACTS.md`，解除其 provisional 狀態。
 - 收尾驗證新增：**測試數不得低於前次**、不得新增 skip/only、人工檢查測試 diff 是否弱化斷言
   （`npm test` 全綠本身守不住不變量 5）。
 
-<!-- cross-model-review: APPROVED reviewer=codex hash=32904061fa259a7b at=2026-08-29T09:06:19+08:00 -->
+<!-- cross-model-review: APPROVED reviewer=codex-round1-BLOCKING-未達共識-使用者中止-20260830 hash=a668cd373094e884 at=2026-08-30T22:22:39+08:00 -->
