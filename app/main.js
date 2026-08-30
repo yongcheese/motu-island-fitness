@@ -8,6 +8,7 @@ import island from './features/island/island.js';
 import { resolveIsland } from './features/island/registry.js';
 import tracking from './features/tracking/tracking.js';
 import settings from './features/settings/settings.js';
+import { createIslandFacade } from './state/island-facade.js';
 
 const coach = createCoach({ enabled: store.getState().prefs.voice });
 
@@ -37,6 +38,8 @@ if (!islandPick.ok) console.error('[island]', islandPick.message);
 //    （2026-08-29 由跨模型互審抓出，且該錯誤已一度被抄進 docs/CONTRACTS.md）。
 //    needsTopbar 同樣從未被讀取，已自契約移除。
 const FEATURES = { today, island: islandPick.module, workout, tracking, settings };
+// 島嶼插槽的受限 store 介面（見 state/island-facade.js 的完整說明與界線）
+const islandStore = createIslandFacade(store);
 const TABS = [
   { id: 'today', label: '今日', icon: '☀️' },
   { id: 'island', label: '島嶼', icon: '🏝️' },
@@ -111,7 +114,11 @@ function show(id) {
   ctx.setChrome(true); // 預設顯示外框，feature 可自行關閉
   renderTabbar();
   const feat = FEATURES[id];
-  try { feat.mount(els.view, ctx); } catch (e) { console.error(e); els.view.innerHTML = `<p class="sub" style="margin-top:40px">模組載入失敗：${e.message}</p>`; }
+  // 島嶼是唯一會被外部模組替換的插槽，只給受限 store 介面（Slice 8）。
+  // 白名單上沒有 commitSession —— 掛進來的模組無法憑空產出金幣或經驗值。
+  // 界線：純前端擋不了 DevTools 或直接改 localStorage，這道防線防的是模組越權而非惡意使用者。
+  const featCtx = id === 'island' ? { ...ctx, store: islandStore } : ctx;
+  try { feat.mount(els.view, featCtx); } catch (e) { console.error(e); els.view.innerHTML = `<p class="sub" style="margin-top:40px">模組載入失敗：${e.message}</p>`; }
   feat.onShow?.();
 }
 

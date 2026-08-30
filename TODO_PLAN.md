@@ -54,7 +54,7 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
 
 ## 進度總覽
 - 總 Slice 數：7
-- 已完成：7 / 7（Slice 1–7）｜互審後新增 Slice 8–10 與凍結 Gate 待辦
+- 已完成：8 / 10（Slice 1–8）｜Slice 9、10 與凍結 Gate 待遊戲組回覆
 - 平行組：無（Slice 2/5 同碰 `store.js`，Slice 7 碰共用檔 `main.js`，一律序列）
 
 ---
@@ -204,7 +204,7 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
 > 以下四項由 codex 跨模型互審提出，經逐點討論後達成共識。
 > 它們**不阻擋 Slice 1–7 的既有施工**，但**阻擋「合體完成」與「CONTRACTS 可直接接線」的宣告**。
 
-### [ ] Slice 8 — 受限 facade：遊戲端不得直接呼叫 commitSession
+### [x] Slice 8 — 受限 facade：遊戲端不得直接呼叫 commitSession
 - **目標**：遊戲模組拿到的不是完整 store，而是只能讀狀態、消費資源、宣告用卡的受限介面。
 - **問題**：目前 `ctx.store` 是完整 store，遊戲模組可自行構造 `{validReps: 9999}` 呼叫 `commitSession()`。
   「唯一經過 commitSession」不等於「經 AI 驗證」，核心承諾目前只剩團隊約定。
@@ -217,6 +217,17 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
   純前端架構不宣稱抵抗使用者直接竄改瀏覽器資料」。
 - **依賴**：需先與遊戲組議定他們需要哪些權限
 - **平行組**：獨立
+- **對外介面**：`app/state/island-facade.js` 匯出 `createIslandFacade(store)`、`ISLAND_ALLOWED`、`ISLAND_DENIED`；
+  `main.js` 對 `id === 'island'` 的分頁改傳 `{ ...ctx, store: islandStore }`。
+- **完成註記（2026-08-30）**：以**白名單**實作而非黑名單 —— 名單外的方法在介面上根本不存在
+  （`typeof facade.commitSession === 'function'` 為 false），介面並經 `Object.freeze`。
+  白名單為我方 island 模組實測用到的集合（getState／subscribe／spendCoins／placeBuilding／
+  removeBuilding）加上合理擴充（consumeBoost／isBoostArmed／moveBuilding／unlock／derived）。
+  **未等遊戲組議定即先行實作的理由**：從嚴起步、事後放寬是安全的；反之則否。
+  遊戲組若需更多權限逐項評估加入，但 `ISLAND_DENIED` 上的永遠不得加入。
+  新增 `tests/island-facade.test.js`（8 條，含「我方 island 用到的方法都在白名單內」的靜態核對，
+  確保日後擴充 island 功能時若用到白名單外的方法會立刻紅燈）。
+  企劃書對應段落已同步改為 Slice 內議定的精確口徑。
 
 ### [ ] Slice 9 — 碎片與抽獎券的領取與防重複
 - **目標**：遊戲端能可靠地、只一次地收到每次結算產出的碎片與抽獎券。
