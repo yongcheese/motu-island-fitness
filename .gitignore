@@ -2,3 +2,5 @@
 *.log
 node_modules/
 .playwright-mcp/
+
+__pycache__/
