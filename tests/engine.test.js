@@ -4,7 +4,7 @@ import { EXERCISES } from '../app/core/exercises/index.js';
 import { makeSequence } from '../app/core/synth.js';
 import { LM } from '../app/core/landmarks.js';
 import { bodyScale } from '../app/core/normalize.js';
-import { TORSO_FOLD_RATIO } from '../app/core/exercises/squat.js';
+import { TORSO_FOLD_RATIO, KNEE_SPAN_MIN_RATIO } from '../app/core/exercises/squat.js';
 
 const run = (id, seqOpts) => {
   const det = createDetector(EXERCISES[id]);
@@ -270,4 +270,55 @@ test('squat: 膝內夾判定不依賴腳踝可信度（新量測方式的健壯�
   assert(seen > 0, '前提：正常可見度下應偵測到膝內夾');
   assert(blind > 0, `踝點不可信時仍應偵測到膝內夾（新量測不使用踝點），實得 ${blind} 次`);
   eq(run('clean', true), 0, '腳踝不可信不得使正常深蹲被誤判為膝內夾');
+});
+
+// ── 膝內夾門檻的真人資料錨定測試（2026-09-05 新增）──
+//
+// 為什麼需要這一組：上面那批測試全部以合成器樣本驗證，而合成器的 clean 深蹲
+// 膝距比最小僅 1.76、真人正確組 p05 卻低到 1.20 —— 合成器的正常深蹲「膝開得比真人寬」。
+// 後果：任何低於 1.76 的門檻都能讓上面每一條測試通過，包括實測誤判過半的舊值 1.50。
+// 合成器綠燈不等於門檻正確，故本組改以**真人實測分位數**當斷言錨點：
+//
+//   · 真人正確組 p05 = 1.20（EC3D lab=1，n=35 段）      → 不得誤判
+//   · 真人膝內夾組中位 = 0.91（EC3D lab=3，n=13 段）     → 必須抓到
+//
+// 舊值 1.50 會使第一條紅燈（1.20 落在門檻下方，正確動作被誤判）；
+// 門檻若低於 0.91 則第二條紅燈。兩條共同把門檻夾在真人資料支持的區間內。
+const HUMAN_CORRECT_P05 = 1.20;   // EC3D lab=1（正確）每次動作最小膝距比的第 5 百分位
+const HUMAN_VALGUS_MEDIAN = 0.91; // EC3D lab=3（膝內夾）每次動作最小膝距比的中位數
+
+/** 把 clean 深蹲的雙膝以膝中點為心橫向縮放，使膝距/肩寬達到 target。 */
+const atKneeRatio = (target) => {
+  const seq = makeSequence('squat', { reps: 3, variant: 'clean' });
+  for (const f of seq.frames) {
+    const sw = Math.abs(f[LM.RIGHT_SHOULDER].x - f[LM.LEFT_SHOULDER].x);
+    const span = Math.abs(f[LM.RIGHT_KNEE].x - f[LM.LEFT_KNEE].x);
+    if (sw < 1e-6 || span < 1e-6) continue;
+    const mid = (f[LM.LEFT_KNEE].x + f[LM.RIGHT_KNEE].x) / 2;
+    const k = (target * sw) / span;
+    f[LM.LEFT_KNEE].x = mid + (f[LM.LEFT_KNEE].x - mid) * k;
+    f[LM.RIGHT_KNEE].x = mid + (f[LM.RIGHT_KNEE].x - mid) * k;
+  }
+  const det = createDetector(EXERCISES.squat);
+  let t = 0;
+  for (const f of seq.frames) { det.update(f, t); t += seq.dtMs; }
+  return (det.summary().advisoryCounts || {}).knee_valgus || 0;
+};
+
+test('squat: 真人正確組第 5 百分位的膝距比不得被判膝內夾', () => {
+  const n = atKneeRatio(HUMAN_CORRECT_P05);
+  eq(n, 0, `膝距比 ${HUMAN_CORRECT_P05}（真人正確組 p05，EC3D n=35）不應觸發膝內夾，實得 ${n} 次。`
+    + '舊門檻 1.50 會在此紅燈 —— 它在真人正確深蹲上誤判 57.1%（EC3D）／18.2%（REHAB24-6）');
+});
+
+test('squat: 真人膝內夾組中位數的膝距比必須被抓到', () => {
+  const n = atKneeRatio(HUMAN_VALGUS_MEDIAN);
+  assert(n > 0, `膝距比 ${HUMAN_VALGUS_MEDIAN}（真人膝內夾組中位，EC3D n=13）應觸發膝內夾，實得 ${n} 次`);
+});
+
+test('squat: 膝內夾門檻落在真人資料支持的區間內（邊界案例）', () => {
+  assert(KNEE_SPAN_MIN_RATIO < HUMAN_CORRECT_P05,
+    `門檻 ${KNEE_SPAN_MIN_RATIO} 須低於真人正確組 p05 ${HUMAN_CORRECT_P05}，否則正確動作會被誤判`);
+  assert(KNEE_SPAN_MIN_RATIO > HUMAN_VALGUS_MEDIAN,
+    `門檻 ${KNEE_SPAN_MIN_RATIO} 須高於真人膝內夾組中位 ${HUMAN_VALGUS_MEDIAN}，否則半數膝內夾抓不到`);
 });
