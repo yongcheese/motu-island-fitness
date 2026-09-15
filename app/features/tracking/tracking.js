@@ -124,7 +124,7 @@ export function computeSummary(state, today = new Date()) {
     // 平均達標率取代原本的累積熱量：熱量由 MET 公式估算，未納入個體代謝差異，
     // 亦無心率或攝氧量佐證；達標率則由本系統逐次判定累計而得，是可精確計算的量。
     avgTargetRate: totalAttempts ? Math.round(totalValid / totalAttempts * 100) : 0,
-    streakCurrent: state.streak?.current || 0,
+    streakCurrent: store.derived.currentStreak(),
     streakLongest: state.streak?.longest || 0,
   };
 }

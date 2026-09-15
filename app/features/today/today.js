@@ -90,7 +90,7 @@ function render() {
           <div class="td-mission-t">${done >= TASK.target ? '✅ ' : ''}${first ? '完成你的第一次訓練' : esc(TASK.title)}</div>
           <div class="td-mission-s">${done >= TASK.target ? '今日任務完成！' : first ? '島上第一棟建築正等著你解鎖 🏝️' : `還差 ${TASK.target - done} 個 · ${esc(TASK.hint)}`}</div>
           <div class="td-mission-pills">
-            <span class="pill td-streak" id="td-streak">🔥 連續 ${s.streak.current} 天</span>
+            <span class="pill td-streak" id="td-streak">🔥 連續 ${store.derived.currentStreak()} 天</span>
             ${goalMin ? `<span class="pill td-mins${mins >= goalMin ? ' td-hit' : ''}">⏱️ ${mins} / ${goalMin} 分鐘</span>` : ''}
           </div>
         </div>

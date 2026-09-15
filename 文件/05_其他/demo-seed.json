@@ -1,278 +1,306 @@
 {
-  "schema": 1,
-  "profile": {
-    "nickname": "島主",
-    "avatar": "🧑‍🚀",
-    "height_cm": 172,
-    "weight_kg": 65,
-    "age": 20,
-    "sex": "unspecified"
-  },
-  "prefs": {
-    "voice": true,
-    "bgm": false,
-    "difficulty": "normal",
-    "mirror": true,
-    "colorMode": "tricolor",
-    "dailyGoalMin": 20,
-    "weeklyGoalDays": 4,
-    "warmup": true
-  },
-  "wallet": {
-    "coins": 92,
-    "xp": 830,
-    "level": 5
-  },
-  "island": {
-    "placed": [
-      {
-        "id": "d0",
-        "type": "cabin",
-        "x": 2,
-        "y": 2,
-        "rot": 0
-      },
-      {
-        "id": "d1",
-        "type": "tree",
-        "x": 3,
-        "y": 2,
-        "rot": 0
-      },
-      {
-        "id": "d2",
-        "type": "tree",
-        "x": 4,
-        "y": 2,
-        "rot": 0
-      },
-      {
-        "id": "d3",
-        "type": "flower",
-        "x": 5,
-        "y": 2,
-        "rot": 0
-      },
-      {
-        "id": "d4",
-        "type": "flower",
-        "x": 6,
-        "y": 2,
-        "rot": 0
-      },
-      {
-        "id": "d5",
-        "type": "lamp",
-        "x": 2,
-        "y": 3,
-        "rot": 0
-      },
-      {
-        "id": "d6",
-        "type": "path",
-        "x": 3,
-        "y": 3,
-        "rot": 0
-      },
-      {
-        "id": "d7",
-        "type": "path",
-        "x": 4,
-        "y": 3,
-        "rot": 0
-      },
-      {
-        "id": "d8",
-        "type": "garden",
-        "x": 5,
-        "y": 3,
-        "rot": 0
-      },
-      {
-        "id": "d9",
-        "type": "fountain",
-        "x": 6,
-        "y": 3,
-        "rot": 0
-      },
-      {
-        "id": "e10",
-        "type": "garden",
-        "x": 6,
-        "y": 6,
-        "rot": 0
-      },
-      {
-        "id": "e11",
-        "type": "fountain",
-        "x": 1,
-        "y": 7,
-        "rot": 0
-      },
-      {
-        "id": "e12",
-        "type": "dock",
-        "x": 2,
-        "y": 7,
-        "rot": 0
-      },
-      {
-        "id": "e13",
-        "type": "windmill",
-        "x": 3,
-        "y": 7,
-        "rot": 0
-      }
-    ],
-    "unlocked": [
-      "fountain",
-      "gym"
-    ]
-  },
-  "streak": {
-    "current": 4,
-    "lastActiveDate": "2026-08-25",
-    "longest": 4
-  },
-  "history": [
-    {
-      "id": "xj3hpu5u",
-      "dateISO": "2026-08-18T13:38:24.151Z",
-      "date": "2026-08-18",
-      "exercise": "squat",
-      "exerciseName": "深蹲",
-      "durationSec": 300,
-      "validReps": 18,
-      "invalidReps": 3,
-      "targetRate": 0.857,
-      "calories": 27.6,
-      "coinsEarned": 210,
-      "grade": "A",
-      "faults": {
-        "half_rep": 1
-      }
-    },
-    {
-      "id": "44v8n7e1",
-      "dateISO": "2026-08-19T13:38:24.152Z",
-      "date": "2026-08-19",
-      "exercise": "jumpingjack",
-      "exerciseName": "開合跳",
-      "durationSec": 240,
-      "validReps": 24,
-      "invalidReps": 2,
-      "targetRate": 0.923,
-      "calories": 33.6,
-      "coinsEarned": 175,
-      "grade": "S",
-      "faults": {
-        "half_rep": 1
-      }
-    },
-    {
-      "id": "51gw0s6k",
-      "dateISO": "2026-08-21T13:38:24.152Z",
-      "date": "2026-08-21",
-      "exercise": "squat",
-      "exerciseName": "深蹲",
-      "durationSec": 320,
-      "validReps": 20,
-      "invalidReps": 4,
-      "targetRate": 0.833,
-      "calories": 29.1,
-      "coinsEarned": 231,
-      "grade": "A",
-      "faults": {
-        "half_rep": 2,
-        "torso_lean": 1
-      }
-    },
-    {
-      "id": "ca6sucbn",
-      "dateISO": "2026-08-22T13:38:24.152Z",
-      "date": "2026-08-22",
-      "exercise": "highknees",
-      "exerciseName": "高抬腿",
-      "durationSec": 280,
-      "validReps": 26,
-      "invalidReps": 5,
-      "targetRate": 0.839,
-      "calories": 37.8,
-      "coinsEarned": 154,
-      "grade": "A",
-      "faults": {
-        "half_rep": 2,
-        "torso_lean": 1
-      }
-    },
-    {
-      "id": "9qwsz4pd",
-      "dateISO": "2026-08-22T13:38:24.152Z",
-      "date": "2026-08-22",
-      "exercise": "pushup",
-      "exerciseName": "伏地挺身",
-      "durationSec": 200,
-      "validReps": 12,
-      "invalidReps": 3,
-      "targetRate": 0.8,
-      "calories": 26.6,
-      "coinsEarned": 112,
-      "grade": "A",
-      "faults": {
-        "half_rep": 1
-      }
-    },
-    {
-      "id": "eh49tpm7",
-      "dateISO": "2026-08-23T13:38:24.152Z",
-      "date": "2026-08-23",
-      "exercise": "squat",
-      "exerciseName": "深蹲",
-      "durationSec": 340,
-      "validReps": 22,
-      "invalidReps": 2,
-      "targetRate": 0.917,
-      "calories": 32,
-      "coinsEarned": 272,
-      "grade": "S",
-      "faults": {
-        "half_rep": 1
-      }
-    },
-    {
-      "id": "1101wxsr",
-      "dateISO": "2026-08-24T13:38:24.152Z",
-      "date": "2026-08-24",
-      "exercise": "jumpingjack",
-      "exerciseName": "開合跳",
-      "durationSec": 260,
-      "validReps": 28,
-      "invalidReps": 3,
-      "targetRate": 0.903,
-      "calories": 36.1,
-      "coinsEarned": 211,
-      "grade": "S",
-      "faults": {
-        "half_rep": 1
-      }
-    },
-    {
-      "id": "6061fqne",
-      "dateISO": "2026-08-25T13:38:24.152Z",
-      "date": "2026-08-25",
-      "exercise": "squat",
-      "exerciseName": "深蹲",
-      "durationSec": 250,
-      "validReps": 16,
-      "invalidReps": 2,
-      "targetRate": 0.889,
-      "calories": 23.3,
-      "coinsEarned": 200,
-      "grade": "A",
-      "faults": {
-        "half_rep": 1
-      }
-    }
+ "schema": 1,
+ "profile": {
+  "nickname": "島主",
+  "avatar": "🧑‍🚀",
+  "height_cm": 172,
+  "weight_kg": 65,
+  "age": 20,
+  "sex": "unspecified"
+ },
+ "prefs": {
+  "voice": true,
+  "bgm": false,
+  "difficulty": "normal",
+  "mirror": true,
+  "colorMode": "tricolor",
+  "dailyGoalMin": 20,
+  "weeklyGoalDays": 4,
+  "warmup": true
+ },
+ "wallet": {
+  "coins": 610,
+  "xp": 830,
+  "level": 5
+ },
+ "island": {
+  "placed": [
+   {
+    "id": "d0",
+    "type": "cabin",
+    "x": 2,
+    "y": 2,
+    "rot": 0
+   },
+   {
+    "id": "d1",
+    "type": "tree",
+    "x": 3,
+    "y": 2,
+    "rot": 0
+   },
+   {
+    "id": "d2",
+    "type": "tree",
+    "x": 4,
+    "y": 2,
+    "rot": 0
+   },
+   {
+    "id": "d3",
+    "type": "flower",
+    "x": 5,
+    "y": 2,
+    "rot": 0
+   },
+   {
+    "id": "d4",
+    "type": "flower",
+    "x": 6,
+    "y": 2,
+    "rot": 0
+   },
+   {
+    "id": "d5",
+    "type": "lamp",
+    "x": 2,
+    "y": 3,
+    "rot": 0
+   },
+   {
+    "id": "d6",
+    "type": "path",
+    "x": 3,
+    "y": 3,
+    "rot": 0
+   },
+   {
+    "id": "d7",
+    "type": "path",
+    "x": 4,
+    "y": 3,
+    "rot": 0
+   },
+   {
+    "id": "d8",
+    "type": "garden",
+    "x": 5,
+    "y": 3,
+    "rot": 0
+   },
+   {
+    "id": "d9",
+    "type": "fountain",
+    "x": 6,
+    "y": 3,
+    "rot": 0
+   },
+   {
+    "id": "e10",
+    "type": "garden",
+    "x": 6,
+    "y": 6,
+    "rot": 0
+   },
+   {
+    "id": "e11",
+    "type": "fountain",
+    "x": 1,
+    "y": 7,
+    "rot": 0
+   },
+   {
+    "id": "e12",
+    "type": "dock",
+    "x": 2,
+    "y": 7,
+    "rot": 0
+   },
+   {
+    "id": "e13",
+    "type": "windmill",
+    "x": 3,
+    "y": 7,
+    "rot": 0
+   }
   ],
-  "achievements": []
+  "unlocked": [
+   "fountain",
+   "gym"
+  ]
+ },
+ "streak": {
+  "current": 3,
+  "lastActiveDate": "2026-09-14",
+  "longest": 4
+ },
+ "history": [
+  {
+   "id": "gngvbzsi",
+   "dateISO": "2026-09-02T19:41:00Z",
+   "date": "2026-09-02",
+   "exercise": "squat",
+   "exerciseName": "深蹲",
+   "durationSec": 300,
+   "validReps": 18,
+   "invalidReps": 3,
+   "targetRate": 0.857,
+   "calories": 33.1,
+   "coinsEarned": 180,
+   "grade": "A",
+   "faults": {
+    "half_rep": 1
+   }
+  },
+  {
+   "id": "2kcdhjmq",
+   "dateISO": "2026-09-03T19:35:00Z",
+   "date": "2026-09-03",
+   "exercise": "pushup",
+   "exerciseName": "伏地挺身",
+   "durationSec": 240,
+   "validReps": 12,
+   "invalidReps": 4,
+   "targetRate": 0.75,
+   "calories": 39.2,
+   "coinsEarned": 120,
+   "grade": "B",
+   "faults": {
+    "sag": 2
+   }
+  },
+  {
+   "id": "ar53k5h1",
+   "dateISO": "2026-09-05T19:41:00Z",
+   "date": "2026-09-05",
+   "exercise": "jumpingjack",
+   "exerciseName": "開合跳",
+   "durationSec": 180,
+   "validReps": 26,
+   "invalidReps": 2,
+   "targetRate": 0.929,
+   "calories": 29.4,
+   "coinsEarned": 260,
+   "grade": "A",
+   "faults": {}
+  },
+  {
+   "id": "nu9qitht",
+   "dateISO": "2026-09-06T19:19:00Z",
+   "date": "2026-09-06",
+   "exercise": "squat",
+   "exerciseName": "深蹲",
+   "durationSec": 300,
+   "validReps": 20,
+   "invalidReps": 2,
+   "targetRate": 0.909,
+   "calories": 33.1,
+   "coinsEarned": 200,
+   "grade": "A",
+   "faults": {
+    "knee_valgus": 1
+   }
+  },
+  {
+   "id": "jtjkavhj",
+   "dateISO": "2026-09-07T19:29:00Z",
+   "date": "2026-09-07",
+   "exercise": "highknees",
+   "exerciseName": "高抬腿",
+   "durationSec": 180,
+   "validReps": 24,
+   "invalidReps": 5,
+   "targetRate": 0.828,
+   "calories": 29.4,
+   "coinsEarned": 240,
+   "grade": "B",
+   "faults": {
+    "low_knee": 3
+   }
+  },
+  {
+   "id": "n9e8pkj6",
+   "dateISO": "2026-09-09T19:21:00Z",
+   "date": "2026-09-09",
+   "exercise": "squat",
+   "exerciseName": "深蹲",
+   "durationSec": 300,
+   "validReps": 22,
+   "invalidReps": 1,
+   "targetRate": 0.957,
+   "calories": 33.1,
+   "coinsEarned": 220,
+   "grade": "A",
+   "faults": {}
+  },
+  {
+   "id": "t5x0rbtz",
+   "dateISO": "2026-09-10T19:12:00Z",
+   "date": "2026-09-10",
+   "exercise": "pushup",
+   "exerciseName": "伏地挺身",
+   "durationSec": 240,
+   "validReps": 15,
+   "invalidReps": 3,
+   "targetRate": 0.833,
+   "calories": 39.2,
+   "coinsEarned": 150,
+   "grade": "A",
+   "faults": {
+    "sag": 1
+   }
+  },
+  {
+   "id": "dh9bngmx",
+   "dateISO": "2026-09-12T19:42:00Z",
+   "date": "2026-09-12",
+   "exercise": "jumpingjack",
+   "exerciseName": "開合跳",
+   "durationSec": 200,
+   "validReps": 28,
+   "invalidReps": 3,
+   "targetRate": 0.903,
+   "calories": 32.7,
+   "coinsEarned": 280,
+   "grade": "A",
+   "faults": {
+    "limb_desync": 2
+   }
+  },
+  {
+   "id": "l2or914z",
+   "dateISO": "2026-09-13T19:03:00Z",
+   "date": "2026-09-13",
+   "exercise": "squat",
+   "exerciseName": "深蹲",
+   "durationSec": 300,
+   "validReps": 21,
+   "invalidReps": 2,
+   "targetRate": 0.913,
+   "calories": 33.1,
+   "coinsEarned": 210,
+   "grade": "A",
+   "faults": {
+    "half_rep": 1
+   }
+  },
+  {
+   "id": "kth8tdpl",
+   "dateISO": "2026-09-14T19:08:00Z",
+   "date": "2026-09-14",
+   "exercise": "highknees",
+   "exerciseName": "高抬腿",
+   "durationSec": 200,
+   "validReps": 25,
+   "invalidReps": 4,
+   "targetRate": 0.862,
+   "calories": 32.7,
+   "coinsEarned": 250,
+   "grade": "B",
+   "faults": {
+    "low_knee": 2
+   }
+  }
+ ],
+ "achievements": []
 }

@@ -156,6 +156,7 @@ export const store = {
       const cur = xpForLevel(lv), next = xpForLevel(lv + 1);
       return { cur: state.wallet.xp - cur, need: next - cur, ratio: (state.wallet.xp - cur) / (next - cur || 1) };
     },
+    currentStreak,
   },
 };
 
@@ -184,6 +185,25 @@ function todayValidTotal(extraValidReps = 0) {
     if (h.date === today && Number.isFinite(h.validReps) && h.validReps > 0) n += h.validReps;
   }
   return n;
+}
+
+/**
+ * 目前仍成立的連續天數。
+ *
+ * ⚠️ 不可直接讀 `state.streak.current` —— 那個欄位只在 `bumpStreak()`（即結算時）更新，
+ *    使用者只要停止訓練，它就會一直停在最後一次的數值。
+ *    實測：最後活動日 2026-08-30、當日 2026-09-15（相隔 16 天），畫面仍顯示「連續 1 天」。
+ *
+ * 判定：最後活動日若不是今天也不是昨天，連續已中斷 → 0。
+ * 保留「昨天」是刻意的：昨天練過、今天還沒練，這條連續仍可由今天的訓練接續，
+ * 此時顯示 0 會讓使用者以為已經斷了。
+ */
+function currentStreak() {
+  const s = state.streak;
+  if (!s?.lastActiveDate) return 0;
+  const today = todayISO();
+  const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+  return (s.lastActiveDate === today || s.lastActiveDate === yesterday) ? (s.current || 0) : 0;
 }
 
 function bumpStreak(validRepsThisSession = 0) {
