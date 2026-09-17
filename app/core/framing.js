@@ -43,6 +43,24 @@ export const CORE_LANDMARKS = [
   LM.LEFT_KNEE, LM.RIGHT_KNEE, LM.LEFT_ANKLE, LM.RIGHT_ANKLE,
 ];
 
+// 「可以從畫面下緣出去」的點。
+//
+// 實機回報：「需要拉到很遠、還要放在地上才能用，無法正常放在桌上。」
+// 成因就在上面那條 CORE_LANDMARKS 檢查：它硬性要求**腳踝**在畫面內，
+// 但深蹲的 gateLandmarks 根本不含腳踝，squat.js 也早就寫了腳踝不可信時的替代算法
+// （用髖→膝距離 ×2 估腿長）。也就是說**判定不需要腳踝，取景關卡卻擋著不放行**，
+// 還回覆「請往後退一步或把鏡頭放低」—— 使用者照做，就被推去「拉很遠 + 放地上」。
+//
+// 筆電放在桌上時，站姿最先出框的一定是腳。只要該動作的判定用不到腳踝，
+// 就不該因此擋人。但**只放行從下緣出去**：從上緣或左右出去代表取景真的歪了或人太近。
+export const BOTTOM_OPTIONAL = [LM.LEFT_ANKLE, LM.RIGHT_ANKLE, LM.LEFT_HEEL, LM.RIGHT_HEEL,
+  LM.LEFT_FOOT_INDEX, LM.RIGHT_FOOT_INDEX];
+
+/** 這個點是否只是「從畫面下緣出去」（而非上緣或左右）。 */
+export function outBottomOnly(p, tol = FRAMING.outTol) {
+  return !!p && p.y > 1 + tol && p.x >= -tol && p.x <= 1 + tol;
+}
+
 // landmark 索引 → 人話部位（給使用者看的取景訊息用）
 export const PART_NAME = {
   [LM.NOSE]: '頭部', [LM.LEFT_EAR]: '頭部', [LM.RIGHT_EAR]: '頭部',
@@ -74,6 +92,8 @@ export function landmarkOk(p, visMin = FRAMING.visMin, tol = FRAMING.outTol) {
 /** 以「可信且在框內」的核心點量人體外框。
  *  span 取 max(寬, 高)：站姿看高度、伏地挺身（水平姿勢）看寬度，同一組門檻兩種姿勢都適用。 */
 export function bodyBox(frame, { visMin = FRAMING.visMin, tol = FRAMING.outTol, indices = BODY_LANDMARKS } = {}) {
+  // 註：只採計「在框內」的點。腳從下緣出框時人體高度會被低估 —— 這正是 too_far 改用
+  // 站立基準（baselineSpan）而非逐幀跨幅的另一個理由，見 framingReport 的 too_far 註解。
   let x0 = 1, x1 = 0, y0 = 1, y1 = 0, n = 0;
   for (const i of indices) {
     const p = frame?.[i];
@@ -144,7 +164,20 @@ export function framingReport(frame, opts = {}) {
   // 2b) 核心身體點出框（與 spec 的 gate 無關）。必要性：bodyBox 會把出框的點排除，
   //     所以「身體有一部分在畫面外」若不在這裡攔下，就會被算成「一個比較小、取景良好的人」
   //     而通過第 4 條的跨幅檢查。深蹲的 gate 不含腳踝，人太近導致腳出框正是 Bug1 的原始情境。
-  const bodyOut = CORE_LANDMARKS.filter(i => (frame[i]?.visibility ?? 0) >= visMin && !inFrame(frame[i], tol));
+  //     ⚠️ 但**不要比判定本身更嚴**：該動作的 gate 用不到的點，若只是從畫面**下緣**出去
+  //     （筆電放桌上時腳一定先出框），就不該擋 —— 那正是「必須放地上」的來源。
+  //     「人太近」的保護其實已由前面兩關涵蓋：太近時最先出框的是**頭**（第 1 關）或
+  //     **該動作 gate 需要的關節**（第 2 關與下面這行的 gateNeeds），兩者都會擋下。
+  //     真正只剩下「腳踝從下緣出去、其餘全部在框內」這一種情形 —— 那就是桌面鏡頭的俯角，
+  //     而非距離問題。故此處只針對「非 gate 且從下緣出去」的末端點放行。
+  //     ⚠️ 刻意不用 bodyBox 的跨幅來分辨遠近：bodyBox 會排除出框的點，
+  //     人愈近、被排除的點愈多，量到的跨幅反而愈小，拿它判「太近」會得到相反的結論。
+  const gateNeeds = new Set([...gateLandmarks, ...gatePairs.flat()]);
+  const bodyOut = CORE_LANDMARKS.filter(i => {
+    if ((frame[i]?.visibility ?? 0) < visMin || inFrame(frame[i], tol)) return false;
+    if (gateNeeds.has(i)) return true;                                  // 判定需要 → 一定要在框內
+    return !(BOTTOM_OPTIONAL.includes(i) && outBottomOnly(frame[i], tol));
+  });
   if (bodyOut.length) {
     const parts = partsOf(bodyOut);
     return fail('too_close', parts, `您的${parts.join('、')}超出畫面了，請往後退一步或把鏡頭放低`);

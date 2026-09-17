@@ -107,15 +107,49 @@ test('framing: 腳貼近下緣 → no_footroom，訊息要講腳不是講頭頂'
 });
 
 // fail-open 修補：bodyBox 會把出框的點排除，若不另外攔下，「身體有一部分在畫面外」
-// 會被算成「一個比較小、取景良好的人」而通過跨幅檢查。深蹲 gate 不含腳踝 —— 人太近
-// 導致腳出框正是 Bug1 的原始情境，不能因為 spec 沒把腳踝列進 gate 就靜默放行。
-test('framing 回歸鎖: 核心身體點出框即使不在 spec 的 gate 內也要擋下', () => {
-  const sk = baseSkeleton();
+// 會被算成「一個比較小、取景良好的人」而通過跨幅檢查。
+//
+// ⚠️ 2026-09-17 修正：「腳出下緣」有兩種成因，原本一律擋下，害得筆電放桌上無法使用
+//    （實機回報「需要拉到很遠以及需要放在地上才能用」）。兩種情境現在分開處理，
+//    以下兩條測試各鎖一邊 —— 只留其中一條的話，修好一邊就會弄壞另一邊。
+test('framing: 人太近（頭或膝也出框）→ 仍要擋', () => {
+  // 太近時最先出框的是頭與 gate 關節，這兩關本來就會攔下 —— 放行腳踝不會開後門。
+  const headOut = baseSkeleton();
+  for (const i of [LM.NOSE, LM.LEFT_EAR, LM.RIGHT_EAR]) headOut[i] = { ...headOut[i], y: -0.08 };
+  for (const i of [LM.LEFT_ANKLE, LM.RIGHT_ANKLE]) headOut[i] = { ...headOut[i], y: 1.09 };
+  assert(!framingReport(headOut, { gateLandmarks: SQUAT_GATE }).ok, '頭出框時不得放行');
+
+  const kneeOut = baseSkeleton();
+  for (const i of [LM.LEFT_KNEE, LM.RIGHT_KNEE]) kneeOut[i] = { ...kneeOut[i], y: 1.09 };
+  for (const i of [LM.LEFT_ANKLE, LM.RIGHT_ANKLE]) kneeOut[i] = { ...kneeOut[i], y: 1.2 };
+  const r = framingReport(kneeOut, { gateLandmarks: SQUAT_GATE });
+  assert(!r.ok, '膝蓋是深蹲 gate 的必要點，出框時不得放行');
+  assert(r.parts.includes('膝蓋'), `要指名是膝蓋，實得 [${r.parts}]`);
+});
+
+test('framing: 鏡頭放桌上、身體舒適入鏡、僅腳出下緣 → 放行（判定用不到腳踝）', () => {
+  // 縮小並上移，模擬「站得夠遠、但桌面俯角把腳切掉」
+  const sk = _internal.transform(baseSkeleton(), { scale: 0.80, dy: -0.06 });
   for (const i of [LM.LEFT_ANKLE, LM.RIGHT_ANKLE]) sk[i] = { ...sk[i], y: 1.09 };
-  assert(!SQUAT_GATE.includes(LM.LEFT_ANKLE), '前提：腳踝不在深蹲的 gate 內');
   const r = framingReport(sk, { gateLandmarks: SQUAT_GATE });
-  eq(r.issue, 'too_close');
-  assert(r.parts.includes('腳踝'), '要指名是腳踝出框');
+  assert(r.ok,
+    `腳踝不在深蹲 gate 內、squat.js 也有腳踝不可信時的替代算法，`
+    + `取景關卡不該比判定更嚴。實得 ${r.issue}：${r.text}`);
+});
+
+test('framing: 判定真的需要腳踝時，腳出下緣仍要擋', () => {
+  const sk = _internal.transform(baseSkeleton(), { scale: 0.80, dy: -0.06 });
+  for (const i of [LM.LEFT_ANKLE, LM.RIGHT_ANKLE]) sk[i] = { ...sk[i], y: 1.09 };
+  const r = framingReport(sk, { gateLandmarks: [...SQUAT_GATE, LM.LEFT_ANKLE, LM.RIGHT_ANKLE] });
+  assert(!r.ok, '腳踝列進 gate 就代表判定需要它，此時不得放行');
+  assert(r.parts.includes('腳踝'), '要指名是腳踝');
+});
+
+test('framing: 腳從左右或上緣出框 → 一律擋（那不是桌面俯角造成的）', () => {
+  const sk = _internal.transform(baseSkeleton(), { scale: 0.80, dy: -0.06 });
+  for (const i of [LM.LEFT_ANKLE, LM.RIGHT_ANKLE]) sk[i] = { ...sk[i], x: 1.12, y: 0.9 };
+  const r = framingReport(sk, { gateLandmarks: SQUAT_GATE });
+  assert(!r.ok, '從側邊出框代表取景歪了，不在放行範圍內');
 });
 
 /* ---------- 軀幹穩定度（Bug2(a)：等抓準軀幹再開始） ---------- */

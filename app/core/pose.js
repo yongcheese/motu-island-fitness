@@ -1,5 +1,6 @@
 // MediaPipe Pose 包裝（瀏覽器專用）。全部資產本地 vendor，可離線。
 import { PoseLandmarker, FilesetResolver } from '../../vendor/mediapipe/vision_bundle.mjs';
+import { createSubjectTracker } from './subject.js';
 
 const WASM_DIR = './vendor/mediapipe/wasm';
 const MODEL = {
@@ -44,7 +45,12 @@ function makePoseSmoother({ minCutoff = 2.0, beta = 0.5, dCutoff = 1.0, visSmoot
   };
 }
 
-export async function createPose({ model = 'full', numPoses = 1, delegate = 'GPU', smoothing = {} } = {}) {
+// numPoses 預設 3（原為 1）。
+// 為什麼不能用 1：MediaPipe 單人模式只回傳一個人，但**不保證每一幀都是同一個人** ——
+// 有人從背景走過時，偵測目標會在兩人之間跳動（實機回報的「骨架亂跳」）。
+// 改為同時偵測多人，再由 subject.js 鎖定其中一位。
+// 3 是成本與涵蓋的折衷：家中場景極少同時出現三人以上，而每多一人都要多跑一次後處理。
+export async function createPose({ model = 'full', numPoses = 3, delegate = 'GPU', smoothing = {}, subject = {} } = {}) {
   const fileset = await FilesetResolver.forVisionTasks(WASM_DIR);
   const baseOpts = {
     runningMode: 'VIDEO', numPoses,
@@ -67,17 +73,35 @@ export async function createPose({ model = 'full', numPoses = 1, delegate = 'GPU
   }
 
   const smoother = smoothing === false ? null : makePoseSmoother(smoothing || {});
+  const tracker = createSubjectTracker(subject || {});
+  let lastState = 'none';
 
   return {
+    /** 上一幀的鎖定狀態：'locked' | 'acquired' | 'reacquired' | 'none' */
+    get subjectState() { return lastState; },
+    /** 上一幀畫面中偵測到幾個人（供 UI 提示「畫面中有其他人」） */
+    peopleCount: 0,
+    resetSubject() { tracker.reset(); smoother?.reset(); lastState = 'none'; },
+
     /** @returns {Array<{x,y,z,visibility}>|null} 33 點正規化座標（已 One-Euro 平滑） */
     detect(videoEl, tMs) {
       if (!videoEl || videoEl.readyState < 2) return null;
       const res = landmarker.detectForVideo(videoEl, tMs);
-      if (!res || !res.landmarks || !res.landmarks.length) { smoother?.reset(); return null; }
-      const lm = res.landmarks[0].map(p => ({ x: p.x, y: p.y, z: p.z ?? 0, visibility: p.visibility ?? 1 }));
+      const all = res?.landmarks || [];
+      this.peopleCount = all.length;
+      if (!all.length) { smoother?.reset(); lastState = tracker.pick([]).state; return null; }
+
+      const picked = tracker.pick(all);
+      lastState = picked.state;
+      if (picked.index < 0) { smoother?.reset(); return null; }
+      // 換人時必須清空濾波器狀態：One-Euro 是有記憶的，跨人平滑會產生
+      // 兩人「之間」的幽靈骨架，比直接跳還糟。
+      if (picked.state === 'acquired' || picked.state === 'reacquired') smoother?.reset();
+
+      const lm = all[picked.index].map(p => ({ x: p.x, y: p.y, z: p.z ?? 0, visibility: p.visibility ?? 1 }));
       const out = smoother ? smoother.apply(lm, tMs / 1000) : lm;
       // 附帶 3D 世界座標（公尺，MediaPipe worldLandmarks）：供 3D avatar / 進階角度計算
-      if (res.worldLandmarks && res.worldLandmarks[0]) out.world = res.worldLandmarks[0];
+      if (res.worldLandmarks && res.worldLandmarks[picked.index]) out.world = res.worldLandmarks[picked.index];
       return out;
     },
     close() { try { landmarker.close(); } catch { /* noop */ } },
