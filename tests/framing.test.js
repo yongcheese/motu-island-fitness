@@ -525,17 +525,27 @@ test('repReason: 持續性的錯誤（塌腰／手腳不同步）指名該錯誤
 
 // 沒有逐下結算事件的作弊（坐姿抬腿：週期根本不成立），必須靠過程中的持續提示告知，
 // 否則使用者做半天完全不知道為什麼沒有計次。
-test('沒有結算事件的作弊，過程中必須持續給修正提示', () => {
+// 坐著交替抬膝（藏住支撐腳沒打直這件事）必須擋下，而且要讓使用者知道原因。
+//
+// ⚠️ 2026-09-17：本測試原本斷言 `repCountedThisFrame === 0`，那是在鎖「這個作弊連一次
+//    嘗試都構不成」的**附帶前提**，不是它真正要保障的事。抬膝量測改為大腿投影縮短率後，
+//    坐姿抬腿會構成一次嘗試、再被 no_support 擋下 —— 使用者因此拿到「0 有效 / N 無效
+//    ＋ 原因」，比原本的靜默失敗更好。故本測試改鎖真正的意圖：
+//      (1) 一次都不得計為有效　(2) 必須持續告知原因
+test('坐著抬腿的作弊：不得計為有效，且必須持續告知原因', () => {
   const det = createDetector(EXERCISES.highknees);
   const seq = makeSequence('highknees', { reps: 4, variant: 'sitting' });
-  let t = 0, counted = 0, supportCues = 0;
+  let t = 0, valid = 0, supportCues = 0;
   for (const f of seq.frames) {
     const r = det.update(f, t); t += seq.dtMs;
-    if (r.repCountedThisFrame) counted++;
+    if (r.repValidThisFrame) valid++;
     if (r.cue?.key === 'no_support') supportCues++;
   }
-  eq(counted, 0, '前提：這個作弊不會產生結算事件');
-  assert(supportCues > 20, `沒有結算事件時要靠持續提示告知，實得 ${supportCues} 幀`);
+  const s = det.summary();
+  eq(valid, 0, '坐著抬腿一次都不得計為有效');
+  eq(s.validReps, 0, `summary 的有效次數也必須是 0，實得 ${s.validReps}`);
+  assert((s.faultCounts?.no_support ?? 0) > 0, '必須記錄 no_support 為無效原因');
+  assert(supportCues > 20, `必須持續提示使用者原因，實得 ${supportCues} 幀`);
 });
 
 /* ---------- 「高抬腿同類」全動作稽核後補的修正 ---------- */

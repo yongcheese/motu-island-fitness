@@ -12,6 +12,8 @@ import { bodyScale } from './normalize.js';
 //    偏差會自動被吸收，不需再換算。
 export const TEMPO_MIN_RATIO = 1.7;
 import { framingReport } from './framing.js';
+import { LM } from './landmarks.js';
+import { distance as dist2 } from './geometry.js';
 
 const SEG_KEYS = ['torso', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'];
 const sevRank = { green: 0, yellow: 1, red: 2 };
@@ -135,6 +137,13 @@ export function createDetector(spec, opts = {}) {
   // 深蹲/伏地挺身會讓當幀跨幅大幅縮小，逐幀判距離會在動作最深處誤判成「站太遠」。
   // （UI-PRMD 真人實測：站立 0.67 → 蹲底 0.29，minSpan 0.30，19.3% 的幀因此停止判定）
   let standSpan = null;
+  // 站立基準「大腿投影長」（左右各一）：高抬腿判抬膝高度用。
+  // 為何需要它：抬膝的高低關係（膝相對髖）隨鏡頭高度嚴重漂移 —— UI-PRMD 實測，
+  // 同一批動作的峰值由地板機位的 +0.323 掉到 1000mm 的 **−0.008**（數值翻負，
+  // 等於在桌面高度以上永遠判定不到抬膝）。改量「大腿投影縮短率」：抬腿時大腿轉向鏡頭，
+  // 其畫面投影隨之縮短。同一批資料實測五機位僅衰減 12%、逐段 CV 0.032。
+  // 與 standTorso 同理，只在身體直立、動作尚未展開時更新。
+  let standThigh = null;
   function stableScale(frame) {
     const s = bodyScale(frame);
     if (!scaleEma) {
@@ -147,14 +156,27 @@ export function createDetector(spec, opts = {}) {
     // 直立時 ≈1；前傾時軀幹投影縮短使其下降。透視會部分抵消（前傾使人靠近鏡頭而放大），
     // 故本量只能分辨明顯前傾，詳見 squat.js 之註解與 docs/verification/。
     const frameTorso = s.torsoLength;
-    return { ...s, ...scaleEma, frameTorso, torsoRatio: standTorso ? frameTorso / standTorso : 1 };
+    // 當幀左右大腿投影長，以及相對站立基準的「縮短率」（0＝站直，越大代表大腿越朝向鏡頭）
+    const thighL = dist2(frame[LM.LEFT_HIP], frame[LM.LEFT_KNEE]);
+    const thighR = dist2(frame[LM.RIGHT_HIP], frame[LM.RIGHT_KNEE]);
+    const foreshorten = (v) => (standThigh && standThigh > 1e-6 ? Math.max(0, 1 - v / standThigh) : 0);
+    return {
+      ...s, ...scaleEma, frameTorso,
+      torsoRatio: standTorso ? frameTorso / standTorso : 1,
+      thighForeL: foreshorten(thighL), thighForeR: foreshorten(thighR),
+      standThigh,
+    };
   }
   /** 由 update 在確認身體直立（動作尚未展開）時呼叫，緩慢更新站立基準。 */
-  function updateStandBaseline(frameTorso, isUpright, frameSpan) {
+  function updateStandBaseline(frameTorso, isUpright, frameSpan, frameThigh) {
     if (!isUpright) return;
     standTorso = standTorso === null ? frameTorso : 0.05 * frameTorso + 0.95 * standTorso;
     if (Number.isFinite(frameSpan) && frameSpan > 0) {
       standSpan = standSpan === null ? frameSpan : 0.05 * frameSpan + 0.95 * standSpan;
+    }
+    // 大腿基準取左右較長者：站姿時兩腿等長，取 max 可避開單側被遮擋而偏短的情形。
+    if (Number.isFinite(frameThigh) && frameThigh > 1e-6) {
+      standThigh = standThigh === null ? frameThigh : 0.05 * frameThigh + 0.95 * standThigh;
     }
   }
 
@@ -305,7 +327,7 @@ export function createDetector(spec, opts = {}) {
       // 短暫掉幀 vs 真的離開畫面：前者只是凍結（保住進行中的那一下），後者才重置狀態機。
       if (lostSinceMs === null) lostSinceMs = tMs;
       if (tMs - lostSinceMs >= cfg.abortAfterMs) {
-        scaleEma = null; standTorso = null; standSpan = null;   // 重新進入畫面時重新校準尺度與站立基準
+        scaleEma = null; standTorso = null; standSpan = null; standThigh = null;   // 重新進入畫面時重新校準尺度與站立基準
         for (const k in tracks) { tracks[k].tk.abort(); tracks[k].buf = []; tracks[k].faults.clear(); }
       }
       const seg = {}; for (const k of SEG_KEYS) seg[k] = 'red';
@@ -341,7 +363,12 @@ export function createDetector(spec, opts = {}) {
     }
     // 站立基準只在「動作尚未展開」時更新：progress 低代表人還站著，
     // 此時的軀幹投影長才是直立基準。動作進行中更新會讓基準被彎腰污染。
-    updateStandBaseline(scale.frameTorso, (ev.progress ?? Math.max(ev.progressL ?? 0, ev.progressR ?? 0)) < 0.15, report.span);
+    updateStandBaseline(
+      scale.frameTorso,
+      (ev.progress ?? Math.max(ev.progressL ?? 0, ev.progressR ?? 0)) < 0.15,
+      report.span,
+      Math.max(dist2(frame[LM.LEFT_HIP], frame[LM.LEFT_KNEE]), dist2(frame[LM.RIGHT_HIP], frame[LM.RIGHT_KNEE])),
+    );
     let phase = 'READY';
     let signal = 0;
 
@@ -407,7 +434,7 @@ export function createDetector(spec, opts = {}) {
 
   function reset() {
     validReps = invalidReps = attempts = 0; lastCountTime = -1e9; lastSide = null; visStreak = 0; scaleEma = null;
-    unconfirmedFirstAlt = false; prevAttemptSide = null; standTorso = null; standSpan = null;
+    unconfirmedFirstAlt = false; prevAttemptSide = null; standTorso = null; standSpan = null; standThigh = null;
     framingWin = []; lostSinceMs = null;
     for (const k in faultCounts) delete faultCounts[k];
     for (const k in advisoryCounts) delete advisoryCounts[k];

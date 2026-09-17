@@ -144,11 +144,28 @@ function poseHighKnees(d, side, variant) {
   const heel = L ? LM.LEFT_HEEL : LM.RIGHT_HEEL;
   const hipX = L ? 0.45 : 0.55;
   const inw = L ? 1 : -1;                     // 抬起時膝略向中線
-  sk[knee] = P(hipX + inw * 0.06 * d, lerp(0.73, 0.48, d));
-  const ax = lerp(L ? 0.45 : 0.55, sk[knee].x - inw * 0.02, d);   // 小腿自膝垂下
-  sk[ankle] = P(ax, lerp(0.91, 0.66, d));
-  sk[foot] = P(ax + inw * 0.03, lerp(0.94, 0.70, d));
-  sk[heel] = P(ax - inw * 0.03, lerp(0.93, 0.64, d));
+  // ⚠️ 2026-09-17 重寫（合成器缺陷 #10）。舊版把膝蓋直接往上平移（y 0.73 → 0.48），
+  //    大腿的畫面投影長因此從 0.18 縮到 0.092 —— **大腿不是剛體**，而且膝被放到比髖還高，
+  //    正面投影下剛性大腿根本做不到。這種「橡皮筋大腿」在舊的高低差判定下看不出問題，
+  //    換成量大腿投影縮短率後立刻暴露：半抬樣本的縮短率反而比全抬還大，測試因此失效。
+  //
+  //    正確模型：大腿是長度固定的剛體，抬腿＝在矢狀面繞髖旋轉 θ。
+  //    正面投影下：膝相對髖的畫面垂直距離 = L·cosθ，投影長也是 L·cosθ
+  //    （水平分量僅來自輕微的向內收，與 θ 無關）。
+  //    於是 θ=0 時膝在髖正下方 L 處、θ→90° 時膝逼近髖的高度，兩者自洽。
+  const hipY0 = (sk[LM.LEFT_HIP].y + sk[LM.RIGHT_HIP].y) / 2;
+  const THIGH = 0.18;                         // 大腿的三維長度（畫面單位）
+  const SHANK = 0.18;                         // 小腿
+  const THETA_MAX = 85 * Math.PI / 180;       // 全抬時大腿與鉛直的夾角
+  const th = THETA_MAX * d;
+  const kneeY = hipY0 + THIGH * Math.cos(th);
+  sk[knee] = P(hipX + inw * 0.06 * d, kneeY);
+  // 小腿自膝垂下，抬腿時略為收起（膝彎），同樣以剛體長度乘上夾角餘弦
+  const shankAng = (35 * Math.PI / 180) * d;
+  const ax = sk[knee].x - inw * 0.02 * d;
+  sk[ankle] = P(ax, kneeY + SHANK * Math.cos(shankAng));
+  sk[foot] = P(ax + inw * 0.03, sk[ankle].y + 0.03);
+  sk[heel] = P(ax - inw * 0.03, sk[ankle].y + 0.02);
   // 跑步擺臂（次要動作）：與抬腿異側的手向上前擺、同側手向下後擺。高抬腿判定不看手臂，安全。
   if (L) {
     sk[LM.RIGHT_ELBOW] = P(lerp(0.60, 0.56, d), lerp(0.40, 0.34, d));
