@@ -3,7 +3,7 @@
 // 最容易犯的錯（已犯過一次）：把「還沒達標」也塗黃 —— 那會讓每一下正常動作全身變黃，
 // 黃色就不再代表「這裡有問題」。「做到哪了」是深度量表的職責，不是骨架顏色的。
 import { test, eq, assert } from './harness.js';
-import { framingPose, displaySegments, gaugeColor, phaseCueText, MOVE_SIGNAL } from '../app/ui/display-colors.js';
+import { framingPose, displaySegments, gaugeColor, phaseCueText, MOVE_SIGNAL, SEG_KEYS } from '../app/ui/display-colors.js';
 import { createDetector } from '../app/core/engine.js';
 import { EXERCISES } from '../app/core/exercises/index.js';
 import { makeSequence } from '../app/core/synth.js';
@@ -84,5 +84,66 @@ test('字卡隨相位切換；看不到人時不留殘字', () => {
 test('全部函式對殘缺輸入安全（idleResult / 尚未有 framing 欄位時）', () => {
   for (const bad of [null, undefined, {}, { visible: true }]) {
     displaySegments(bad); gaugeColor(bad, EXERCISES.squat); phaseCueText(bad, EXERCISES.squat); framingPose(bad);
+  }
+});
+
+// ── 未判定部位必須以 dim 顯示（2026-09-17）──
+//
+// 實機回報：「高抬腿的提示會讓使用者誤會…像是做這個動作居然會需要辨識手。」
+// 成因推定：骨架疊圖把手臂畫成與腿相同的綠色。綠色在本系統的語意是
+// 「這個關節沒問題」—— 對一個根本不判定的部位說「沒問題」，等於暗示它有被評分。
+
+const moving = (segments) => ({ phase: 'CONCENTRIC', signal: 0.6, visible: true, segments });
+
+test('display: 高抬腿的手臂應為 dim（該動作不判定手臂）', () => {
+  const out = displaySegments(
+    moving({ torso: 'green', leftLeg: 'green', rightLeg: 'green', leftArm: 'green', rightArm: 'green' }),
+    EXERCISES.highknees);
+  eq(out.leftArm, 'dim', '高抬腿不判定手臂，不該塗成代表「沒問題」的綠色');
+  eq(out.rightArm, 'dim');
+  eq(out.leftLeg, 'green', '腿是判定對象，維持原色');
+  eq(out.torso, 'green');
+});
+
+test('display: 深蹲的手臂應為 dim，腿與軀幹維持判定色', () => {
+  const out = displaySegments(
+    moving({ torso: 'red', leftLeg: 'yellow', rightLeg: 'green', leftArm: 'green', rightArm: 'green' }),
+    EXERCISES.squat);
+  eq(out.leftArm, 'dim');
+  eq(out.torso, 'red', '判定部位的紅黃綠語意不得被覆蓋');
+  eq(out.leftLeg, 'yellow');
+});
+
+test('display: 開合跳手腳都判定 → 都不是 dim', () => {
+  const out = displaySegments(
+    moving({ torso: 'green', leftArm: 'green', rightArm: 'green', leftLeg: 'green', rightLeg: 'green' }),
+    EXERCISES.jumpingjack);
+  assert(out.leftArm !== 'dim', '開合跳要判定手臂');
+  assert(out.leftLeg !== 'dim', '開合跳要判定腿');
+  eq(out.torso, 'dim', '開合跳不判定軀幹');
+});
+
+test('display: 伏地挺身判定手臂與軀幹，腿為 dim', () => {
+  const out = displaySegments(
+    moving({ torso: 'green', leftArm: 'yellow', rightArm: 'yellow', leftLeg: 'green', rightLeg: 'green' }),
+    EXERCISES.pushup);
+  eq(out.leftArm, 'yellow');
+  eq(out.torso, 'green');
+  eq(out.leftLeg, 'dim', '伏地挺身的身體直線併入 torso 判定，腿不單獨判定');
+});
+
+test('display: 未傳 spec 時維持原行為（不得破壞既有呼叫端）', () => {
+  const out = displaySegments(moving({ torso: 'red', leftArm: 'green' }));
+  eq(out.torso, 'red');
+  eq(out.leftArm, 'green', '沒有 spec 就不知道哪些沒判定，不能亂塗 dim');
+});
+
+test('display: 每個動作都必須宣告 judgedSegments（新增動作時不得漏掉）', () => {
+  for (const [id, ex] of Object.entries(EXERCISES)) {
+    assert(Array.isArray(ex.judgedSegments) && ex.judgedSegments.length > 0,
+      `${id} 未宣告 judgedSegments —— 未宣告會讓所有部位都塗成綠色，暗示全身都在被評分`);
+    for (const k of ex.judgedSegments) {
+      assert(SEG_KEYS.includes(k), `${id} 的 judgedSegments 含未知部位 ${k}`);
+    }
   }
 });

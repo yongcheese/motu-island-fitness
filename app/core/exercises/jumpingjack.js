@@ -21,6 +21,7 @@ export const jumpingjack = {
   // 「太近」對開合跳另有把關：取景關卡（站姿）仍檢查頭部＋上緣留白，逐幀則有 gate 點出框判定。
   requireHead: false,
   thresholds: { attemptEnter: 0.30, targetEnter: 0.70, readyReturn: 0.25 },
+  judgedSegments: ['leftArm', 'rightArm', 'leftLeg', 'rightLeg'],   // 手腳都判定，軀幹不判定
   faultSeverity: { limb_desync: 'block' },
   cues: {
     limb_desync: { text: '手和腳要同時打開、同時收回', priority: 'mid' },

@@ -56,6 +56,7 @@ export const pushup = {
   ],
   // targetEnter 0.75：手肘壓到 ≈109° 即達標（原 0.80≈105°，實機側面角度常量不足）；半程樣本(≈0.45)仍被拒
   thresholds: { attemptEnter: 0.30, targetEnter: 0.75, readyReturn: 0.25 },
+  judgedSegments: ['torso', 'leftArm', 'rightArm'],   // 腿不單獨判定（身體直線併入 torso）
   faultSeverity: { sag: 'block', no_lockout: 'advisory', head_forward: 'advisory' },
   checksLockout: true,
   cues: {

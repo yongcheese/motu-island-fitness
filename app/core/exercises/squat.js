@@ -1,5 +1,6 @@
 // 深蹲：髖部低於膝蓋高度才達標；排除只彎腰、半蹲。
 import { LM } from '../landmarks.js';
+import { landmarkOk } from '../framing.js';
 import { midpoint, norm, distance } from '../geometry.js';
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -121,6 +122,10 @@ export const squat = {
   //   最小 torsoRatio 隨機位為：地板 0.892 ／ 800mm 0.751 ／ 筆電 1150mm 0.686 ／ 1500mm 0.618。
   //   成因是純幾何：鏡頭高於髖時俯視，人蹲下去俯角變大，軀幹投影本來就縮短，與前傾無關。
   //   一個無法對機位保持不變的量，不該有權取消使用者的有效次數 —— 故降為僅提示。
+  // 本動作實際判定的身體部位。未列出的部位在骨架疊圖上會以 dim 顯示，
+  // 讓使用者一眼看出「哪些地方正在被評分」。
+  // 實機回報：使用者看到手臂被畫成跟腿一樣的綠色，誤以為手也要照規矩擺。
+  judgedSegments: ['torso', 'leftLeg', 'rightLeg'],   // 手臂不判定
   faultSeverity: {
     torso_lean: 'advisory',
     knee_valgus: 'advisory', head_tilt: 'advisory', tempo_fast: 'advisory',
@@ -149,7 +154,13 @@ export const squat = {
     const kneeY = kneeC.y;
     const shC = midpoint(f[LM.LEFT_SHOULDER], f[LM.RIGHT_SHOULDER]);
     // 腳踝為非 gate 點：看不清時用「髖→膝距離 ×2」估腿長，避免被估歪的腳踝污染深度。
-    const ankleReliable = Math.min(f[LM.LEFT_ANKLE]?.visibility ?? 0, f[LM.RIGHT_ANKLE]?.visibility ?? 0) >= 0.5;
+    // ⚠️ 2026-09-17：判斷條件必須包含「座標真的在畫面內」，不能只看 visibility。
+    //    MediaPipe 對出框的關節點會**外插座標並仍給出不低的 visibility**
+    //    （framing.js 的 Bug1 註解已載明此行為）。鏡頭放在桌上時腳會落到畫面下緣之外，
+    //    外插出來的腳踝把 legLength 灌水，depth =（髖−膝）/腿長 隨之被稀釋 ——
+    //    使用者明明蹲到底卻永遠達不到門檻。實機回報「明明做對一下卻偷扣使用者次數」
+    //    在桌面機位下的直接成因就是這裡。
+    const ankleReliable = landmarkOk(f[LM.LEFT_ANKLE], 0.5) && landmarkOk(f[LM.RIGHT_ANKLE], 0.5);
     const legLen = ankleReliable ? s.legLength : (distance(hipC, kneeC) * 2 || s.legLength);
     // 深度：髖相對膝（以腿長正規化），髖越低值越大
     const depth = (hipC.y - kneeY) / legLen;

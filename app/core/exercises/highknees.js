@@ -1,6 +1,7 @@
 // 高抬腿：膝達髖高、左右交替；排除坐著抬腿、不交替。
 import { LM } from '../landmarks.js';
 import { midpoint, angle, norm } from '../geometry.js';
+import { landmarkOk } from '../framing.js';
 
 // 軀幹挺直門檻：軀幹畫面投影長 ÷ 站立基準。與深蹲 TORSO_FOLD_RATIO 同一方法。
 // 依據：田徑與健身教學材料通行描述「torso upright / 保持軀幹挺直」（II 類，僅教學慣例）。
@@ -56,6 +57,7 @@ export const highknees = {
   // 開始前的取景關卡仍硬性要求頭部（workout.js 寫死 requireHead:true），
   // 「太近」的保護因此不受影響。
   requireHead: false,
+  judgedSegments: ['torso', 'leftLeg', 'rightLeg'],   // 手臂不判定（跑步擺臂怎麼擺都可以）
   faultSeverity: { no_support: 'block', torso_lean: 'advisory' },
   // 文案原則（實機回報「提示會讓使用者誤會，不知道該怎麼做」）：
   //  · 只講腿，不提任何與手有關的事 —— 本動作完全不判定手臂。
@@ -92,7 +94,9 @@ export const highknees = {
     const standAnkle = side === 'L' ? f[LM.RIGHT_ANKLE] : f[LM.LEFT_ANKLE];
     const standKnee = side === 'L' ? f[LM.RIGHT_KNEE] : f[LM.LEFT_KNEE];
     const standHip = side === 'L' ? f[LM.RIGHT_HIP] : f[LM.LEFT_HIP];
-    const ankleReliable = (standAnkle?.visibility ?? 0) >= 0.5;
+    // 同 squat.js：必須一併確認座標在畫面內。出框的關節點會被外插，
+    // 拿它算支撐腳膝角會得到假的角度，可能誤判 no_support（block 級，會扣掉有效次數）。
+    const ankleReliable = landmarkOk(standAnkle, 0.5);
     // 站姿驗證：腳踝可見→用支撐腳膝角(精準);腳踝不可見→改用「支撐腳膝明顯低於髖」
     // (只需髖+膝,皆在 gate 內),仍能擋住「藏住腳、坐著交替抬膝」的繞路。
     const gatePass = ankleReliable

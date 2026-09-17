@@ -636,3 +636,41 @@ test('全動作迴歸: 正常取景零中斷、乾淨動作全計次', () => {
     eq(det.summary().validReps, 4, `${id}: 應全數計次`);
   }
 });
+
+/* ---------- 桌面機位：腳在畫面外仍應正常計次（實機回報「偷扣次數」的成因） ---------- */
+
+// 實機回報：「需要拉到很遠以及需要放在地上才能使用」「明明做對一下卻偷扣使用者次數」。
+// 這兩件事是同一個成因：筆電放桌上時，站姿的腳會落在畫面下緣之外。
+// 舊版 framing.js 的 CORE_LANDMARKS 硬性要求腳踝在框內 → 每一幀 report.ok 都是 false
+// → 引擎把進行中的每一下都標記 unseen → 全部判為無效。
+// 使用者看到的就是「我明明蹲對了，次數卻不算」。
+test('桌面機位: 腳踝在畫面下緣外，深蹲仍應正常計次', () => {
+  const seq = makeSequence('squat', { reps: 3, variant: 'clean' });
+  // 把整個人往下移，讓腳踝落到畫面外（模擬鏡頭放在桌上、俯角切掉腳）
+  const desk = {
+    ...seq,
+    frames: seq.frames.map(f => f.map((p, i) => (
+      [LM.LEFT_ANKLE, LM.RIGHT_ANKLE, LM.LEFT_HEEL, LM.RIGHT_HEEL,
+        LM.LEFT_FOOT_INDEX, LM.RIGHT_FOOT_INDEX].includes(i)
+        ? { ...p, y: p.y + 0.22 }        // 推到 y > 1
+        : p))),
+  };
+  const outOfFrame = desk.frames[0][LM.LEFT_ANKLE].y;
+  assert(outOfFrame > 1.02, `前提：腳踝要真的在畫面外，實得 y=${outOfFrame.toFixed(3)}`);
+
+  const s = runSeq('squat', desk).s;
+  eq(s.validReps, 3,
+    `腳踝不在深蹲的 gate 內、squat.js 也有腳踝不可信時的替代算法，`
+    + `不該因為腳出畫面就把每一下都作廢。實得有效 ${s.validReps}、無效 ${s.invalidReps}、`
+    + `unseen ${s.faultCounts?.unseen || 0}`);
+  eq(s.faultCounts?.unseen || 0, 0, '不該有任何一下被記成「沒看清楚」');
+});
+
+test('桌面機位: 判定真的需要腳踝的動作，腳出框時仍應停止判定（不得一併放寬）', () => {
+  // 高抬腿的支撐腳檢查會用到腳踝，但它是非 gate 點（看不清時走替代路徑），
+  // 故這裡改用「把腳踝列進 gate」的方式驗證放寬沒有波及到真的需要腳踝的情形。
+  const sk = _internal.transform(baseSkeleton(), { scale: 0.80, dy: -0.06 });
+  for (const i of [LM.LEFT_ANKLE, LM.RIGHT_ANKLE]) sk[i] = { ...sk[i], y: 1.09 };
+  const withAnkle = framingReport(sk, { gateLandmarks: [...SQUAT_GATE, LM.LEFT_ANKLE, LM.RIGHT_ANKLE] });
+  assert(!withAnkle.ok, '腳踝列進 gate 時必須維持原本的嚴格判定');
+});

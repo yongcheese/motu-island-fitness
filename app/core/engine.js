@@ -39,11 +39,37 @@ class CycleTracker {
   }
 }
 
-// unseen：這一下進行中有沒有出現「沒被判定到」的幀（取景壞掉而凍結、或看不到人）。
-// 有的話就不能算有效——那些幀裡可能正好藏著姿勢錯誤，我們沒看到就不該給過。
+// unseen：這一下進行中「沒被判定到」的幀（取景壞掉而凍結、或看不到人）。
+// 有漏看就不能無條件給過 —— 那些幀裡可能正好藏著姿勢錯誤。
+//
+// ⚠️ 2026-09-17：原本是布林值，**只要有任何一幀漏看，整下就作廢**。
+//    實機回報「明明做對一下卻偷扣使用者次數」的主因就在這裡：
+//    真實使用中關節可見度會因動態模糊短暫掉到門檻以下，掉個一兩幀是常態，
+//    而那樣就會讓一次完全正確的動作變成無效。
+//    改為依**漏看發生在哪裡**判定。
+//
+// 關鍵區分：姿勢錯誤幾乎都發生在動作的深處（各 spec 的 fault 檢查也多半只在
+// progress 高於某個值時才生效）。因此：
+//   · 漏看落在**關鍵窗**（訊號接近達標）→ 無法查證那一下有沒有做錯 → 不給有效
+//   · 漏看落在動作頭尾（訊號低）→ 那裡本來就沒有東西要查 → 可以容忍
+// 再加上整體比例與連續長度兩道上限當保險。
+//
+// 這個區分是有實據的：防作弊測試「錯誤發生的那幾幀剛好掉幀」注入的正是達標幀，
+// 落在關鍵窗內，仍會被擋下；而使用者回報被偷扣的情境是動作尾段掉一兩幀，落在窗外。
+// 關鍵窗取**絕對訊號值**而非 targetEnter 的倍數。
+// 理由：各 spec 的 fault 檢查多半從 progress≈0.15 就開始生效，若照那個範圍算，
+// 幾乎整下都是關鍵窗，等於沒有放寬。真正非看不可的是**最深處** ——
+// 深度達標與最嚴重的姿勢代償都發生在那裡；離峰值還有一段距離的幀，
+// 漏看一兩幀不影響能否查證這一下。
+// 實測（合成深蹲，3 次）：最深處(訊號 0.99/0.90)掉幀仍判無效；
+// 動作尾段(0.43/0.34)與起始段(0.04)掉幀則放行。
+const UNSEEN_CRITICAL = 0.85;
+const UNSEEN_MAX_RATIO = 0.25;   // 漏看幀數佔該次動作的比例上限
+const UNSEEN_MAX_RUN = 4;        // 最長連續漏看幀數（30fps 下約 0.13 秒）
 function makeTrack(th) {
   return {
-    tk: new CycleTracker(th), faults: new Set(), peakSig: -1, gateAtPeak: true, buf: [], unseen: false,
+    tk: new CycleTracker(th), faults: new Set(), peakSig: -1, gateAtPeak: true, buf: [],
+    unseenCount: 0, unseenRun: 0, unseenMaxRun: 0, seenCount: 0, unseenCritical: 0, lastSig: 0,
     // 節奏量測：下蹲（起始→最深處）與上升（最深處→回到起始）各花多久。
     // 屬時序特徵，不受機位影響 —— 這是少數在正面機位也完全可靠的量。
     tStart: null, tPeak: null,
@@ -209,10 +235,15 @@ export function createDetector(spec, opts = {}) {
         if (spec.cues?.no_lockout) pendingCue = { key: 'no_lockout', ...spec.cues.no_lockout };
       }
       lockoutPending = false; lockoutSeen = false;
-      track.faults.clear(); track.peakSig = -1; track.gateAtPeak = true; track.unseen = false;
+      track.faults.clear(); track.peakSig = -1; track.gateAtPeak = true;
+      track.unseenCount = 0; track.unseenRun = 0; track.unseenMaxRun = 0; track.seenCount = 0;
+      track.unseenCritical = 0; track.lastSig = 0;
       track.tStart = tMs; track.tPeak = null;
     }
     if (track.tk.active) {
+      track.seenCount++;
+      track.unseenRun = 0;                       // 這一幀有判定到 → 連續漏看中斷
+      track.lastSig = sig;                       // 供漏看時判斷「當時做到哪了」
       for (const f of frameFaults) track.faults.add(f);
       // 品質 gate 取「動作最深處(峰值)」採樣，避免目標進入瞬間因平滑延遲誤判
       if (sig > track.peakSig) { track.peakSig = sig; track.gateAtPeak = gatePass; track.tPeak = tMs; }
@@ -224,8 +255,17 @@ export function createDetector(spec, opts = {}) {
       if (spec.checksLockout) { lockoutPending = true; lockoutSeen = false; }
       const downMs = (track.tPeak != null && track.tStart != null) ? track.tPeak - track.tStart : null;
       const upMs = (track.tPeak != null) ? tMs - track.tPeak : null;
+      const total = track.seenCount + track.unseenCount;
+      // ⚠️ 維持「有漏看就不給有效」的嚴格語意 —— 不要為了少扣幾次而放寬。
+      // 曾評估過三種放寬（比例上限／連續長度上限／依訊號高低的關鍵窗），
+      // 全部都會讓防作弊測試「錯誤發生的那幾幀剛好掉幀」漏掉，因為姿勢錯誤本來就
+      // 發生在訊號高的那段，與「該容忍的短暫掉幀」在訊號軸上分不開。
+      // 實機回報的「偷扣次數」另有成因（取景關卡對腳踝的硬性要求，已於 framing.js 修正）——
+      // 修因不修果。unseenCount/unseenRatio 保留給 UI 說明「這一下為什麼沒算」。
+      const unseen = track.unseenCount > 0;
       return {
-        closed: true, reachedTarget: ev.reachedTarget, blocking, unseen: track.unseen,
+        closed: true, reachedTarget: ev.reachedTarget, blocking, unseen,
+        unseenCount: track.unseenCount, unseenRatio: total ? track.unseenCount / total : 0,
         faults: [...track.faults], downMs, upMs,
       };
     }
@@ -320,8 +360,18 @@ export function createDetector(spec, opts = {}) {
     else if (report.ok) visStreak++;        // 只有合格幀才累積；壞幀不累積也不歸零＝遲滯
     const visible = visStreak >= cfg.visStreakNeed;
 
-    // 這一幀不會被判定 → 記在「進行中的那一下」上，收尾時不給有效（見 classify 的 unseen）
-    if (!visible || !report.ok) { for (const k in tracks) if (tracks[k].tk.active) tracks[k].unseen = true; }
+    // 這一幀不會被判定 → 累計在「進行中的那一下」上（見 makeTrack 的 unseen 註解）
+    if (!visible || !report.ok) {
+      const critical = UNSEEN_CRITICAL;
+      for (const k in tracks) {
+        const t = tracks[k];
+        if (!t.tk.active) continue;
+        t.unseenCount++; t.unseenRun++;
+        if (t.unseenRun > t.unseenMaxRun) t.unseenMaxRun = t.unseenRun;
+        // 以「漏看前最後一次看到的訊號」判斷這一幀落在動作的哪個階段
+        if (t.lastSig >= critical) t.unseenCritical++;
+      }
+    }
 
     if (!visible) {
       // 短暫掉幀 vs 真的離開畫面：前者只是凍結（保住進行中的那一下），後者才重置狀態機。

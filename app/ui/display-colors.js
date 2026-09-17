@@ -24,11 +24,21 @@ export function framingPose(res) {
   return res.phase === 'IDLE' || (res.phase === 'READY' && (res.signal ?? 0) < MOVE_SIGNAL);
 }
 
-/** 骨架各段顏色：準備/看不到人 → 全藍；做動作時直接用 spec 的逐關節判定。 */
-export function displaySegments(res) {
+/** 骨架各段顏色：準備/看不到人 → 全藍；做動作時直接用 spec 的逐關節判定。
+ *
+ *  `spec.judgedSegments` 有宣告時，**未列出的部位一律 dim**。
+ *  為什麼要這樣（實機回報）：使用者做高抬腿時看到自己的手臂被畫成跟腿一樣的綠色，
+ *  以為「這個動作居然還要辨識手」，不知道手該怎麼擺。
+ *  綠色在本系統的語意是「這個關節沒問題」—— 對一個根本不判定的部位說「沒問題」，
+ *  等於暗示它有被評分。dim 才是誠實的表達：這裡沒有在看。
+ */
+export function displaySegments(res, spec = null) {
   if (!res || res.visible === false || framingPose(res)) return ALL_FRAME;
+  const judged = spec?.judgedSegments;
   const out = {};
-  for (const k of SEG_KEYS) out[k] = res.segments?.[k] || 'green';
+  for (const k of SEG_KEYS) {
+    out[k] = (judged && !judged.includes(k)) ? 'dim' : (res.segments?.[k] || 'green');
+  }
   return out;
 }
 

@@ -9,7 +9,8 @@ import { pose3d, EX_VIEW } from '../../ui/pose3d.js';
 import { nextGoal } from '../island/goals.js';
 import { planFor, planLabel } from '../../core/difficulty.js';   // Slice4 R3：結算第二幕與島嶼目標條共用（純函式、零依賴）
 import { coachPolicy, repCountdownCue } from '../../core/coach-policy.js';   // Slice3 修復 F3：誠實回饋決策（純函式）
-import { framingReport, createStabilityTracker, landmarkOk, HEAD_LANDMARKS } from '../../core/framing.js';   // 取景判定：與 engine 共用同一份純函式
+import { framingReport, createStabilityTracker, landmarkOk, HEAD_LANDMARKS } from '../../core/framing.js';
+import { sampleVideoLuma, lightingReport } from '../../core/lighting.js';   // 光線品質：量出來並告知，不放寬判定門檻
 import { ALL_FRAME, framingPose, displaySegments, gaugeColor, phaseCueText } from '../../ui/display-colors.js';   // 顏色語意（純函式，可單測）
 
 let CTX = null;
@@ -545,6 +546,10 @@ function waitForFraming(run) {
         // 位置/距離判定（與 engine 同一份 framingReport）＋ 軀幹尺度穩定度
         const report = framingReport(lm, framingOpts);
         const stab = stability.push(lm);
+        // 光線：每 15 幀量一次就夠（照明不會逐幀變），避免每幀都做一次 getImageData
+        if ((run.lightTick = (run.lightTick || 0) + 1) % 15 === 1) {
+          run.light = lightingReport(sampleVideoLuma(video));
+        }
         const settled = report.ok && stab.stable;
         const rows = [...st.rows, settled];
         const allOk = rows.every(Boolean);
@@ -554,11 +559,16 @@ function waitForFraming(run) {
           // 取景專屬 state（不沿用訓練共用的 ok/seek/warn）：frame-ok 青／frame-adjust 橘／frame-wait 灰
           live.hud.track.dataset.s = allOk ? 'frame-ok' : (lm ? 'frame-adjust' : 'frame-wait');
           // 訊息優先序：完全沒人 → 缺件 → 距離/取景問題（太近/留白不足）→ 軀幹還在跳 → 已就位
-          const msg = !lm ? '🔍 尋找人體…'
-            : miss.length ? `🔍 看不到：${miss.join('、')}`
-              : !report.ok ? `📏 ${report.text}`
-                : !stab.stable ? '⏳ 請站穩不動，正在鎖定您的位置…'
-                  : '📍 已就位，準備開始';
+          // 訊息優先序刻意這樣排：光線不足會讓後面每一項都量不準，先講它沒有意義 ——
+          // 但「完全看不到人」時要先講找不到人，否則使用者只會困惑「我人就在這裡」。
+          const people = run.pose.peopleCount || 0;
+          const msg = !lm ? (run.light && !run.light.ok ? `💡 ${run.light.text}` : '🔍 尋找人體…')
+            : run.light && run.light.level === 'dark' ? `💡 ${run.light.text}`
+              : miss.length ? `🔍 看不到：${miss.join('、')}`
+                : !report.ok ? `📏 ${report.text}`
+                  : !stab.stable ? '⏳ 請站穩不動，正在鎖定您的位置…'
+                    : people > 1 ? `📍 已就位（畫面中有 ${people} 人，已鎖定最靠近鏡頭的您）`
+                      : '📍 已就位，準備開始';
           live.hud.track.textContent = msg;
           // 語音只講「怎麼改」，且以最高優先的那一項為準（不要三種問題輪播疊在一起）
           if (run.voice && !allOk && lm) {
@@ -867,7 +877,7 @@ function runCameraLoop(run) {
           const r = containRect(video, live.canvas.width, live.canvas.height);
           live.ctx.save(); live.ctx.translate(r.x, r.y);
           // 顏色語意：藍=取景/準備；做動作時直接用各關節的錯誤程度（綠/黃/紅），見 ui/display-colors.js
-          drawSkeleton(live.ctx, lm, displaySegments(res), { w: r.w, h: r.h, mirror });
+          drawSkeleton(live.ctx, lm, displaySegments(res, live.ex), { w: r.w, h: r.h, mirror });
           live.ctx.restore();
           handleResult(res, now, lm);
         } else {
