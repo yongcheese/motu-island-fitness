@@ -255,3 +255,52 @@ export function createStabilityTracker({ window: win = 12, maxCv = 0.10, visMin 
     },
   };
 }
+
+
+/** 鏡頭高度的粗估與提醒。
+ *
+ * 訊號：站姿時「鼻→肩中點」÷「肩中點→髖中點」。鏡頭愈高俯角愈大，
+ * 頭肩這一段比肩髖段 foreshorten 得更多，此比值隨之下降。
+ *
+ * 實測（UI-PRMD 深蹲，同一批動作只改鏡頭高度重新投影，100 段取站姿前 5 幀平均）：
+ *   地板 0.513 ／ 750mm 0.429 ／ 1000mm 0.401 ／ 1150mm 0.385 ／ 1500mm 0.346
+ *   機位造成的全距 0.158，同一機位下人與人的標準差 0.060 → 訊號/雜訊約 2.6 倍。
+ *
+ * ⚠️ 界線（務必照這個口徑對外說明）：
+ *   · 這是**粗估**，不是量測。人與人的體態差異（頸長、頭部姿勢）會混進來，
+ *     標準差 0.060 表示約每六人就有一人可能被誤報或漏報。
+ *   · 因此只用來**提醒**，不拿來擋人、也不拿來調整任何判定門檻。
+ *     曾嘗試用它動態調整深蹲深度門檻，逐段套用後靈敏度反而從 100% 掉到 59–72%
+ *     —— 體態差異被誤當成機位差異，噪音蓋過訊號。
+ *   · 門檻取 0.37（約對應 1200mm 以上），刻意偏保守：寧可漏提醒，
+ *     也不要對機位正確的使用者亂報。
+ *
+ * 為什麼需要提醒：深蹲深度是「髖相對膝」的垂直關係，鏡頭愈高俯角把它壓得愈扁。
+ * 同一批真人動作在現行門檻下的靈敏度：地板～1150mm 為 100%，到 1500mm 只剩 17%。
+ * 也就是說鏡頭放太高時，使用者蹲到底也不會被算 —— 而且沒有任何訊息說明原因。
+ */
+export const CAMERA_HIGH_RATIO = 0.37;
+
+export function headSegmentRatio(frame, visMin = FRAMING.visMin) {
+  const n = frame?.[LM.NOSE], ls = frame?.[LM.LEFT_SHOULDER], rs = frame?.[LM.RIGHT_SHOULDER];
+  const lh = frame?.[LM.LEFT_HIP], rh = frame?.[LM.RIGHT_HIP];
+  if (![n, ls, rs, lh, rh].every(p => landmarkOk(p, visMin))) return null;
+  const sc = { x: (ls.x + rs.x) / 2, y: (ls.y + rs.y) / 2 };
+  const hc = { x: (lh.x + rh.x) / 2, y: (lh.y + rh.y) / 2 };
+  const torso = Math.hypot(sc.x - hc.x, sc.y - hc.y);
+  if (!(torso > 1e-6)) return null;
+  return Math.hypot(n.x - sc.x, n.y - sc.y) / torso;
+}
+
+/** @returns {{high:boolean, ratio:number|null, text:string}} */
+export function cameraHeightHint(frame, { threshold = CAMERA_HIGH_RATIO, visMin = FRAMING.visMin } = {}) {
+  const ratio = headSegmentRatio(frame, visMin);
+  if (ratio == null) return { high: false, ratio: null, text: '' };
+  return {
+    high: ratio < threshold,
+    ratio,
+    text: ratio < threshold
+      ? '鏡頭位置偏高 —— 這樣下蹲深度會被低估，可能蹲到底也不算次數。建議把鏡頭放低一些（約與胸口同高），或往後站遠一點'
+      : '',
+  };
+}

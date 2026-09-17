@@ -9,7 +9,7 @@ import { pose3d, EX_VIEW } from '../../ui/pose3d.js';
 import { nextGoal } from '../island/goals.js';
 import { planFor, planLabel } from '../../core/difficulty.js';   // Slice4 R3：結算第二幕與島嶼目標條共用（純函式、零依賴）
 import { coachPolicy, repCountdownCue } from '../../core/coach-policy.js';   // Slice3 修復 F3：誠實回饋決策（純函式）
-import { framingReport, createStabilityTracker, landmarkOk, HEAD_LANDMARKS } from '../../core/framing.js';
+import { framingReport, createStabilityTracker, landmarkOk, HEAD_LANDMARKS, cameraHeightHint } from '../../core/framing.js';
 import { sampleVideoLuma, lightingReport } from '../../core/lighting.js';   // 光線品質：量出來並告知，不放寬判定門檻
 import { ALL_FRAME, framingPose, displaySegments, gaugeColor, phaseCueText } from '../../ui/display-colors.js';   // 顏色語意（純函式，可單測）
 
@@ -549,6 +549,8 @@ function waitForFraming(run) {
         // 光線：每 15 幀量一次就夠（照明不會逐幀變），避免每幀都做一次 getImageData
         if ((run.lightTick = (run.lightTick || 0) + 1) % 15 === 1) {
           run.light = lightingReport(sampleVideoLuma(video));
+          // 機位粗估只在站姿時有意義，取景關卡正是站著不動的時候
+          if (lm) run.camHint = cameraHeightHint(lm);
         }
         const settled = report.ok && stab.stable;
         const rows = [...st.rows, settled];
@@ -568,7 +570,8 @@ function waitForFraming(run) {
                 : !report.ok ? `📏 ${report.text}`
                   : !stab.stable ? '⏳ 請站穩不動，正在鎖定您的位置…'
                     : people > 1 ? `📍 已就位（畫面中有 ${people} 人，已鎖定最靠近鏡頭的您）`
-                      : '📍 已就位，準備開始';
+                      : (run.camHint && run.camHint.high) ? `📐 ${run.camHint.text}`
+                        : '📍 已就位，準備開始';
           live.hud.track.textContent = msg;
           // 語音只講「怎麼改」，且以最高優先的那一項為準（不要三種問題輪播疊在一起）
           if (run.voice && !allOk && lm) {

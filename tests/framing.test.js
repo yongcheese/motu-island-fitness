@@ -3,7 +3,7 @@
 //      並仍給不低的 visibility → 頭已經出畫面卻照樣判定。
 // Bug2 開合跳一舉手就掉線：手腕在正常取景下必然衝出畫面上緣，而它被列進了入鏡判定。
 import { test, eq, assert } from './harness.js';
-import { framingReport, createStabilityTracker, inFrame, landmarkOk } from '../app/core/framing.js';
+import { framingReport, createStabilityTracker, inFrame, landmarkOk, cameraHeightHint} from '../app/core/framing.js';
 import { createDetector } from '../app/core/engine.js';
 import { EXERCISES } from '../app/core/exercises/index.js';
 import { makeSequence, baseSkeleton, _internal } from '../app/core/synth.js';
@@ -673,4 +673,40 @@ test('桌面機位: 判定真的需要腳踝的動作，腳出框時仍應停止
   for (const i of [LM.LEFT_ANKLE, LM.RIGHT_ANKLE]) sk[i] = { ...sk[i], y: 1.09 };
   const withAnkle = framingReport(sk, { gateLandmarks: [...SQUAT_GATE, LM.LEFT_ANKLE, LM.RIGHT_ANKLE] });
   assert(!withAnkle.ok, '腳踝列進 gate 時必須維持原本的嚴格判定');
+});
+
+/* ---------- 鏡頭高度粗估（只提醒，不擋人、不調門檻） ---------- */
+test('cameraHint: 頭肩段比例偏低 → 提醒鏡頭偏高', () => {
+  const sk = baseSkeleton();
+  const sc = { x: (sk[LM.LEFT_SHOULDER].x + sk[LM.RIGHT_SHOULDER].x) / 2,
+    y: (sk[LM.LEFT_SHOULDER].y + sk[LM.RIGHT_SHOULDER].y) / 2 };
+  const hc = { x: (sk[LM.LEFT_HIP].x + sk[LM.RIGHT_HIP].x) / 2,
+    y: (sk[LM.LEFT_HIP].y + sk[LM.RIGHT_HIP].y) / 2 };
+  const torso = Math.hypot(sc.x - hc.x, sc.y - hc.y);
+  // 把鼻子壓到離肩很近（＝俯角大、頭肩段被壓扁）
+  sk[LM.NOSE] = { ...sk[LM.NOSE], x: sc.x, y: sc.y - torso * 0.30 };
+  const r = cameraHeightHint(sk);
+  assert(r.high, `頭肩比 ${r.ratio?.toFixed(3)} 應判為鏡頭偏高`);
+  assert(/放低|後站|遠/.test(r.text), '提醒必須給出可執行的動作');
+});
+
+test('cameraHint: 正常機位不得誤報', () => {
+  const sk = baseSkeleton();
+  const sc = { x: (sk[LM.LEFT_SHOULDER].x + sk[LM.RIGHT_SHOULDER].x) / 2,
+    y: (sk[LM.LEFT_SHOULDER].y + sk[LM.RIGHT_SHOULDER].y) / 2 };
+  const hc = { x: (sk[LM.LEFT_HIP].x + sk[LM.RIGHT_HIP].x) / 2,
+    y: (sk[LM.LEFT_HIP].y + sk[LM.RIGHT_HIP].y) / 2 };
+  const torso = Math.hypot(sc.x - hc.x, sc.y - hc.y);
+  sk[LM.NOSE] = { ...sk[LM.NOSE], x: sc.x, y: sc.y - torso * 0.43 };   // 約 750mm 機位的實測值
+  const r = cameraHeightHint(sk);
+  assert(!r.high, `頭肩比 ${r.ratio?.toFixed(3)}（約對應 750mm）不該被提醒`);
+  eq(r.text, '');
+});
+
+test('cameraHint: 關節點不可信時回報 null，不得瞎猜', () => {
+  const sk = baseSkeleton();
+  sk[LM.NOSE] = { ...sk[LM.NOSE], visibility: 0.05 };
+  const r = cameraHeightHint(sk);
+  eq(r.ratio, null);
+  eq(r.high, false, '量不到就不要提醒');
 });
