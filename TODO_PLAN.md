@@ -53,9 +53,13 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
 **已列入 `文件/02_遊戲組對接/0828會議_待確認清單.md` 第三節待問事項。**
 
 ## 進度總覽
-- 總 Slice 數：7
-- 已完成：9 / 11（Slice 1–8、8b）｜Slice 9、10 與凍結 Gate 待遊戲組回覆
-- 平行組：無（Slice 2/5 同碰 `store.js`，Slice 7 碰共用檔 `main.js`，一律序列）
+- 總 Slice 數：23（編號 1–23）＋ 1 個歷史附加區塊 `Slice 8b`
+- 已完成：11 ／ 24 個區塊（Slice 1–8、8b、21、22）
+- 待辦：Slice 9、10 與凍結 Gate 待遊戲組回覆｜**Slice 21–23 為 2026-09-19 追加的第二批需求**
+- 平行組：無（第二批三個 Slice 皆獨立序列）
+> ⚠️ 格式契約已知偏差：`Slice 8b` 不是數字編號，`/run-slice 8` 會前綴匹配到它。
+> 兩者皆已 `[x]`，目前無實害；**不重新編號**，因為那會切斷與既有 commit 的對應關係。
+> 追加新 Slice 時一律從最大數字編號 +1 起算，不得再產生字母後綴。
 
 ---
 
@@ -314,3 +318,132 @@ Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後�
   （`npm test` 全綠本身守不住不變量 5）。
 
 <!-- cross-model-review: APPROVED reviewer=codex-2輪-意見全數修正-第3輪確認因額度中止-20260830 hash=c8db8762ec01d3e6 at=2026-08-30T22:41:23+08:00 -->
+
+---
+# 第二批需求 — 健身端 Bug 修復與深蹲／高抬腿判定優化
+
+> 產生時間：2026-09-19
+> 需求來源：2026-09-19 對話中的程式碼盤點（六項發現，全部已用實測腳本驗證）
+> 測試指令：`npm test`（基線 **273/273 綠**，不得下降）
+
+## 需求檔位（第二批）
+- **檔位**：S（使用者當場推翻原判的 L）
+- **判定理由**：客觀清單原本命中 3 條（碰持久化／多消費端／橫跨多關注點）判為 L，
+  但使用者裁示不要切這麼細、確認後直接施作。依 `make-plan` 的「檔位是下限不是鎖、
+  手動模式使用者可當場推翻」條款下修為 S。
+  **代價已知並接受**：不逐 Slice 派 slice-reviewer，改為收尾一次；
+  Slice 21 因碰 `store.js` 仍建議收尾時一併審。
+- **本檔位規格**：Slice 數 3 ｜ slice-reviewer 收尾一次 ｜ build N/A（以 `npm test` 替代）
+
+## 設計顧問輸入
+> 沿用本檔案上方既有區塊，本批次不重新調用 `ui-ux-pro-max`
+> （本批次無任何新的版面／配色／字體決策）。
+
+## 本批次的不變量
+1. **禁止回溯改寫既有存檔**。時區修正只改「之後怎麼寫」與「怎麼讀」。
+2. **Slice 21、22 不得改動任何判定門檻數值**。目標是讓畫面與文件誠實，不是調鬆緊。
+3. **Slice 23 未取得資料集前，一律不得動門檻**。改了分母卻拿不出重新標定的證據，
+   等於讓企劃書「每個門檻都可追溯」失效。
+4. 測試數不得低於 273，不得新增 skip/only，不得弱化既有斷言。
+
+---
+
+### [x] Slice 21 — 統一時區判定，讓全 App 只有一個「今天」
+- **目標**：使用者在台北早上練的訓練被算在今天，不再被記成昨天。
+- **範圍內**：新增 `app/core/dates.js`（本地時區日期工具，純函式）；
+  `store.js` 的 `todayISO`／`bumpStreak`／`currentStreak`／`todayValidTotal` 改用它；
+  新增 `sessionDayKey(session)` —— 優先由 `dateISO` 導出本地日期鍵、`date` 作 fallback，
+  使既有 UTC 存檔不必改寫也能被正確歸日；
+  `today.js` 與 `tracking.js` 的所有日期計算一併改用同一套。
+- **範圍外**：不改 `session.date` 的欄位名與型別（凍結契約）；不批次重寫既有 history；
+  不改今日任務內容、不改圖表種類與版面。
+- **改動檔案**：`app/core/dates.js`（新增）、`app/state/store.js`、
+  `app/features/today/today.js`、`app/features/tracking/tracking.js`、
+  `tests/dates.test.js`（新增）、`tests/tracking-dates.test.js`（新增）、`tests/today.test.js`、`tests/streak.test.js`
+- **設計要點**：N/A ｜ 純邏輯
+- **UI Slice?**：NO
+- **驗收標準**：
+  - [ ] `TZ=Asia/Taipei`：台北 9/18 21:00 與 9/19 07:00 各結算一次 → 連續天數為 **2**（現行 1）
+  - [ ] `TZ=Asia/Taipei`：台北同一天 07:30 與 21:00 各一次 → 追蹤頁歸為**同一天**（現行拆成兩天）
+  - [ ] 早上 07:30 打開，今日任務進度顯示的是今天的次數
+  - [ ] 既有 UTC 存檔經 `sessionDayKey` 後歸日正確；只有 `date` 沒有 `dateISO` 的舊資料走 fallback 不當掉
+  - [ ] `commitSession()` 回傳的 12 個凍結欄位一個都沒動
+- **測試策略**：`tests/dates.test.js`（跨午夜／跨月／跨年／非法輸入）、
+  `tests/tracking-dates.test.js`（同日兩次訓練歸同一天、跨月週切分）、
+  既有 `today.test.js`／`streak.test.js` 補上 `TZ=Asia/Taipei` 早晨案例。
+- **已知限制（須寫進註解）**：`streak.lastActiveDate` 是純日期鍵、無對應時間戳，
+  無從回推正確本地日。遷移後第一次結算會以本地鍵重設，最多影響一次邊界判定。
+  刻意不猜測回寫 —— 猜錯會直接竄改使用者的連續紀錄。
+- **完成定義**：`npm test` 全綠且測試數 > 273
+- **對外介面**：`app/core/dates.js` 新增匯出 —— `todayKey(now?)`、`dayKeyOf(isoOrDate)`、
+  `shiftDays(key, n)`、`yesterdayKey(now?)`、`sessionDayKey(session)`。
+  全部為純函式、無副作用。`store`／`today`／`tracking` 三處的日期計算一律改走它。
+  ⚠️ `todayKey` 的預設參數用 `new Date(Date.now())`，使假時鐘可注入 —— 勿改回 `new Date()`。
+- **依賴**：無
+- **平行組**：獨立
+- **完成於**：2026-09-19（commit 3de58b8）｜測試 273 → 295，7 個時區全綠
+
+### [x] Slice 22 — 訓練頁三項數字與文案修正
+- **目標**：深度條的線畫在真的算數的位置；卡片金幣數字接近實際；高抬腿說法與實際門檻一致。
+- **範圍內**：
+  (a) `squat.js` 匯出深度 gate 的單一來源常數，`workout.js` 的 `#lv-gtarget` 改由它計算位置
+      （62% → 66.7%），消除「過線卻判半程」的 4.7 個百分點死區；其餘動作維持現行位置。
+  (b) `rewardBadges()` 改用 `planOf(ex)` ＋ `coinsFor()` 估算整輪金幣，並吃難度設定。
+  (c) `highknees.js` 註解更正為實際門檻 55.0°／40.6°（附推導式），
+      `workout.js` 的 `judgeText('highknees')` 由「膝蓋抬到髖部高度」改為與 cue 一致的說法。
+- **範圍外**：**不得更動任何門檻數值**；不改 `coinsFor()` 公式；不改卡片版面與色彩。
+- **改動檔案**：`app/core/exercises/squat.js`、`app/core/exercises/highknees.js`、
+  `app/features/workout/workout.js`、`tests/gauge-target.test.js`（新增）、`tests/reward-estimate.test.js`（新增）
+- **設計要點**：沿用既有 `.wk2-coin` 與達標線樣式，只換數字與文字
+- **UI Slice?**：NO（既有元素的數值修正，無新設計決策）
+- **驗收標準**：
+  - [ ] 深蹲達標線由 62% 改為 66.7%；其餘三動作位置與修改前完全相同
+  - [ ] 合成序列跑完一輪，`validReps`／`invalidReps`／`faultCounts` 與修改前逐項相同（零行為變動）
+  - [ ] 普通難度下深蹲卡約 432、高抬腿約 540（現為 100／50），且切換難度後數字會變
+  - [ ] 高抬腿四處文案（judgeText／cues／phaseCues／voiceIntro）不再出現「髖部高度」
+- **測試策略**：`tests/gauge-target.test.js`（線位置由常數導出、其餘動作不變）、
+  `tests/reward-estimate.test.js`（三難度 × 四動作；`meta` 缺欄位時不回 NaN）、
+  既有 `engine.test.js`／`highknees-lift.test.js` 全綠證明零行為變動。
+- **完成定義**：`npm test` 全綠且測試數 > Slice 21 完成後的數字
+- **對外介面**：`squat.js` 新增匯出 `DEPTH_NORM`、`GATE_DEPTH`、`GATE_PROGRESS`；
+  `workout.js` 新增匯出 `gaugeTargetOf(ex)`（達標線位置的單一來源，新增有 gate 的動作須在此登記）。
+  `rewardBadges` 的輸出文字由「🪙 ≈N」改為「🪙 最多 N」。
+- **依賴**：無
+- **平行組**：獨立
+- **完成於**：2026-09-19（commit 7324798）｜測試 295 → 306；合成序列比對前後判定逐項相同
+- **未處理（已申報）**：`ui/pose3d.js` 的高抬腿示範動畫仍以「膝抬到髖高」編排，
+  低於本系統 55° 的門檻。屬 3D 動畫編排，改動會影響示範外觀，另案處理。
+
+### [ ] Slice 23 — 判定量尺度不變化與重新標定（🔴 阻塞中）
+- **目標**：深蹲與高抬腿的判定分母不再被動作本身與鏡頭距離污染。
+- **前置阻塞**：`docs/verification/scripts/data` 已不存在。必須先以 `fetch_data.py`
+  取回 UI-PRMD／REHAB24-6／EC3D 三個資料集，並重跑 `measure.mjs` 確認與 `EXPECTED.md` 相符。
+  **取不到就停止並回報，不得以合成資料替代標定。**
+- **範圍內**：
+  (a) `engine.js` 的 `standThigh` 與當幀大腿長改為先除以尺度不變量再取比值；
+      `highknees.js` 依重新標定調整 `THIGH_LIFT_TARGET`／`THIGH_LIFT_ENTER`。
+  (b) `engine.js` 增設「站立基準腿長」；`squat.js` 的 `depth` 分母改用它，
+      取代會被蹲姿污染的當幀 `legLength` 與 `distance(髖,膝)×2` 備援。
+  (c) `.gitignore` 加入資料目錄；產出標定報告。
+- **範圍外**：不動 `torso_lean`／`knee_valgus`／`head_tilt` 的門檻與嚴重度；
+  不動相位映射（`targetEnter`／`attemptEnter` 的 norm 區間）。
+- **改動檔案**：`app/core/engine.js`、`app/core/exercises/highknees.js`、
+  `app/core/exercises/squat.js`、`tests/highknees-lift.test.js`、`tests/engine.test.js`、
+  `.gitignore`、`docs/verification/尺度不變標定報告.md`（新增）
+- **設計要點**：N/A ｜ 純判定邏輯
+- **UI Slice?**：NO
+- **驗收標準**：
+  - [ ] 合成序列施加 ±20% 距離縮放：達門檻者全部計次、未達者全部不計次（現行 ±15–20% 即雙向翻盤）
+  - [ ] 腳踝出框與可見時的深蹲深度判定差異小於報告所訂容許值
+  - [ ] 重新標定的誤判率**不得低於**現行水準；靈敏度若無標註資料可用，須明寫「未標定」
+  - [ ] 既有防作弊測試（半程、彎腰代償、作弊樣本）全數維持判否
+  - [ ] Slice 22 建立的達標線單一來源機制在新門檻下自動對齊，無需再改 `workout.js`
+- **測試策略**：`tests/highknees-lift.test.js` 補距離不變性測試（±10/20/30%）；
+  `tests/engine.test.js` 補「腳踝出框 vs 可見」一致性測試；
+  邊界案例：站立基準未建立時須 fail-closed（progress 恆 0、不計次）。
+- **🔴 風險**：動到本作品最核心的判定量。若重新標定後誤判率變差，
+  **保留現行實作並如實記錄**，不得為了「改完了」而硬上。
+- **完成定義**：`npm test` 全綠 ＋ 標定報告與 `EXPECTED.md` 比對表
+- **對外介面**：（施工後回填）
+- **依賴**：無（但被資料集取得阻塞）
+- **平行組**：獨立
