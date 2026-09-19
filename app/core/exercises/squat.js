@@ -108,6 +108,22 @@ export const HEAD_TILT_RATIO = 0.18;
 // 移除的是「我們這個實作」，不是那條規則。
 // ══════════════════════════════════════════════════════════════════════════
 
+// ══ 深度判定的兩個數字必須由同一個來源導出（2026-09-19）══════════════════════
+// 深度訊號：depth = (髖y − 膝y) / 腿長，再以 DEPTH_NORM 映射成 0..1 的 progress。
+// 品質 gate：depth ≥ GATE_DEPTH 才算「真的蹲到位」。
+//
+// ⚠️ 修正前這兩者各自寫死，而且不一致 ——
+//    量表的達標線畫在 thresholds.targetEnter = 0.62（對應 depth −0.128），
+//    但 gate 要求 depth ≥ −0.10（對應 progress 0.667）。
+//    中間 0.62–0.667 是死區：**深度條明明過了白線，這一下卻被判半程**。
+//    實機回報的「明明做對卻不算」有一部分就是這裡。
+// 現在量表的線改由 GATE_PROGRESS 導出（見 workout.js），不再讀 targetEnter，
+// 兩者必然一致。**本次不動任何門檻數值**，只是讓畫面說實話。
+export const DEPTH_NORM = { lo: -0.5, hi: 0.1 };
+export const GATE_DEPTH = -0.10;
+/** gate 深度換算成 progress（量表達標線該畫的位置）。 */
+export const GATE_PROGRESS = (GATE_DEPTH - DEPTH_NORM.lo) / (DEPTH_NORM.hi - DEPTH_NORM.lo);
+
 export const squat = {
   id: 'squat', name: '深蹲', group: 'lower',
   met: 5.4, baseCoinPerRep: 10, intensity: 1.0,
@@ -164,8 +180,8 @@ export const squat = {
     const legLen = ankleReliable ? s.legLength : (distance(hipC, kneeC) * 2 || s.legLength);
     // 深度：髖相對膝（以腿長正規化），髖越低值越大
     const depth = (hipC.y - kneeY) / legLen;
-    const progress = norm(depth, -0.5, 0.1);
-    const gatePass = depth >= -0.10;             // Demo 校準 -0.02→-0.10：允許髖到近膝(近平行蹲)，半蹲峰值 depth≈-0.33 仍被擋
+    const progress = norm(depth, DEPTH_NORM.lo, DEPTH_NORM.hi);
+    const gatePass = depth >= GATE_DEPTH;        // Demo 校準 -0.02→-0.10：允許髖到近膝(近平行蹲)，半蹲峰值 depth≈-0.33 仍被擋
     const faults = [];
     // 門檻 45°。以下為 2026-08-22 實測值（跑合成序列逐幀量 vAngleFromVertical 取峰值）：
     //   clean 0.00° ／ half 0.00° ／ compensation 46.42°

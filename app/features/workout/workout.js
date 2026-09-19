@@ -1,5 +1,7 @@
 // Tab2 訓練（核心）：分類 → 清單 → 簡介 → 即時偵測 → 結算。
 import { EXERCISES, PLANNED, GROUPS } from '../../core/exercises/index.js';
+import { coinsFor } from '../../core/rewards.js';
+import { GATE_PROGRESS as SQUAT_GATE_PROGRESS } from '../../core/exercises/squat.js';
 import { createDetector } from '../../core/engine.js';
 import { createPose, startCamera } from '../../core/pose.js';
 import { drawSkeleton, drawCountdownRing, drawProgressRing, COLOR } from '../../ui/feedback.js';
@@ -165,8 +167,20 @@ function diffDots(d) { return [1, 2, 3].map(i => `<i class="${i <= d ? 'on' : ''
 // 獎勵與部位雙徽章；prefix 輸出各卡既有 class。
 // 原本第二格顯示「kcal/分」，已移除——熱量由 MET 公式估算，未納入個體代謝差異，
 // 亦無心率或攝氧量佐證，屬本系統無法驗證的數字。改顯示訓練部位，資訊更確實也更實用。
+// ⚠️ 2026-09-19 修正：原本寫死 `baseCoinPerRep * 10`，等於假設一輪只做 10 下。
+//    實際一輪是 3 組（深蹲 3×12=36 下、高抬腿 3×30=90 下），
+//    卡片顯示 ≈100／≈50，實際結算 432／540 —— 差 4.3 與 10.8 倍。
+//    而且舊寫法完全不吃難度設定，切到困難模式差得更多。
+//    改為以該難度的實際課表量 × 結算公式估算，並標示為「整輪上限」。
+function estimateRoundCoins(e) {
+  const plan = planOf(e);
+  const reps = plan.sets * plan.repsPerSet;
+  // 上限估計：假設全部有效（targetRate=1）、不計連續天數加成、不計雙倍卡。
+  // 取上限而非期望值，是因為期望值要假設一個達標率 —— 那個數字我們沒有依據。
+  return coinsFor({ validReps: reps, baseCoinPerRep: e.baseCoinPerRep, targetRate: 1, streakDays: 0 });
+}
 function rewardBadges(e, p) {
-  return `<span class="${p}-coin">🪙 ≈${e.baseCoinPerRep * 10}</span>
+  return `<span class="${p}-coin" title="全部有效時的整輪上限">🪙 最多 ${estimateRoundCoins(e)}</span>
           <span class="${p}-target">🎯 ${e.meta?.target || '全身'}</span>`;
 }
 // 依使用者設定的難度換算該動作的訓練量。**所有**顯示與執行都必須經由此函式，
@@ -268,7 +282,7 @@ function renderIntro(ex) {
         ${stat('🎯 部位', ex.meta.target)}
         ${stat('🔁 組數', `${planOf(ex).sets} 組 × ${planOf(ex).repsPerSet} 下`)}
         ${stat('⏱️ 組間休息', `${planOf(ex).restSec} 秒`)}
-        ${stat('🪙 預估金幣', `${ex.baseCoinPerRep} / 有效次`)}
+        ${stat('🪙 可得金幣', `${ex.baseCoinPerRep} / 有效次 · 整輪最多 ${estimateRoundCoins(ex)}`)}
         ${stat('🔥 強度', `${ex.met} MET`)}
         ${stat('📷 鏡頭', ex.id === 'pushup' ? '側面' : ex.id === 'jumpingjack' ? '正面 · 需全身入鏡' : '正面')}
       </div>
@@ -296,7 +310,7 @@ function judgeText(id) {
   return {
     squat: '髖部需低於膝蓋高度、起身回穩；排除只彎腰、半蹲。',
     jumpingjack: '雙手過肩且雙腳張開超過肩寬；排除只揮手或只張腳。',
-    highknees: '膝蓋抬到髖部高度、左右交替；排除坐著抬腿、不交替。',
+    highknees: '大腿抬到接近水平（與鉛直約 55°）、左右交替；排除坐著抬腿、不交替。',
     pushup: '手肘下壓達標、身體保持一直線；排除半程、塌腰。',
   }[id] || '';
 }
@@ -389,8 +403,11 @@ async function startLive(ex, doWarmup) {
     flash: root.querySelector('#lv-repflash'),
     next: root.querySelector('#lv-next'),      // 即時動作指引（Bug2(b)）
   };
-  // 達標線：直接標在深度量表上，使用者知道「要做到哪裡」
-  root.querySelector('#lv-gtarget').style.bottom = (ex.thresholds.targetEnter * 100) + '%';
+  // 達標線：直接標在深度量表上，使用者知道「要做到哪裡」。
+  // ⚠️ 必須畫在「品質 gate 的位置」，不是相位門檻 targetEnter 的位置 ——
+  //    深蹲的兩者原本不一致（targetEnter 0.62 vs gate 0.667），中間是死區：
+  //    深度條過了白線，這一下卻被判半程。2026-09-19 改由 gate 導出。
+  root.querySelector('#lv-gtarget').style.bottom = (gaugeTargetOf(ex) * 100) + '%';
 
   live = {
     ex, ctx, canvas, raf: null, pose: null, cam: null, demo: null, hud,
@@ -703,6 +720,15 @@ function liveShell(ex) {
         <button class="lv-btn lv-pause" id="lv-pause">⏸ 暫停</button>
       </div>
     </div>`;
+}
+
+/** 深度量表上「達標線」該畫的位置（0..1 的 progress）。
+ *  有品質 gate 的動作以 gate 為準；其餘動作沒有獨立的 gate，退回相位門檻。
+ *  ⚠️ 新增動作若也有「達到相位但仍可能被 gate 擋下」的設計，必須在此登記，
+ *     否則畫面會再度對使用者說謊。 */
+export function gaugeTargetOf(ex) {
+  if (ex?.id === 'squat') return SQUAT_GATE_PROGRESS;
+  return ex?.thresholds?.targetEnter ?? 1;
 }
 
 function resizeCanvas() {
