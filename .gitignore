@@ -4,3 +4,7 @@ node_modules/
 .playwright-mcp/
 
 __pycache__/
+
+# 驗證資料集（第三方授權，不納入版本控制）
+/tmp/vdata/
+docs/verification/scripts/data/

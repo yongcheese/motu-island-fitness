@@ -87,3 +87,42 @@ test('highknees: 文案不得提及手臂（實機回報使用者誤以為要辨
     assert(!/手|臂|腕/.test(t), `高抬腿不判定手臂，文案不該提到手：「${t}」`);
   }
 });
+
+// ── 2026-09-19：抬膝量必須對「使用者前後移動」不變 ──────────────────
+// 修正前，當幀大腿長與站立基準都是未正規化的像素長度，使用者靠近或退後
+// 就會讓比值失真（實測 UI-PRMD m02：靠近 20% 抬膝量偏誤 11.3%、退後 20% 偏誤 58%）。
+// 現在兩者都先除以同一幀的軀幹長，距離造成的等比縮放當場抵消。
+test('高抬腿：抬膝量不受使用者前後移動影響（尺度不變）', () => {
+  const seq = makeSequence('highknees', { reps: 4, variant: 'clean', framesPerRep: 26 });
+  // 以畫面中心為原點等比縮放整段 —— 等同使用者站得離鏡頭更近／更遠
+  const scaleAll = (frames, k) =>
+    frames.map(f => f.map(p => ({ x: 0.5 + (p.x - 0.5) * k, y: 0.5 + (p.y - 0.5) * k, z: p.z, visibility: p.visibility })));
+
+  const peakOf = (frames) => {
+    const d = createDetector(EXERCISES.highknees);
+    let t = 0, peak = 0;
+    for (const f of frames) {
+      const r = d.update(f, t); t += 33;
+      if (r.visible !== false) peak = Math.max(peak, r.signal);
+    }
+    return peak;
+  };
+
+  const base = peakOf(seq.frames);
+  assert(base > 0.5, `基準抬膝量應明顯大於 0，實得 ${base.toFixed(3)}`);
+  for (const k of [0.85, 0.9, 1.1, 1.15]) {
+    const p = peakOf(scaleAll(seq.frames, k));
+    const err = Math.abs(p - base) / base;
+    assert(err < 0.05,
+      `整段縮放 ${k}× 後抬膝量應幾乎不變：基準 ${base.toFixed(3)} → ${p.toFixed(3)}（偏誤 ${(err * 100).toFixed(1)}%）`);
+  }
+});
+
+test('高抬腿：站立基準尚未建立時 fail-closed（不得亂計次）', () => {
+  // 第一幀就直接送入抬腿姿勢：此時 standThigh 為 null，foreshorten 回 0
+  const seq = makeSequence('highknees', { reps: 1, variant: 'clean', framesPerRep: 26 });
+  const d = createDetector(EXERCISES.highknees);
+  const r = d.update(seq.frames[Math.floor(seq.frames.length / 2)], 0);
+  eq(r.signal, 0, '沒有站立基準就無從判斷抬了多高，訊號必須為 0');
+  eq(r.reps.valid, 0);
+});

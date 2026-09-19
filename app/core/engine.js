@@ -182,14 +182,30 @@ export function createDetector(spec, opts = {}) {
     // 直立時 ≈1；前傾時軀幹投影縮短使其下降。透視會部分抵消（前傾使人靠近鏡頭而放大），
     // 故本量只能分辨明顯前傾，詳見 squat.js 之註解與 docs/verification/。
     const frameTorso = s.torsoLength;
-    // 當幀左右大腿投影長，以及相對站立基準的「縮短率」（0＝站直，越大代表大腿越朝向鏡頭）
-    const thighL = dist2(frame[LM.LEFT_HIP], frame[LM.LEFT_KNEE]);
-    const thighR = dist2(frame[LM.RIGHT_HIP], frame[LM.RIGHT_KNEE]);
+    // 當幀左右大腿投影長，以及相對站立基準的「縮短率」（0＝站直，越大代表大腿越朝向鏡頭）。
+    //
+    // ⚠️ 2026-09-19：大腿長必須先以「同一幀的軀幹長」正規化，才能與站立基準相比。
+    //    修正前兩者都是**未經正規化的像素長度**：使用者相對建立基準時的位置前後移動，
+    //    分子隨距離縮放、分母卻是舊的 → 比值失真。
+    //      靠近 → 當幀大腿變長 → 縮短率偏小 → 做對了卻不計次
+    //      退後 → 當幀大腿變短 → 縮短率偏大 → 沒做到卻計次
+    //    實測（UI-PRMD m02 跨欄步，段中疊加尺度擾動）：靠近 20% 時抬膝量偏誤 11.3%，
+    //    靠近 30% 時後半段整組計不到次（99 → 0）。高抬腿是原地彈跳動作，本來就會前後飄。
+    //
+    //    用「同一幀的軀幹長」而非 EMA 平滑值當分母，是刻意的：分子分母取自同一幀，
+    //    任何距離造成的等比縮放會**當場完全抵消**，不必等 EMA 追上。
+    //    軀幹長在高抬腿期間幾乎不變（見 highknees.js 的實測：四種機位差異僅 0.001），
+    //    故它在本動作是合格的尺度基準 —— 但同一句話在深蹲不成立（軀幹會大幅下沉）。
+    const unit = frameTorso > 1e-6 ? frameTorso : 1;
+    const thighL = dist2(frame[LM.LEFT_HIP], frame[LM.LEFT_KNEE]) / unit;
+    const thighR = dist2(frame[LM.RIGHT_HIP], frame[LM.RIGHT_KNEE]) / unit;
     const foreshorten = (v) => (standThigh && standThigh > 1e-6 ? Math.max(0, 1 - v / standThigh) : 0);
     return {
       ...s, ...scaleEma, frameTorso,
       torsoRatio: standTorso ? frameTorso / standTorso : 1,
       thighForeL: foreshorten(thighL), thighForeR: foreshorten(thighR),
+      // 供 update() 更新站立基準用：已正規化，與 standThigh 同一個單位
+      frameThighMax: Math.max(thighL, thighR),
       standThigh,
     };
   }
@@ -201,6 +217,8 @@ export function createDetector(spec, opts = {}) {
       standSpan = standSpan === null ? frameSpan : 0.05 * frameSpan + 0.95 * standSpan;
     }
     // 大腿基準取左右較長者：站姿時兩腿等長，取 max 可避開單側被遮擋而偏短的情形。
+  // ⚠️ frameThigh 必須是**已用當幀軀幹長正規化**的值（由 stableScale 算好傳入），
+  //    與 standThigh 同單位。傳原始像素長度會讓整個比值失去意義。
     if (Number.isFinite(frameThigh) && frameThigh > 1e-6) {
       standThigh = standThigh === null ? frameThigh : 0.05 * frameThigh + 0.95 * standThigh;
     }
@@ -417,7 +435,9 @@ export function createDetector(spec, opts = {}) {
       scale.frameTorso,
       (ev.progress ?? Math.max(ev.progressL ?? 0, ev.progressR ?? 0)) < 0.15,
       report.span,
-      Math.max(dist2(frame[LM.LEFT_HIP], frame[LM.LEFT_KNEE]), dist2(frame[LM.RIGHT_HIP], frame[LM.RIGHT_KNEE])),
+      // 已以當幀軀幹長正規化（見 stableScale）—— 不可改回傳原始像素長度，
+      // 那會讓基準與當幀值單位不一致，比值恆為錯。
+      scale.frameThighMax,
     );
     let phase = 'READY';
     let signal = 0;
