@@ -1,11 +1,16 @@
 // 中央狀態（單一真實來源）+ localStorage 持久化 + 事件匯流排。
 // 防刷鐵則：只有 commitSession() 能增加金幣/XP/history；UI 任何按鈕都不能直接加幣。
 import { coinsFor, grade, shardsFor, ticketsFor } from '../core/rewards.js';
+import { todayKey, yesterdayKey, sessionDayKey } from '../core/dates.js';
 
 const KEY = 'island-fitness-ai/v1';
 const SCHEMA = 1;
 
-function todayISO() { return new Date().toISOString().slice(0, 10); }
+// 日期一律走 core/dates.js（本地時區）。
+// ⚠️ 2026-09-19 修正：這裡原本是 `new Date().toISOString().slice(0,10)`，取的是 **UTC** 日期。
+//    台北 UTC+8，於是 00:00–07:59 練的訓練全被蓋成前一天的章，而 tracking.js 又是用本地
+//    日期分組 —— 同一個 App 兩個「今天」。實測後果見 core/dates.js 檔頭。
+function todayISO() { return todayKey(); }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 
 function defaultState() {
@@ -86,7 +91,9 @@ export const store = {
     const tickets = ticketsFor({ validReps, targetRate });
 
     const session = {
-      id: uid(), dateISO: new Date().toISOString(), date: todayISO(),
+      // dateISO 與 date 必須取自同一個時刻；用 Date.now() 而非 new Date()，
+      // 否則注入假時鐘的測試會量到真實時間（見 core/dates.js 的 todayKey 註解）。
+      id: uid(), dateISO: new Date(Date.now()).toISOString(), date: todayISO(),
       exercise: result.exercise, exerciseName: result.exerciseName || result.exercise,
       durationSec: Math.round(durationSec),
       validReps, invalidReps,
@@ -182,7 +189,8 @@ function todayValidTotal(extraValidReps = 0) {
   const today = todayISO();
   let n = extraValidReps;
   for (const h of state.history) {
-    if (h.date === today && Number.isFinite(h.validReps) && h.validReps > 0) n += h.validReps;
+    // 用 sessionDayKey 而非 h.date：舊存檔的 date 是 UTC 鍵，由 dateISO 才能還原正確本地日
+    if (sessionDayKey(h) === today && Number.isFinite(h.validReps) && h.validReps > 0) n += h.validReps;
   }
   return n;
 }
@@ -194,6 +202,11 @@ function todayValidTotal(extraValidReps = 0) {
  *    使用者只要停止訓練，它就會一直停在最後一次的數值。
  *    實測：最後活動日 2026-08-30、當日 2026-09-15（相隔 16 天），畫面仍顯示「連續 1 天」。
  *
+ * ⚠️ 已知限制（2026-09-19 時區修正）：`streak.lastActiveDate` 是純日期鍵、沒有對應的時間戳，
+ *    因此舊存檔裡那個用 UTC 算出來的值**無從回推正確的本地日**。刻意不猜測、不回寫 ——
+ *    猜錯會直接竄改使用者的連續紀錄。遷移後第一次結算即以本地鍵重設，
+ *    最多影響一次連續天數的邊界判定。
+ *
  * 判定：最後活動日若不是今天也不是昨天，連續已中斷 → 0。
  * 保留「昨天」是刻意的：昨天練過、今天還沒練，這條連續仍可由今天的訓練接續，
  * 此時顯示 0 會讓使用者以為已經斷了。
@@ -202,7 +215,7 @@ function currentStreak() {
   const s = state.streak;
   if (!s?.lastActiveDate) return 0;
   const today = todayISO();
-  const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+  const yesterday = yesterdayKey();
   return (s.lastActiveDate === today || s.lastActiveDate === yesterday) ? (s.current || 0) : 0;
 }
 
@@ -212,7 +225,7 @@ function bumpStreak(validRepsThisSession = 0) {
   if (s.lastActiveDate === today) return s.current;      // 今日已計入，不重複累加
   // 當日有效次數未達門檻 → 這一天還不算「有運動」，維持原連續天數不動
   if (todayValidTotal(validRepsThisSession) < STREAK_MIN_VALID_REPS) return s.current;
-  const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+  const yesterday = yesterdayKey();
   s.current = (s.lastActiveDate === yesterday) ? s.current + 1 : 1;
   s.lastActiveDate = today;
   s.longest = Math.max(s.longest, s.current);

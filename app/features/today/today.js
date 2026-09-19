@@ -2,44 +2,53 @@
 // 契約：只實作 { id, label, icon, mount, unmount } 五欄位（不含 onShow）。
 // store 一律唯讀（getState / subscribe）；unmount 必清 unsubscribe（生命週期鐵則）。
 import { store } from '../../state/store.js';
+import { todayKey, sessionDayKey, shiftDays } from '../../core/dates.js';
 
 const TASK = { title: '完成 20 個有效深蹲', target: 20, hint: '蹲到髖低於膝才算有效' };
 
 // 今日任務進度（Demo 最終打磨 P0）：純呈現層由 history 唯讀推導，零 store schema 變更。
-// 「今日」判定與 store todayISO 同式（UTC 日期字串比對）；已知限制：台北 00:00–07:59 歸前一 UTC 日。
-export function todayValidSquats(history, todayStr = new Date().toISOString().slice(0, 10)) {
+// 「今日」判定走 core/dates.js（本地時區），與 store 同一套。
+// ⚠️ 2026-09-19 修正：此處原本用 `toISOString().slice(0,10)`（UTC），台北 00:00–07:59
+//    練的訓練會被歸到前一日 —— 早上打開時今日任務顯示的是昨天的進度，八點一到又整個歸零。
+export function todayValidSquats(history, todayStr = todayKey()) {
   let n = 0;
   for (const h of history || []) {
-    if (h.date === todayStr && h.exercise === 'squat' && Number.isFinite(h.validReps) && h.validReps > 0) n += h.validReps;
+    if (sessionDayKey(h) === todayStr && h.exercise === 'squat' && Number.isFinite(h.validReps) && h.validReps > 0) n += h.validReps;
   }
   return Math.min(TASK.target, n);
 }
 
 /** 今日累計訓練分鐘數（含無效次的時間——人確實動了那麼久，這是「活動量」不是「成績」）。
- *  對應設定頁的 dailyGoalMin。日期判定與 todayValidSquats 同式，同樣的時區限制。 */
-export function todayActiveMinutes(history, todayStr = new Date().toISOString().slice(0, 10)) {
+ *  對應設定頁的 dailyGoalMin。日期判定與 todayValidSquats 同式（本地時區）。 */
+export function todayActiveMinutes(history, todayStr = todayKey()) {
   let sec = 0;
   for (const h of history || []) {
-    if (h.date === todayStr && Number.isFinite(h.durationSec) && h.durationSec > 0) sec += h.durationSec;
+    if (sessionDayKey(h) === todayStr && Number.isFinite(h.durationSec) && h.durationSec > 0) sec += h.durationSec;
   }
   return Math.round(sec / 60);
 }
 
 /** 本週（週一起算）有訓練的「天數」，不是次數——同一天練三次仍只算一天。
- *  對應設定頁的 weeklyGoalDays。回傳 { days, dates } 供進度條與日曆點同時使用。 */
-export function weekActiveDays(history, todayStr = new Date().toISOString().slice(0, 10)) {
-  const today = new Date(todayStr + 'T00:00:00Z');
-  if (Number.isNaN(today.getTime())) return { days: 0, dates: [] };
-  // getUTCDay(): 0=週日。轉成「距離本週一幾天」：週一=0 … 週日=6
-  const offset = (today.getUTCDay() + 6) % 7;
-  const monday = new Date(today.getTime() - offset * 86400000);
+ *  對應設定頁的 weeklyGoalDays。回傳 { days, dates } 供進度條與日曆點同時使用。
+ *  ⚠️ 2026-09-19 修正：原本以 UTC 推週一（getUTCDay），與使用者實際的一週錯開。
+ *  改以本地時區的星期為準，並用 shiftDays 走日曆日（不做 86400000 毫秒加法，
+ *  那在日光節約時間的切換日會偏一天）。 */
+export function weekActiveDays(history, todayStr = todayKey()) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(todayStr)) return { days: 0, dates: [] };
+  const [y, m, d] = todayStr.split('-').map(Number);
+  const local = new Date(y, m - 1, d, 12, 0, 0);
+  if (Number.isNaN(local.getTime())) return { days: 0, dates: [] };
+  // getDay(): 0=週日。轉成「距離本週一幾天」：週一=0 … 週日=6
+  const offset = (local.getDay() + 6) % 7;
+  const monday = shiftDays(todayStr, -offset);
   const weekStr = [];
-  for (let i = 0; i < 7; i++) weekStr.push(new Date(monday.getTime() + i * 86400000).toISOString().slice(0, 10));
+  for (let i = 0; i < 7; i++) weekStr.push(shiftDays(monday, i));
   const hit = new Set();
   for (const h of history || []) {
-    if (h.date && weekStr.includes(h.date)) hit.add(h.date);
+    const key = sessionDayKey(h);
+    if (key && weekStr.includes(key)) hit.add(key);
   }
-  return { days: hit.size, dates: weekStr.map(d => ({ date: d, active: hit.has(d), isToday: d === todayStr })) };
+  return { days: hit.size, dates: weekStr.map(x => ({ date: x, active: hit.has(x), isToday: x === todayStr })) };
 }
 
 let root = null, CTX = null, unsub = null;

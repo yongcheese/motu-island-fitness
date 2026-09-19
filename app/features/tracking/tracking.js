@@ -3,6 +3,7 @@
 // 在 unmount() / 重繪前一律 .destroy()，避免重用 <canvas> 拋錯。
 
 import { store } from '../../state/store.js';
+import { todayKey, sessionDayKey, shiftDays } from '../../core/dates.js';
 
 /* ---------------- 常數 / 主題 ---------------- */
 const PALETTE = {
@@ -43,23 +44,17 @@ const reduceMotion = typeof matchMedia !== 'undefined'
  * ========================================================== */
 
 // 將 Date 轉成本地 YYYY-MM-DD（與 store 寫入的 todayISO 相容）。
-function ymd(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+// 本地日期鍵。改為轉呼 core/dates.js，確保與 store 蓋章用的是同一份定義。
+// ⚠️ 2026-09-19：本檔原本就用本地日期，但 store 蓋章用的是 UTC —— 兩邊不一致，
+//    台北早上練的那一筆會被歸到前一天的柱子上。現在兩邊都走 dates.js。
+function ymd(d) { return todayKey(d); }
 
 // 取得「往前回推 n 天」的日期鍵陣列，含 today，最舊在前、最新在後。
 // today 預設為 new Date()，測試可注入固定日期。
 export function lastNDays(n, today = new Date()) {
-  const base = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const base = todayKey(today);
   const out = [];
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(base);
-    d.setDate(base.getDate() - i);
-    out.push(ymd(d));
-  }
+  for (let i = n - 1; i >= 0; i--) out.push(shiftDays(base, -i));
   return out;
 }
 
@@ -67,7 +62,9 @@ export function lastNDays(n, today = new Date()) {
 export function groupByDate(history) {
   const map = new Map();
   for (const h of history || []) {
-    const key = h.date || (h.dateISO ? h.dateISO.slice(0, 10) : null);
+    // sessionDayKey：優先由 dateISO 還原本地日，舊存檔的 UTC date 欄位僅作 fallback。
+    // 原本是 `h.date || h.dateISO.slice(0,10)` —— 兩個來源都是 UTC，與本檔的本地分組鍵對不上。
+    const key = sessionDayKey(h);
     if (!key) continue;
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(h);
@@ -97,9 +94,10 @@ function aggregate(sessions) {
 // 切出「本週」(含今天往前 7 天) 與「上週」(再往前 7 天) 的 session 陣列。
 export function splitWeeks(history, today = new Date()) {
   const thisKeys = new Set(lastNDays(7, today));
-  const prevBase = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  prevBase.setDate(prevBase.getDate() - 7);
-  const lastKeys = new Set(lastNDays(7, prevBase));
+  // 上一週＝再往前 7 個日曆日。用 shiftDays 而非毫秒加減，日光節約時間切換日才不會偏。
+  const prevBaseKey = shiftDays(todayKey(today), -7);
+  const [py, pm, pd] = prevBaseKey.split('-').map(Number);
+  const lastKeys = new Set(lastNDays(7, new Date(py, pm - 1, pd, 12, 0, 0)));
   const grouped = groupByDate(history);
   const thisWeek = [], lastWeek = [];
   for (const [key, list] of grouped) {

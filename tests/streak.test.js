@@ -3,6 +3,7 @@
 // 連續天數照樣 +1。而遊戲端的簽到與輪盤獎勵將建立在這個欄位上，等於可以空轉刷獎勵。
 import { test, eq, assert } from './harness.js';
 import { store, STREAK_MIN_VALID_REPS } from '../app/state/store.js';
+import { todayKey, shiftDays } from '../app/core/dates.js';
 
 const mk = (validReps, invalidReps = 0) => ({
   exercise: 'squat', exerciseName: '深蹲', durationSec: 60,
@@ -80,7 +81,10 @@ test('streak: 達標日的紀錄仍完整寫入 history（門檻只影響 streak
 // 今日分頁仍顯示「🔥 連續 1 天」。
 //
 // 修正：改由 store.derived.currentStreak() 取值，最後活動日非今天亦非昨天即回 0。
-const iso = (offsetDays) => new Date(Date.now() - offsetDays * 864e5).toISOString().slice(0, 10);
+// 2026-09-19：改用 core/dates.js 的本地日期工具。
+// 原本是 `toISOString().slice(0,10)`（UTC）—— 與 store 改用本地日期後的判定基準不一致，
+// 在非 UTC 時區會造出錯的日期鍵而讓測試假性失敗。斷言本身一字未改。
+const iso = (offsetDays) => shiftDays(todayKey(), -offsetDays);
 
 /** 直接設定 streak 欄位以模擬「過去某天練過、之後沒再練」。 */
 const setStreak = (lastActiveDate, current) => {
@@ -121,4 +125,40 @@ test('streak: 從未訓練 → 0', () => {
 test('streak: longest 不受過期影響（歷史最佳紀錄應保留）', () => {
   setStreak(iso(16), 1);
   assert(store.getState().streak.longest >= 1, '歷史最長連續天數不應因當前中斷而歸零');
+});
+
+// ── 2026-09-19 時區修正的迴歸測試 ────────────────────────────────
+// 修正前：store 用 UTC 日期判定「今天」。台北 UTC+8 之下，
+// 9/18 21:00 與 9/19 07:00 的 UTC 日期同為 09-18，bumpStreak 判定「今日已計入」
+// 而直接 return —— 連續兩天運動，連續天數不會 +1。
+test('連續天數：晚上練＋隔天早上再練，應為 2 天（時區 bug 迴歸）', () => {
+  reset();
+  const realNow = Date.now;
+  try {
+    // 第一天：本地 9/18 21:00
+    Date.now = () => new Date(2026, 8, 18, 21, 0, 0).getTime();
+    store.commitSession(mk(STREAK_MIN_VALID_REPS));
+    eq(store.derived.currentStreak(), 1, '第一天應為 1');
+
+    // 第二天：本地 9/19 07:00 —— 舊實作在此處會因 UTC 同日而不累加
+    Date.now = () => new Date(2026, 8, 19, 7, 0, 0).getTime();
+    store.commitSession(mk(STREAK_MIN_VALID_REPS));
+    eq(store.derived.currentStreak(), 2, '隔天早上再練應累加為 2');
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test('連續天數：同一個本地日練兩次仍只算一天', () => {
+  reset();
+  const realNow = Date.now;
+  try {
+    Date.now = () => new Date(2026, 8, 19, 7, 30, 0).getTime();
+    store.commitSession(mk(STREAK_MIN_VALID_REPS));
+    Date.now = () => new Date(2026, 8, 19, 21, 0, 0).getTime();
+    store.commitSession(mk(STREAK_MIN_VALID_REPS));
+    eq(store.derived.currentStreak(), 1, '同一天兩次不得重複累加');
+  } finally {
+    Date.now = realNow;
+  }
 });
