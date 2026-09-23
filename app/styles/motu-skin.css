@@ -1,0 +1,181 @@
+/* ============================================================
+   Motu 換皮層（合體第一階段 Slice 1，最後載入）
+   做法：把 lumina.css 的語意變數全部改指向遊戲組的 --motu-* token，
+   再把 .card／.btn／.pill／.section-title 的外觀改成 Motu 樣式。
+   為什麼寫在這裡而不是只用 .motu-* class：motu.css 在 @layer 裡，
+   優先序低於我方未分層的 CSS，外觀必須在這個未分層、最後載入的檔案覆寫。
+   規則：本檔不得出現 --motu-* 以外的色值（tests/motu-skin.test.js 會檢查）。
+   不做深色版：Motu 只有淺色。
+   ============================================================ */
+
+/* —— Inter 800／900（OFL，本機 vendor；400–700 已在 lumina.css）—— */
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 800; font-display: swap; src: url('../../vendor/fonts/inter-800.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 900; font-display: swap; src: url('../../vendor/fonts/inter-900.woff2') format('woff2'); }
+
+:root {
+  color-scheme: light;
+
+  /* —— 背景 / 表面：奶油紙質底 + 白卡 —— */
+  --bg-0: var(--motu-color-page);
+  --bg-1: var(--motu-color-page);
+  --bg-2: var(--motu-color-surface-sunken);
+  --surface: var(--motu-color-surface);
+  --surface-2: var(--motu-color-surface-sunken);
+  --glass-blur: 0px;                       /* Motu 規範：避免厚重玻璃 */
+
+  /* —— 線 —— */
+  --stroke: var(--motu-color-border);
+  --stroke-strong: var(--motu-teal-light);
+
+  /* —— 文字：只用深藍／深藍淡（對比 ≥4.5）—— */
+  --text: var(--motu-color-text);
+  --muted: var(--motu-color-text-muted);
+  --faint: var(--motu-color-text-muted);
+
+  /* —— 品牌色：主行動海洋青；金／珊瑚只給獎勵與危險 —— */
+  --green: var(--motu-color-success);
+  --teal: var(--motu-color-primary);
+  --mint-bright: var(--motu-mint);
+  --coral: var(--motu-coral);
+  --gold: var(--motu-gold);
+  --yellow: var(--motu-color-warning);
+  --red: var(--motu-color-danger);
+
+  /* —— 取景專用色：保留「藍＝已就位、橘＝需調整」的語意，只換成 Motu 色票裡的同色系 —— */
+  --frame-ok: var(--motu-color-info);
+  --frame-adjust: var(--motu-fx-campfire-accent);
+
+  /* —— 漸層：Motu 不新增飽和漸層，改成同色平塗（仍保留 image 型別，放在多層 background 的任何位置都合法）—— */
+  --grad-accent: linear-gradient(var(--motu-color-primary), var(--motu-color-primary));
+  --grad-teal: linear-gradient(var(--motu-color-primary), var(--motu-color-primary));
+  --grad-card: linear-gradient(var(--motu-color-surface), var(--motu-color-surface));
+
+  /* —— 形狀 / 陰影：帶深藍色調的柔影 —— */
+  --radius: var(--motu-radius-xl);
+  --radius-sm: var(--motu-radius-lg);
+  --shadow: var(--motu-shadow-sm);
+  --glow-primary: var(--motu-shadow-primary);
+
+  /* —— 字族：Motu 全站 Inter；中文走系統字 —— */
+  --font-body: 'Inter', 'PingFang TC', 'Noto Sans TC', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Inter', 'PingFang TC', 'Noto Sans TC', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+body {
+  color: var(--motu-color-text);
+  background: var(--motu-color-page);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 標題與大數字：Motu 標題用 900 字重、略收字距 */
+.h1, .loader-title, .wordmark, h1, h2, h3 {
+  font-weight: var(--motu-weight-heading);
+  letter-spacing: -0.025em;
+}
+
+/* —— 卡片：白底 + 暖灰細線 + 柔影，不用玻璃 —— */
+.card {
+  background: var(--motu-color-surface);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border: 1px solid var(--motu-color-border);
+  border-radius: var(--motu-radius-xl);
+  box-shadow: var(--motu-shadow-sm);
+  color: var(--motu-color-text);
+}
+
+/* —— 按鈕：pill；主要按鈕字只有 15px，白字放海洋青上對比不足，改用深青底 —— */
+.btn {
+  border: 1px solid transparent;
+  border-radius: var(--motu-radius-pill);
+  font-weight: 900;
+  color: var(--motu-white);
+  background: var(--motu-teal-dark);
+  box-shadow: var(--motu-shadow-primary);
+}
+.btn:hover { filter: none; box-shadow: var(--motu-shadow-primary-hover); }
+.btn.secondary {
+  color: var(--motu-color-text);
+  background: var(--motu-color-surface);
+  border: 1px solid var(--motu-color-border);
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.btn.secondary:hover { color: var(--motu-teal-dark); border-color: var(--motu-teal-light); background: var(--motu-cream); }
+.btn.ghost { background: none; color: var(--motu-color-text-muted); box-shadow: none; border-color: transparent; }
+
+/* —— pill：Motu chip —— */
+.pill {
+  background: var(--motu-cream);
+  border: 1px solid var(--motu-color-border);
+  color: var(--motu-color-text);
+  font-weight: 700;
+}
+
+/* —— 區段標題：Motu label —— */
+.section-title {
+  color: var(--motu-color-text-muted);
+  font-weight: 900;
+  letter-spacing: var(--motu-tracking-label);
+}
+
+/* ============================================================
+   外殼與全域浮層：不美化，只把寫死的深色底換掉，
+   否則深藍字會疊在深色底上看不見（不變量 6）。
+   ============================================================ */
+.topbar { -webkit-backdrop-filter: none; backdrop-filter: none; }
+.tabbar {
+  background: var(--motu-color-surface);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-top: 1px solid var(--motu-color-border);
+}
+.tab { color: var(--motu-color-text-muted); }
+.tab.active { color: var(--motu-teal-dark); }
+.tab.active::before { background: var(--motu-mint-pale); }
+.tb-coins {
+  background: var(--motu-color-surface);
+  border: 1px solid var(--motu-color-border);
+  color: var(--motu-color-text);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.toast {
+  background: var(--motu-color-surface);
+  border: 1px solid var(--motu-color-border);
+  color: var(--motu-color-text);
+  box-shadow: var(--motu-shadow-md);
+}
+.loader-logo { filter: none; }
+
+/* 島嶼頁浮層：原本寫死深色底 + var(--text)，換色後變成深藍字疊深底 */
+.isl-hint, .isl-goal, .isl-sheet, .isl-place-bar, .isl-right {
+  background: var(--motu-color-surface);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-color: var(--motu-color-border);
+  color: var(--motu-color-text);
+}
+/* 白字按鈕的底色（--surface／--surface-2）已變淺，改深藍字 */
+.isl-sheet-x, .isl-zi { color: var(--motu-color-text); }
+
+/* 健康頁評級字母：色值寫死在 tracking.js 的舊霓虹色，白底上只有 1.7:1。
+   字母改深藍，外框與淡底仍用 --gc 保留評級區分 */
+.trk-rec-grade { color: var(--motu-color-text); }
+
+@media (min-width: 960px) {
+  .tabbar {
+    background: var(--motu-color-surface);
+    border-top: 0;
+    border-right: 1px solid var(--motu-color-border);
+  }
+  .tab:hover { color: var(--motu-teal-dark); background: var(--motu-cream); }
+  .tab.active { color: var(--motu-teal-dark); background: var(--motu-mint-pale); }
+  .tab.active::before { background: var(--motu-color-primary); }
+  .topbar {
+    background: var(--motu-color-surface);
+    border-bottom: 1px solid var(--motu-color-border);
+  }
+}

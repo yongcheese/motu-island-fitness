@@ -1,457 +1,190 @@
-# TODO_PLAN — Island Fitness AI｜健身端收尾（不含真人測試）
+# TODO_PLAN — Island Fitness AI｜合體第一階段：健身畫面換成遊戲組樣式
+<!-- cross-model-review: skip（2026-09-24 使用者裁示：本專案不送 Codex 審） -->
 
-> 產生時間：2026-08-27
-> 需求來源：對話需求（現狀盤點 E-1／E-7 + 遊戲組 V5 新增機制 + Slice 6 難度接線）
-> 技術棧：純前端 ES Modules（無框架、無打包、無 TypeScript）；MediaPipe Pose Landmarker (WASM)；localStorage 持久化
-> 測試指令：`npm test`（`node tests/run.js`，現況 123/123 綠）
-> 執行方式：`python3 serve.py 8080` 或 `npm run serve`
+> 產生時間：2026-09-23
+> 需求來源：對話需求（2026-09-23 定案，合體第一階段）。前一份看板已原封封存為 `TODO_PLAN_合體前.md`（其 Slice 9、10 待第二階段討論整合時再評估）。
+> 技術棧：純前端 ES Modules（無框架、無打包、無 TypeScript）；MediaPipe Pose；Chart.js 4.4.1；three.js r161
+> 測試指令：`npm test`（`node tests/run.js`，基線 **313/313 綠**，不得下降）
+> 執行方式：`python3 serve.py 8080` → `http://localhost:8080`
+> 目的：10/01 企劃書需要健身畫面的正式截圖。
+> 分工（2026-09-24 會議定案）：**我們做健身（訓練頁）換皮；健康頁由遊戲組照「健康頁設計 V2」的功能、用他們的樣式製作**，本看板不含健康頁。
 
 ## 需求檔位
 - **檔位**：L
 - **判定理由**：加分清單命中 3 條 →
-  ①碰持久化（`store.js` 的 localStorage schema 與 `commitSession()` 回傳契約）
-  ②改動的介面有多個消費端（`commitSession()` 被 workout 消費、store API 將由遊戲端模組取用）
-  ③需求橫跨 3 個以上關注點（純邏輯／狀態層／UI／設定接線／對外文件契約）
-  未命中：無新外部依賴；耦合關係已於規劃前逐項 grep 查證，非未知。
-- **本檔位規格**：Slice 數 7 ｜ slice-reviewer 逐 Slice（碰 `store.js`／`main.js` 者必審）｜ 完整 build **N/A（本專案無建置步驟）**，以 `npm test` 全綠替代 ｜ context 隔離：半自動每 2–3 Slice 換對話
+  ①改動的介面有多個消費端：色彩 token 定義在全域的 `lumina.css`／`app.css`，五個分頁都讀同一組變數；
+  ②引入新的外部資產：Lucide 圖示（ISC 授權，SVG 路徑放進本機），以及 Inter 800/900 字重（OFL）；
+  ③橫跨 3 個以上關注點：token、圖示、訓練頁、相機 HUD、動效、無障礙。
+  未命中：不碰持久化或登入；耦合關係已用 grep 查過（CSS 未分層、寫死色的分布已知）。
+- **本檔位規格**：Slice 數 6 ｜ slice-reviewer 逐 Slice ｜ 完整 build **N/A（本專案沒有 build）**，改用 `npm test` 全綠＋瀏覽器實機沒有 console error ｜ context 隔離：半自動模式每 2–3 個 Slice 換一次對話
+- **UI 骨架 Slice：N/A**：這次只換樣式，版面、流程、功能全部凍結，沒有新的產品形狀需要先確認。
+  三件套裡的「視覺美學」由 Slice 3–4 分畫面承擔，「微互動」獨立為 Slice 5。
 
-> ⚠️ 本專案**無 TypeScript、無 build script**。各 Slice 的「完成定義」中，
-> `Type Check PASS` 與 `Build PASS` 一律以 **`npm test` 全綠 + 瀏覽器實機無 console error** 替代。
+## 本次的不變量（任何 Slice 都不得破壞）
+1. **只換樣式**。功能、版面結構、流程、文案語意、判定引擎（`app/core/`）、資料流（`store.js`）一律不動。
+2. **判定回饋的顏色語意不動**。相機畫面上的骨架三色（藍＝準備／綠／黃／紅）和三套配色（三色、色盲友善高對比、單色）屬於判定回饋，不算樣式；`ui/display-colors.js` 的 `PALETTES` 數值保持原樣。
+   （2026-09-24 使用者確認：骨架顏色保持我們的。）
+3. **不整包載入遊戲組的 CSS**。只取檔尾的 `@layer motu-contract`，前段 Tailwind 編譯輸出含全域 reset，會打壞版面。
+4. **不改遊戲組定案的色票與字型數值**。可以決定「哪個顏色用在哪裡」，不可以改色值。
+5. 測試數不得低於 313；不得新增 skip/only；不得弱化既有斷言。
+6. 範圍外頁面（今日、島嶼、健康、設定）與外殼（頂部列、分頁列）**不做美化**，只保證換成淺色 token 後還能正常使用、文字不會消失。合體後這些都歸遊戲組。
 
-## 設計鐵律速查（本專案版）
-既有設計系統 **Lumina**：深色底 ｜ 薄荷綠 `#22e0a1` 主色 ｜ 珊瑚色強調 ｜ 語意色 `--gold`/`--green`/`--teal`/`--muted`
-｜ `.card` 卡片元件 ｜ `.pill` 標籤 ｜ `.stagger` 進場 ｜ emoji 作為圖示 ｜ 零外部資源（離線可跑）
-｜ 尊重 `prefers-reduced-motion`（既有 `reducedMotion()` 已實作）
+## 設計鐵律速查（本專案版，覆蓋 make-plan 預設）
+- 視覺系統＝遊戲組 **Motu**（奶油紙質底 `#F8F6F1`、白卡、暖灰線 `#E1DED4`、深藍文字 `#264653`、海洋青主行動 `#2A9D8F`、金／珊瑚只用於獎勵與危險）。
+  make-plan 預設的 neutral/zinc 灰階與單一強調色**不適用**：UI Authority 第 1 順位是需求，需求明定「凡屬樣式一律照遊戲組」。
+- 圓角照 `--motu-radius-*`（卡片 `--motu-radius-xl` 1.5rem／面板 `--motu-radius-panel` 2rem／按鈕 pill）；陰影照 `--motu-shadow-*`，帶深藍色調，不用黑色重陰影。
+- 圖示一律 **Lucide 線條**（stroke 2、`currentColor`），尺寸用 token；不混用 emoji。本專案沒有 React，所以不用 `lucide-react`，改用本機 SVG 字串（見 Slice 2）。
+- 動效用 `--motu-duration-*`／`--motu-ease-*`；尊重 `prefers-reduced-motion`。
+- 免費優先：Lucide（ISC）與 Inter（OFL）都免費開源，都放在本機 `vendor/`，不走 CDN。
+- 深色模式：Motu 只有淺色（`color-scheme: light`），本次不做深色版。
 
-## 設計顧問輸入（ui-ux-pro-max，全專案只查這一次）
-
+## 設計顧問輸入（ui-ux-pro-max，全專案只查這一次，2026-09-23）
 - **採納**
-  - `whitespace-balance`：以留白分組，不以顏色分組 → 碎片與抽獎券**合併為一張卡**，與金幣／經驗值卡之間留白區隔，表達「這兩者同屬遊戲端資源」。
-  - `visual-hierarchy`：層級靠大小與間距，不靠顏色 → 視覺權重 金幣 ＞ 經驗值 ＞ 碎片／抽獎券，後者用 `.pill` 並列而非大數字 countUp，藉此暗示「非本端資產」而不顯得次等。
-  - `content-priority`：核心內容優先 → 卡片順序維持 金幣 → 經驗值 → **碎片／抽獎券** → 島嶼進度。
-  - `number-tabular`：數字用等寬字形，避免 countUp 過程中的寬度跳動。
-  - `stagger-sequence` 30–50ms：沿用既有 `.stagger`。
-
+  - `no-emoji-icons`／`icon-style-consistent`：emoji 全部換成同一套 SVG 線條圖示，stroke 粗細一致。
+  - `color-contrast`（實測 WCAG 對比，白底／奶油底）：
+    深藍 `#264653` 10.1／9.3 ✅；深藍淡 `#4A6169` 6.6／6.1 ✅；**深青 `#1F7A70` 5.2／4.8 ✅**；
+    **海洋青 `#2A9D8F` 3.3／3.1 ❌（小字不合格）**；金 `#E8AA3E` 2.0 ❌；金字 `#C98A24` 2.9 ❌；珊瑚 `#E8836A` 2.7 ❌；資訊藍 `#4FB9E8` 2.2 ❌。
+    → **規則：所有文字只用深藍、深藍淡、深青。海洋青、金、珊瑚只用在填色、圖示、進度條、≥24px 粗體大數字（3:1 的大字標準）。**
+    白字放在海洋青按鈕上只有 3.3:1，只能用於 ≥18.66px 粗體（大字標準）；小字按鈕改用深青底。
+  - `color-not-only`：金幣／碎片等獎勵不能只靠金色表達，一律同時放圖示與文字。
+  - 相機畫面上的 HUD（`ux: contrast-readability`）：淺色 HUD 疊在不可控的影像上，底色用白 92% 不透明＋`--motu-shadow-md`，文字一律深藍；不用半透明玻璃（遊戲組規範也寫了「避免厚重玻璃與黑色遮罩」）。
+  - `touch-target-size`：可點元素 ≥44px；`focus-states`：`focus-visible` 外框用 `--motu-color-focus`。
+  - `duration-timing`：微互動用 150–300ms，直接對應 `--motu-duration-fast/base/slow`。
 - **駁回**
-  - `no-emoji-icons`（顧問列為 HIGH：應改用 SVG 圖示庫）→ **駁回**。本專案全站以 emoji 為圖示語言（🪙⭐🏝️✅⚠️🎯），且刻意零外部依賴以確保離線執行；引入圖示庫牴觸既有架構決策，且單獨替換此頁會破壞 §4 `consistency`。依 UI Authority 第 3 位（既有 Design System）優先於第 6 位（顧問）。
-  - 「中性色 + 全站單一強調色」鐵律 → **駁回**。Lumina 的 gold／green／teal／coral 各自承載語意（金幣／有效／達標／警示），改為單一強調色會抹除語意編碼，且牴觸 `color-not-decorative-only`。
-  - 所有 Tailwind class（`rounded-2xl` 等）、`lucide-react`、React 元件建議 → **N/A**，本專案為純 CSS + 原生 JS。
-
-> 下游的 run-slice 一律沿用本區塊，不得重新調用 ui-ux-pro-max。
-
-## 不變量（任何 Slice 都不得破壞）
-1. 金幣唯一產出入口是 `commitSession()`；對外介面**不得新增任何加值方法**
-2. 經驗值只增不減
-3. 碎片與抽獎券**不得回流成金幣或經驗值**；健身端**只顯示不儲存**（餘額由遊戲端記帳）
-4. 判定門檻**不得**因難度設定而改變（企劃書 §3 已承諾門檻可追溯至領域標準）
-5. `npm test` 維持全綠，不得刪測試／弱化斷言換綠燈
-
-## 🔴 需與遊戲組議定後才能定案
-**碎片與抽獎券的發放規則**（每次訓練都給？達標才給？數量與什麼掛鉤？）——
-《現狀盤點》E-7 明載「發放規則須與遊戲組共同定義」。
-Slice 1 會把規則寫成**單一純函式並標註為暫定值**，議定後只需改該函式，不影響其餘 Slice。
-**已列入 `文件/02_遊戲組對接/0828會議_待確認清單.md` 第三節待問事項。**
+  - `--design-system` 自動配色與字型推薦：**不執行**（理由：色票與字型已由遊戲組定案，需求明定不可改）。
+  - ui-ux-pro-max 預設圖示庫 Phosphor：駁回（理由：遊戲端用 Lucide，同一產品必須同一套圖示）。
+  - 深色模式成對撰寫：駁回（理由：Motu 只有淺色，遊戲端也沒有深色版）。
+> 下游的 run-slice 與 slice-builder 一律沿用本區塊，不得重新調用 ui-ux-pro-max。
 
 ## 進度總覽
-- 總 Slice 數：23（編號 1–23）＋ 1 個歷史附加區塊 `Slice 8b`
-- 已完成：12 ／ 24 個區塊（Slice 1–8、8b、21、22、23）｜**第二批需求三個 Slice 全部完成**
-- 待辦：Slice 9、10 與凍結 Gate 待遊戲組回覆｜**Slice 21–23 為 2026-09-19 追加的第二批需求**
-- 平行組：無（第二批三個 Slice 皆獨立序列）
-> ⚠️ 格式契約已知偏差：`Slice 8b` 不是數字編號，`/run-slice 8` 會前綴匹配到它。
-> 兩者皆已 `[x]`，目前無實害；**不重新編號**，因為那會切斷與既有 commit 的對應關係。
-> 追加新 Slice 時一律從最大數字編號 +1 起算，不得再產生字母後綴。
+- 總 Slice 數：6
+- 已完成：1 / 6
+- 平行組：無（Slice 1 碰共用的 `index.html` 與全域 token；Slice 3–6 都會碰 `workout.css` 或 `motu-skin.css`，全部序列執行）
 
 ---
 
-### [x] Slice 1 — 建立碎片與抽獎券的發放規則純函式
-- **目標**：系統能依一次訓練結果算出「本次獲得幾個碎片、幾張抽獎券」，規則集中於單一可替換函式。
-- **範圍內**：於 `app/core/rewards.js` 新增 `shardsFor(...)` 與 `ticketsFor(...)`；規則以常數表達並在註解標明「暫定值，待與遊戲組議定（E-7）」；輸入消毒比照既有 `coinsFor()`。
-- **範圍外**：不碰 `store.js`、不碰任何 UI、不儲存任何餘額。
-- **改動檔案**：`app/core/rewards.js`（修改）、`tests/rewards.test.js`（修改）
-- **設計要點**：N/A ｜ 純邏輯
-- **UI Slice?**：NO
-- **驗收標準**：
-  - [x] 有效次數為 0 時，碎片與抽獎券皆回傳 0（不得因「有參與」就發放）
-  - [x] 傳入 NaN／Infinity／負數時回傳 0，不拋例外
-  - [x] 兩個函式皆為純函式：同輸入必同輸出，不讀寫任何全域狀態
-  - [x] 註解明確標示規則為暫定值及其待議來源（E-7）
-- **測試策略**：`tests/rewards.test.js` — 正常值、零有效次數、負數與 NaN 邊界、純函式性（同輸入呼叫兩次結果相同）
-- **完成定義**：`npm test` 全綠
-- **對外介面**：`app/core/rewards.js` 新增 export —— 函式 `shardsFor({validReps})`、`ticketsFor({validReps, targetRate})`（皆為純函式，回傳非負整數）；常數 `SHARD_PER_VALID_REPS=10`、`TICKET_MIN_VALID_REPS=10`、`TICKET_MIN_TARGET_RATE=0.7`（暫定值，議定後只改此三數）。無 storage key、無路由。
-- **依賴**：無
-- **平行組**：獨立
-
-### [x] Slice 2 — commitSession 輸出本次碎片與抽獎券
-- **目標**：結算結果帶出本次獲得的碎片與抽獎券數量，供遊戲端記帳，健身端不持有餘額。
-- **範圍內**：`commitSession()` 回傳的 `session` 物件新增 `shards`、`tickets` 欄位（呼叫 Slice 1 的函式）；一併補上 `xpGain` 欄位以消除 `workout.js:1274` 重複推導 XP 公式的既有脆弱點。
-- **範圍外**：**不得**在 `state.wallet` 或任何持久化結構新增碎片／抽獎券欄位（違反不變量 3）；不改 UI。
-- **改動檔案**：`app/state/store.js`（修改）、`tests/session-rewards.test.js`（新增）
-- **設計要點**：N/A ｜ 純狀態層
-- **UI Slice?**：NO
-- **驗收標準**：
-  - [x] `commitSession()` 回傳物件含 `shards`、`tickets`、`xpGain` 三個欄位
-  - [x] 連續呼叫兩次後，`getState().wallet` **不存在** shards／tickets 相關鍵（以 `Object.keys` 斷言）
-  - [x] localStorage 序列化結果不含碎片／抽獎券餘額
-  - [x] `xpGain` 與 `wallet.xp` 的實際增量一致
-  - [x] **新增欄位為純追加（additive）**：既有欄位 `id`/`dateISO`/`date`/`exercise`/`exerciseName`/`durationSec`/`validReps`/`invalidReps`/`targetRate`/`coinsEarned`/`grade`/`faults` 的名稱、型別與語意完全不變，以測試逐一斷言（`commitSession()` 回傳值是將來遊戲端依賴的對外契約，改動既有欄位會直接打斷對接）
-  - [x] 既有 123 項測試全數維持通過
-- **測試策略**：`tests/session-rewards.test.js` — 回傳欄位完整性、wallet 不受污染（負向斷言）、xpGain 與實際增量一致、零有效次數情境
-- **完成定義**：`npm test` 全綠 + 瀏覽器實機結算一次無 console error
-- **對外介面**：`commitSession(result)` 回傳的 session 物件**純追加**三個欄位——`shards`（本次獲得碎片數，整數）、`tickets`（本次獲得抽獎券數，整數）、`xpGain`（本次經驗值增量，整數）。三者皆為**單次獲得量而非餘額**；`state.wallet` 仍只有 `coins`/`xp`/`level`，碎片與抽獎券不入持久化結構。既有 12 個欄位（id/dateISO/date/exercise/exerciseName/durationSec/validReps/invalidReps/targetRate/coinsEarned/grade/faults）名稱、型別、語意均未變動。無新 storage key、無新路由。
-- **依賴**：Slice 1
-- **平行組**：獨立（碰 `store.js`，必經 slice-reviewer）
-
-### [x] Slice 3 — 結算第二幕顯示碎片與抽獎券
-- **目標**：使用者在「領取獎勵」畫面能看到本次獲得的四項資源，並理解碎片與抽獎券要去遊戲裡用。
-- **範圍內**：於 `renderReward()` 的經驗值卡與島嶼卡之間插入一張資源卡，以 `.pill` 並列顯示碎片與抽獎券；附一行說明文字點出「於島嶼遊戲中使用」；**數量皆為 0 時整張卡不顯示**（與追蹤頁「0 與未發生是兩件事」的既有原則一致）。
-- **範圍外**：不改金幣卡與經驗值卡的既有版面；不加新動畫（沿用既有 `.stagger`）；不改主畫面（碎片與抽獎券不得常駐顯示）。
-- **改動檔案**：`app/features/workout/workout.js`（修改）、`app/features/workout/workout.css`（修改）
-- **設計要點**：沿用 `.card` + `.pill`；視覺權重低於金幣卡與經驗值卡（不用大數字、不用 countUp）；數字使用等寬字形；emoji 作圖示以符合全站慣例；深色底對比需達 4.5:1
-- **UI Slice?**：YES（設計決策已定於上方「設計顧問輸入」，不再重新調用 ui-ux-pro-max）
-- **驗收標準**：
-  - [x] 碎片或抽獎券任一 > 0 時，資源卡出現在經驗值卡與島嶼卡之間
-  - [x] 兩者皆為 0 時整張卡不渲染（DOM 中不存在該節點）
-  - [x] 說明文字讓使用者知道這兩項要在遊戲中使用
-  - [x] 開啟「減少動態效果」時版面正常、無殘留動畫
-  - [x] 主畫面（今日／島嶼／追蹤）**沒有**出現碎片或抽獎券
-- **測試策略**：以既有 DOM 測試風格驗證模板函式：>0 時含對應節點、皆為 0 時不含；主畫面模板不含碎片字樣（負向斷言）
-- **完成定義**：`npm test` 全綠 + 瀏覽器實機走完一次訓練結算，肉眼確認版面
-- **對外介面**：`app/features/workout/workout.js` 新增 export `gameResourceCard(session)` → 回傳 HTML 字串，碎片與抽獎券皆為 0（或欄位缺漏）時回傳空字串。CSS 類別 `.wk-rw-res` / `.wk-rw-res-row` / `.wk-rw-res-pill` / `.wk-rw-res-s`（`workout.css`）。無 storage key、無路由。另：`renderReward()` 的 xpGain 改讀 `session.xpGain`（Slice 2 提供），保留 `?? validReps*5` 僅為舊存檔相容。
-- **依賴**：Slice 2
-- **平行組**：獨立
-- **待審**：留待收尾批次 slice-reviewer（未觸發當場審條件：改動檔案與其他 Slice 無交集、非共用檔、未觸發 Circuit Breaker）
-
-### [x] Slice 4 — 難度設定接線至訓練量
-- **目標**：設定頁的「簡單／普通／困難」真的會改變訓練內容，消滅「按了沒反應」。
-- **範圍內**：新增 `app/core/difficulty.js` 純函式，依 `prefs.difficulty` 調整動作的組數／每組次數／休息秒數（以各動作 `meta.sets`/`repsPerSet`/`restSec` 為基準值）；`workout.js` 讀取設定套用；簡介頁顯示的數字須與實際流程一致。
-- **範圍外**：**絕對不得**改動任何判定門檻、角度閾值、深度閾值（違反不變量 4）；不改設定頁 UI（UI 已存在）。
-- **改動檔案**：`app/core/difficulty.js`（新增）、`app/features/workout/workout.js`（修改）、`tests/difficulty.test.js`（新增）
-- **設計要點**：N/A ｜ 純邏輯 + 既有 UI 接線
-- **UI Slice?**：NO
-- **驗收標準**：
-  - [x] 三個難度各自產生不同的組數／次數／休息秒數，且 easy < normal < hard 的訓練量單調遞增
-  - [x] 產生值皆為正整數，不因基準值缺漏而回傳 NaN／0／undefined
-  - [x] 未知或缺失的 difficulty 值回退為 normal
-  - [x] 簡介頁顯示的組數與次數與實際執行流程一致
-  - [x] **判定門檻未被更動**：以測試斷言引擎在三種難度下對同一組骨架序列的判定結果完全相同
-- **測試策略**：`tests/difficulty.test.js` — 三難度單調性、未知值回退、邊界（基準值缺漏）、**門檻不變性**（同一輸入在三難度下 validReps 相同）
-- **完成定義**：`npm test` 全綠 + 實機切換三種難度確認簡介頁數字與流程一致
-- **對外介面**：`app/core/difficulty.js` 新增 export —— `planFor(meta, level)` → `{sets, repsPerSet, restSec, level}`（三者皆為 ≥1 的整數）、`planLabel(plan)` → 課表字串、`normalizeDifficulty(level)`、`DIFFICULTY_LEVELS`。`workout.js` 新增內部函式 `planOf(ex)` 作為訓練量的單一取得點（簡介頁、HUD、initSetState 三處共用）。無 storage key、無路由。⚠️ 本模組刻意不 export 任何與判定門檻相關的東西，並有靜態守門測試鎖住。
-- **依賴**：無
-- **平行組**：獨立
-
-### [x] Slice 5 — 雙倍金幣卡介面（遊戲端只能宣告使用，倍率由健身端定義）
-- **目標**：遊戲端能宣告使用一張已持有的功能卡，使下一次結算金幣加倍，而金幣仍全數由結算函式產出。
-- **範圍內**：`store` 新增 `consumeBoost()`，寫入一個一次性旗標（需持久化，跨重整有效）；`commitSession()` 於計算金幣時套用倍率後清除旗標；倍率上限與生效次數**寫死於健身端**，呼叫端不得傳入數值。
-- **範圍外**：不新增任何直接加幣方法（違反不變量 1）；不做遊戲端的卡片持有數管理（那在遊戲端）；不做 UI。
-- **改動檔案**：`app/state/store.js`（修改）、`tests/boost.test.js`（新增）
-- **設計要點**：N/A ｜ 純狀態層
-- **UI Slice?**：NO
-- **驗收標準**：
-  - [x] `consumeBoost()` 不接受任何倍率參數；倍率為模組內常數
-  - [x] 套用後**只對下一次**結算生效，該次結算後旗標自動清除
-  - [x] 重複呼叫 `consumeBoost()` 不會疊加（第二次回傳 false 或維持單倍）
-  - [x] 未使用功能卡時，金幣計算結果與現況完全相同（回歸保護）
-  - [x] 旗標經 localStorage 持久化，重整後仍有效
-  - [x] store 對外介面仍**不存在**任何可直接增加金幣的方法（以 `Object.keys(store)` 斷言）
-- **測試策略**：`tests/boost.test.js` — 加倍生效、只生效一次、不可疊加、未使用時的回歸、持久化後仍有效、介面無加值方法（負向斷言）
-- **完成定義**：`npm test` 全綠
-- **對外介面**：`store.consumeBoost()` → boolean（**零參數**；true=旗標已設起，false=已有一張生效中不得疊加）、`store.isBoostArmed()` → boolean（唯讀查詢）。常數 `COIN_BOOST_MULTIPLIER = 2`（export）。state 新增持久化欄位 `boost: { coinNext: boolean }`。`commitSession()` 回傳新增 `coinBoostApplied: boolean`（純追加）。⚠️ 倍率與生效次數寫死於健身端，呼叫端不得傳入數值；零有效次數時 0×2 仍為 0，不可憑空生錢。
-- **依賴**：無（但與 Slice 2 同碰 `store.js`，須序列執行）
-- **平行組**：獨立（碰 `store.js`，必經 slice-reviewer）
-
-### [x] Slice 6 — 補齊 docs/CONTRACTS.md 的模組與 store API 契約（provisional）
-- **目標**：遊戲組拿到這份文件就能把島嶼模組接上，不必問我方任何一句話。
-- **⚠️ 狀態為 provisional（2026-08-29 跨模型互審）**：本 Slice 先於 Slice 7 完成，故最終的 import path、切換常數與錯誤行為可能與文件不符；碎片與抽獎券的接收契約亦待 Slice 9 定案。**正式定稿的驗收移至 Slice 10 的凍結 Gate。**
-- **範圍內**：於 `docs/CONTRACTS.md` 寫入 feature 模組契約 `{ id, label, icon, mount(root, ctx), unmount(), onShow? }`、`ctx` 提供的內容、store 對外可用 API 全表（含 Slice 2 的結算輸出與 Slice 5 的 `consumeBoost()`）、以及**明文禁止事項**（不得自行保存金幣副本、不得繞過 `commitSession()`、碎片與抽獎券不得回流）。
-- **範圍外**：不改任何程式碼。
-- **改動檔案**：`docs/CONTRACTS.md`（修改）
-- **設計要點**：N/A ｜ 純文件
-- **UI Slice?**：NO
-- **驗收標準**：
-  - [x] 五個分頁模組的契約簽名與 `app/main.js` 實際實作逐字一致
-  - [x] store API 表中每一個方法都能在 `store.js` 中找到對應實作（無虛構方法）
-  - [x] 明列遊戲端**不可**做的事，並各附一句理由
-  - [x] 標明 three.js 版本需求（我方 r161）
-- **測試策略**：文件型 Slice，以人工逐項比對程式碼為驗收；不新增自動化測試
-- **完成定義**：文件與程式碼逐項核對無出入
-- **對外介面**：無程式碼改動。`docs/CONTRACTS.md` 新增第 10 節（feature 模組契約與 ctx）、第 11 節（遊戲端不可做的事，六條各附理由）、第 12 節（技術環境，含 three.js r161）；第 6 節由過時的 calories.js 更正為 rewards.js；第 8 節補為 store API 全表。文件行數 141 → 249。
-- **依賴**：Slice 2、Slice 5（需寫入其產出的介面）
-- **平行組**：獨立
-- **待審**：留待收尾批次 slice-reviewer（純文件、未觸發當場審條件）
-
-### [x] Slice 7 — 島嶼分頁可替換開關
-- **目標**：遊戲組的模組一交付，改一處設定即可切換，且我方版本保留為備援。
-- **範圍內**：`app/main.js` 的 `FEATURES` 註冊改為可切換來源；保留現行島嶼模組為備援；切換點集中於單一常數並加註解說明如何替換。
-- **範圍外**：不實作遊戲端模組本身；不改島嶼模組的內部邏輯；不改其餘四個分頁。
-- **改動檔案**：`app/main.js`（修改）、`app/features/island/registry.js`（新增）、`tests/island-registry.test.js`（新增）、`tests/island-contract.test.js`（新增）
-  ⚠️ 後三者為計畫外新增，已於送審時主動申報：`main.js` 頂層即取用 `document`，Node 無法 import，解析邏輯若留在其中則「測試註冊表解析邏輯」這條驗收無法達成。slice-reviewer 判定為「合理的必要偏離」。
-- **設計要點**：N/A ｜ 純結構
-- **UI Slice?**：NO
-- **驗收標準**：
-  - [x] 切換常數後，島嶼分頁載入另一個模組，其餘四個分頁完全不受影響
-  - [x] 備援模組仍可用，切回無殘留狀態
-  - [x] 指定的模組不存在時有明確的失敗訊息，不是整個 App 白畫面
-  - [x] 既有測試全綠
-- **測試策略**：驗證註冊表解析邏輯（指定存在／不存在的模組），以及五個分頁 id 完整性
-- **完成定義**：`npm test` 全綠 + 實機切換五個分頁皆正常
-- **對外介面**：`app/features/island/registry.js` 新增 export —— `resolveIsland(registry, key)` → `{module, key, ok, message}`（找不到時回退 builtin 並回報原因，不拋錯）、常數 `ISLAND_FALLBACK = 'builtin'`。`main.js` 新增 `ISLAND_MODULES` 註冊表與 `ISLAND_SOURCE` 切換常數。
-- **順帶修正**：`main.js` 的 feature 契約註解原列 `label`／`icon`／`needsTopbar`，但 `show()` 從未讀取這三者（分頁列來自獨立的 `TABS` 常數）。該錯誤已被抄進 CONTRACTS.md，由跨模型互審抓出，兩處均已更正，並新增 `tests/island-contract.test.js` 以可執行契約防止再犯。
-- **依賴**：Slice 6（契約先定稿，實作才有依據）
-- **平行組**：獨立（碰共用檔 `main.js`，必經 slice-reviewer）
-
-
----
-
-## 跨模型互審後新增（2026-08-29，codex）
-
-> 以下四項由 codex 跨模型互審提出，經逐點討論後達成共識。
-> 它們**不阻擋 Slice 1–7 的既有施工**，但**阻擋「合體完成」與「CONTRACTS 可直接接線」的宣告**。
-
-### [x] Slice 8 — 受限 facade：本端實作完成（**正式權限契約待遊戲組確認 API 清單**，見 Gate 第 2 項）
-- **目標**：遊戲模組拿到的不是完整 store，而是只能讀狀態、消費資源、宣告用卡的受限介面。
-- **問題**：目前 `ctx.store` 是完整 store，遊戲模組可自行構造 `{validReps: 9999}` 呼叫 `commitSession()`。
-  「唯一經過 commitSession」不等於「經 AI 驗證」，核心承諾目前只剩團隊約定。
-- **範圍內**：`ctx` 改為傳入受限 facade（唯讀狀態、`spendCoins`、`consumeBoost`、`subscribe`）；
-  `commitSession` 留在健身端內部；補「未驗證的普通物件不能結算」測試。
-- **⚠️ 界線（互審共識）**：純前端無法抵抗 DevTools 或直接改 localStorage。
-  facade 防的是**合作模組誤用與越權**，不是惡意使用者。
-- **連帶的對外改口**：企劃書「以介面設計使違規成為不可能」**過度**，應改為
-  「在正常應用流程與模組權限邊界內，金幣與經驗值只能由 AI 判定後的訓練結算產出；
-  純前端架構不宣稱抵抗使用者直接竄改瀏覽器資料」。
-- **依賴**：需先與遊戲組議定他們需要哪些權限
-- **平行組**：獨立
-- **對外介面**：`app/state/island-facade.js` 匯出 `createIslandFacade(store)`、`ISLAND_ALLOWED`、`ISLAND_DENIED`；
-  `main.js` 對 `id === 'island'` 的分頁改傳 `{ ...ctx, store: islandStore }`。
-- **完成註記（2026-08-30）**：以**白名單**實作而非黑名單 —— 名單外的方法在介面上根本不存在
-  （`typeof facade.commitSession === 'function'` 為 false），介面並經 `Object.freeze`。
-  白名單為我方 island 模組實測用到的集合（getState／subscribe／spendCoins／placeBuilding／
-  removeBuilding）加上合理擴充（consumeBoost／isBoostArmed／moveBuilding／unlock／derived）。
-  **未等遊戲組議定即先行實作的理由**：從嚴起步、事後放寬是安全的；反之則否。
-  遊戲組若需更多權限逐項評估加入，但 `ISLAND_DENIED` 上的永遠不得加入。
-  新增 `tests/island-facade.test.js`（8 條，含「我方 island 用到的方法都在白名單內」的靜態核對，
-  確保日後擴充 island 功能時若用到白名單外的方法會立刻紅燈）。
-  企劃書對應段落已同步改為 Slice 內議定的精確口徑。
-
-### [x] Slice 8b — 補完受限介面：讀取與訂閱不得洩漏可變狀態（2026-08-30 互審抓出）
-
-- **問題（已實測確認，非推測）**：Slice 8 的受限介面**目前可被繞過**，且繞法都在
-  「合作模組的正常執行範圍」內，不屬於已聲明不防的 DevTools 情境：
-  1. `getState()` 直接回傳內部可變 state，`Object.freeze(facade)` 只凍外殼。
-     實測 `facade.getState().wallet.coins = 9999` 成功改動正式餘額（80 → 9999）。
-  2. `subscribe()` 的回呼參數同樣傳出同一份可變參考。
-  3. **可替換模組可直接 `import` 完整 store 繞過 ctx** —— 我方 island.js 第 5 行正是如此，
-     它根本沒有使用傳入的 `ctx.store`，等於受限介面裝了但沒接上。
-- **我方測試沒抓到第 3 點的原因（記錄下來以免重犯）**：
-  `island-facade.test.js` 的靜態核對**刻意剝掉了 import 行**（為了修 `store.js` 被誤判成方法名的問題），
-  剛好把這條繞路的證據一起剝掉了。修正時該測試須改為「同時檢查用法與 import 邊界」。
-- **範圍內**：`getState`／`subscribe` 改回傳凍結快照或窄 DTO；island 改走 `ctx.store`、
-  移除對 `state/store.js` 的直接 import；新增靜態 boundary 測試禁止可替換模組直接 import store；
-  島嶼中直接改 `placed[].rot` 的寫法改走明確的 store 方法。
-- **連帶**：在本 Slice 完成前，企劃書「在正常應用流程與模組權限邊界內，金幣與經驗值只能由
-  AI 判定後的訓練結算產出」這句**尚未成立**，須先修好防線或先改弱該句。
-- **白名單也應收窄**：`consumeBoost` 牽涉尚未定案的 Slice 10（扣卡與設旗標的事務邊界），
-  提前開放可能造成免費加倍；建議待 Slice 10 凍結高階事務 API 後再開放。
-- **依賴**：無（不需等遊戲組）
-- **平行組**：獨立
-- **對外介面**：`store.rotateBuilding(id)` 新增；`island-facade` 的 `getState` 改回傳遞迴凍結快照、
-  `subscribe` 回呼不帶參數；`ISLAND_ALLOWED` 移除 `consumeBoost`、加入 `rotateBuilding`。
-- **完成註記（2026-08-30）**：三條繞過路徑全數封閉，且每條都有**會紅的**測試把關 ——
-  已做破壞性驗證：把 `getState` 改回直接轉發 → 對應測試紅；把 island 改回直接 import store → 對應測試紅。
-  島嶼原本直接寫 `getState().island.placed[].rot` 的地方改走新的 `rotateBuilding`。
-  島嶼改以模組層變數承接 `ctx.store`（而非逐處改寫 13 個呼叫點），降低這次權限收斂出錯的機會。
-  實機複驗：島嶼 3D／造型商店／編輯模式／五分頁全過，0 console error。測試 221 → 226。
-- **第二輪互審再補（2026-08-30）**：codex 複驗後又抓到兩條 runtime 繞路與一項白名單過寬，皆已修：
-  1. `main.js` 原有 `window.__app = { store, ctx, show }` —— 掛載的模組只要呼叫
-     `window.__app.store.commitSession(...)` 就能繞過，**且不需要 DevTools**。
-     全站無任何程式依賴該物件（實測確認），已移除，並補測試禁止再把 store 掛上全域。
-  2. 邊界測試原本只掃 `app/features/island/`，但正式模組預定放在 `island-game/` ——
-     遊戲組模組直接 import store 時不會紅，等於白守。已改為涵蓋所有島嶼來源目錄。
-  3. 白名單仍含島嶼實測未用到的 `moveBuilding` 與 `unlock`（後者可直接改解鎖進度，
-     等於繞過「靠訓練解鎖」的設計），已移除以符合「實測最小集合」原則。
-  測試 226 → 227。
-
-### [ ] Slice 9 — 碎片與抽獎券的領取與防重複
-- **目標**：遊戲端能可靠地、只一次地收到每次結算產出的碎片與抽獎券。
-- **問題**：`commitSession()` 的回傳值只有健身頁拿得到，而遊戲頁在訓練進行時已 `unmount`。
-  若靠掃描 history 補發，重整／重新掛載／同步重跑都會漏發或重複發。
-- **範圍內**：以 `session.id` 為冪等鍵的 claim/ack 流程。至少須凍結：
-  session.id 是否為冪等鍵、遊戲端何時掃描或領取、processed ID 由誰持久化、
-  重複領取為 no-op、入帳途中失敗如何重試。
-- **對外介面須滿足下列三條（2026-08-30 互審共識，不得以抽象待辦帶過）**：
-  1. **窄版 reward-event／claim API**：只回傳 copied、readonly 的 `{ sessionId, shards, tickets }`，
-     不得回傳完整 session 物件，更不得回傳可變的內部參考
-     （理由與 Slice 8b 相同：讀取管道不可成為寫入管道）。
-  2. **加餘額與記 processed ID 必須在遊戲帳本的同一次耐久寫入中完成**。
-     兩段式（先加餘額、再記 ID）在中斷時會重複入帳。
-  3. **健身端的 ack 不得作為唯一防重來源** —— 健身端與遊戲端可能各自重整，
-     防重的權威必須落在實際記帳的那一端。
-- **驗收標準須含**：入帳一次、重複領取為 no-op、重整與中斷後重試、
-  **持久化失敗**（`store.js` 的 `persist()` 目前吞掉 localStorage 寫入失敗仍回報成功，
-  必須明定「成功＝耐久寫入成功」並測 quota/write error）、Slice 8 之前的舊存檔 migration。
-- **連帶修正不變量 3 的措辭**：「健身端只顯示不儲存」與 history 確實持久化單次 grant 相矛盾。
-  應改為「健身端不保存**餘額**，但保存不可變的**結算事件**」。
-- **依賴**：需遊戲組確認記帳方式
-- **平行組**：獨立
-
-### [ ] Slice 10 — 雙倍卡與卡片庫存的事務邊界
-- **目標**：扣卡片庫存與設起 boost 旗標成為一個明確的契約，不會吞卡也不會免費加倍。
-- **問題**：卡片庫存在遊戲端、旗標在健身端，目前是兩筆各自獨立的操作。
-  先扣卡可能吞卡，先設旗標可能免費加倍。
-- **範圍內**：二選一並寫入契約 —— (a) shared store 以單一操作完成扣卡與 arm boost；
-  或 (b) 定義 operation ID、冪等、失敗補償與重試規則。
-- **依賴**：需先與遊戲組議定事務邊界由誰持有
-- **平行組**：獨立
-
-### [ ] Gate — 規則凍結與契約定稿（最終交付前置條件）
-- **2026-08-30 互審追加四項前置條件**（原條件不足以擋住「權限可繞過仍解除 provisional」）：
-  1. ✅ Slice 8b 已完成（2026-08-30）：唯讀快照、subscribe 不帶參數、靜態邊界測試禁止直接 import store。
-  2. 取得遊戲組確認的 API 清單，並以正式模組或 contract fixture 驗證白名單；
-     實際切換 game／builtin 做一次瀏覽器 smoke test。
-  3. Slice 9／10 端到端測試：入帳一次、重複為 no-op、重整與中斷後重試、
-     **持久化失敗**（`persist()` 目前吞掉 localStorage 寫入失敗仍回報成功）、舊存檔 migration。
-  4. 對外交付文件全面同步，不只 `docs/CONTRACTS.md`。
-- 取得遊戲組對碎片與抽獎券發放規則的決議，更新 `rewards.js` 的三個常數，
-  補正式邊界測試，並標記規則版本與生效日期。**在此之前一律稱 provisional contract。**
-- Slice 8、9、10 完成後回驗並更新 `docs/CONTRACTS.md`，解除其 provisional 狀態。
-- 收尾驗證新增：**測試數不得低於前次**、不得新增 skip/only、人工檢查測試 diff 是否弱化斷言
-  （`npm test` 全綠本身守不住不變量 5）。
-
-<!-- cross-model-review: APPROVED reviewer=codex-2輪-意見全數修正-第3輪確認因額度中止-20260830 hash=c8db8762ec01d3e6 at=2026-08-30T22:41:23+08:00 -->
-
----
-# 第二批需求 — 健身端 Bug 修復與深蹲／高抬腿判定優化
-
-> 產生時間：2026-09-19
-> 需求來源：2026-09-19 對話中的程式碼盤點（六項發現，全部已用實測腳本驗證）
-> 測試指令：`npm test`（基線 **273/273 綠**，不得下降）
-
-## 需求檔位（第二批）
-- **檔位**：S（使用者當場推翻原判的 L）
-- **判定理由**：客觀清單原本命中 3 條（碰持久化／多消費端／橫跨多關注點）判為 L，
-  但使用者裁示不要切這麼細、確認後直接施作。依 `make-plan` 的「檔位是下限不是鎖、
-  手動模式使用者可當場推翻」條款下修為 S。
-  **代價已知並接受**：不逐 Slice 派 slice-reviewer，改為收尾一次；
-  Slice 21 因碰 `store.js` 仍建議收尾時一併審。
-- **本檔位規格**：Slice 數 3 ｜ slice-reviewer 收尾一次 ｜ build N/A（以 `npm test` 替代）
-
-## 設計顧問輸入
-> 沿用本檔案上方既有區塊，本批次不重新調用 `ui-ux-pro-max`
-> （本批次無任何新的版面／配色／字體決策）。
-
-## 本批次的不變量
-1. **禁止回溯改寫既有存檔**。時區修正只改「之後怎麼寫」與「怎麼讀」。
-2. **Slice 21、22 不得改動任何判定門檻數值**。目標是讓畫面與文件誠實，不是調鬆緊。
-3. **Slice 23 未取得資料集前，一律不得動門檻**。改了分母卻拿不出重新標定的證據，
-   等於讓企劃書「每個門檻都可追溯」失效。
-4. 測試數不得低於 273，不得新增 skip/only，不得弱化既有斷言。
-
----
-
-### [x] Slice 21 — 統一時區判定，讓全 App 只有一個「今天」
-- **目標**：使用者在台北早上練的訓練被算在今天，不再被記成昨天。
-- **範圍內**：新增 `app/core/dates.js`（本地時區日期工具，純函式）；
-  `store.js` 的 `todayISO`／`bumpStreak`／`currentStreak`／`todayValidTotal` 改用它；
-  新增 `sessionDayKey(session)` —— 優先由 `dateISO` 導出本地日期鍵、`date` 作 fallback，
-  使既有 UTC 存檔不必改寫也能被正確歸日；
-  `today.js` 與 `tracking.js` 的所有日期計算一併改用同一套。
-- **範圍外**：不改 `session.date` 的欄位名與型別（凍結契約）；不批次重寫既有 history；
-  不改今日任務內容、不改圖表種類與版面。
-- **改動檔案**：`app/core/dates.js`（新增）、`app/state/store.js`、
-  `app/features/today/today.js`、`app/features/tracking/tracking.js`、
-  `tests/dates.test.js`（新增）、`tests/tracking-dates.test.js`（新增）、`tests/today.test.js`、`tests/streak.test.js`
-- **設計要點**：N/A ｜ 純邏輯
-- **UI Slice?**：NO
-- **驗收標準**：
-  - [ ] `TZ=Asia/Taipei`：台北 9/18 21:00 與 9/19 07:00 各結算一次 → 連續天數為 **2**（現行 1）
-  - [ ] `TZ=Asia/Taipei`：台北同一天 07:30 與 21:00 各一次 → 追蹤頁歸為**同一天**（現行拆成兩天）
-  - [ ] 早上 07:30 打開，今日任務進度顯示的是今天的次數
-  - [ ] 既有 UTC 存檔經 `sessionDayKey` 後歸日正確；只有 `date` 沒有 `dateISO` 的舊資料走 fallback 不當掉
-  - [ ] `commitSession()` 回傳的 12 個凍結欄位一個都沒動
-- **測試策略**：`tests/dates.test.js`（跨午夜／跨月／跨年／非法輸入）、
-  `tests/tracking-dates.test.js`（同日兩次訓練歸同一天、跨月週切分）、
-  既有 `today.test.js`／`streak.test.js` 補上 `TZ=Asia/Taipei` 早晨案例。
-- **已知限制（須寫進註解）**：`streak.lastActiveDate` 是純日期鍵、無對應時間戳，
-  無從回推正確本地日。遷移後第一次結算會以本地鍵重設，最多影響一次邊界判定。
-  刻意不猜測回寫 —— 猜錯會直接竄改使用者的連續紀錄。
-- **完成定義**：`npm test` 全綠且測試數 > 273
-- **對外介面**：`app/core/dates.js` 新增匯出 —— `todayKey(now?)`、`dayKeyOf(isoOrDate)`、
-  `shiftDays(key, n)`、`yesterdayKey(now?)`、`sessionDayKey(session)`。
-  全部為純函式、無副作用。`store`／`today`／`tracking` 三處的日期計算一律改走它。
-  ⚠️ `todayKey` 的預設參數用 `new Date(Date.now())`，使假時鐘可注入 —— 勿改回 `new Date()`。
-- **依賴**：無
-- **平行組**：獨立
-- **完成於**：2026-09-19（commit 3de58b8）｜測試 273 → 295，7 個時區全綠
-
-### [x] Slice 22 — 訓練頁三項數字與文案修正
-- **目標**：深度條的線畫在真的算數的位置；卡片金幣數字接近實際；高抬腿說法與實際門檻一致。
+### [x] Slice 1 — 導入遊戲組樣式基礎並把全域色彩對應到 Motu
+- **目標**：整個 App 換成 Motu 的淺色底、字型與元件基礎，後續每個畫面只需要處理寫死的顏色。
 - **範圍內**：
-  (a) `squat.js` 匯出深度 gate 的單一來源常數，`workout.js` 的 `#lv-gtarget` 改由它計算位置
-      （62% → 66.7%），消除「過線卻判半程」的 4.7 個百分點死區；其餘動作維持現行位置。
-  (b) `rewardBadges()` 改用 `planOf(ex)` ＋ `coinsFor()` 估算整輪金幣，並吃難度設定。
-  (c) `highknees.js` 註解更正為實際門檻 55.0°／40.6°（附推導式），
-      `workout.js` 的 `judgeText('highknees')` 由「膝蓋抬到髖部高度」改為與 cue 一致的說法。
-- **範圍外**：**不得更動任何門檻數值**；不改 `coinsFor()` 公式；不改卡片版面與色彩。
-- **改動檔案**：`app/core/exercises/squat.js`、`app/core/exercises/highknees.js`、
-  `app/features/workout/workout.js`、`tests/gauge-target.test.js`（新增）、`tests/reward-estimate.test.js`（新增）
-- **設計要點**：沿用既有 `.wk2-coin` 與達標線樣式，只換數字與文字
-- **UI Slice?**：NO（既有元素的數值修正，無新設計決策）
+  - 新增 `app/styles/motu.css`：從遊戲組檔案**原封不動**取出 `@layer motu-contract` 區段（約 562 行），檔頭註明來源檔名、擷取日期、原檔 sha256（`0f43c7b3…` 是編譯後 CSS 的雜湊，另計本段雜湊），以及「不得修改色值」。
+  - 新增 `app/styles/motu-skin.css`：把 `lumina.css` 的語意變數（`--bg-0/1/2`、`--surface`、`--stroke`、`--text`、`--muted`、`--faint`、`--green`、`--teal`、`--coral`、`--gold`、`--red`、`--grad-*`、`--radius*`、`--shadow`、`--glow-primary`、`--font-*`）重新對應到 `--motu-*`；body 背景改成奶油底；`.card`／`.btn`／`.pill`／`.section-title` 的外觀改走 Motu。
+  - `index.html`：在 `lumina.css` 之後載入 `motu.css`、`motu-skin.css`（最後載入才能蓋過前面）；`theme-color` 改成奶油色。
+  - 下載 Inter 800、900 woff2 放進 `vendor/fonts/`（OFL），並補上 `@font-face`。
+- **範圍外**：各畫面寫死的顏色（Slice 3–4）、圖示（Slice 2）、動效（Slice 5）、今日／島嶼／健康／設定頁的美化。
+- **改動檔案**：`app/styles/motu.css`（新增）、`app/styles/motu-skin.css`（新增）、`index.html`（修改）、`vendor/fonts/inter-800.woff2`、`vendor/fonts/inter-900.woff2`（新增）、`tests/motu-skin.test.js`（新增）
+- **設計要點**：Motu 的 layer 規則會被我方未分層的 CSS 蓋過，所以外觀要在 `motu-skin.css`（未分層、最後載入）裡改，不能只靠 `.motu-*` class。
+- **UI Slice?**：YES
 - **驗收標準**：
-  - [ ] 深蹲達標線由 62% 改為 66.7%；其餘三動作位置與修改前完全相同
-  - [ ] 合成序列跑完一輪，`validReps`／`invalidReps`／`faultCounts` 與修改前逐項相同（零行為變動）
-  - [ ] 普通難度下深蹲卡約 432、高抬腿約 540（現為 100／50），且切換難度後數字會變
-  - [ ] 高抬腿四處文案（judgeText／cues／phaseCues／voiceIntro）不再出現「髖部高度」
-- **測試策略**：`tests/gauge-target.test.js`（線位置由常數導出、其餘動作不變）、
-  `tests/reward-estimate.test.js`（三難度 × 四動作；`meta` 缺欄位時不回 NaN）、
-  既有 `engine.test.js`／`highknees-lift.test.js` 全綠證明零行為變動。
-- **完成定義**：`npm test` 全綠且測試數 > Slice 21 完成後的數字
-- **對外介面**：`squat.js` 新增匯出 `DEPTH_NORM`、`GATE_DEPTH`、`GATE_PROGRESS`；
-  `workout.js` 新增匯出 `gaugeTargetOf(ex)`（達標線位置的單一來源，新增有 gate 的動作須在此登記）。
-  `rewardBadges` 的輸出文字由「🪙 ≈N」改為「🪙 最多 N」。
+  - [x] `motu.css` 與遊戲組原檔的 `motu-contract` 區段逐字相同（測試比對雜湊）
+  - [x] `motu.css` 不含 Tailwind preflight（沒有 `@layer base`、沒有 `*, ::before` 全域重設）、不含 `url(`
+  - [x] `motu-skin.css` 重新定義了 `lumina.css` 裡**每一個**顏色／圓角／陰影變數（測試逐一比對，漏一個就失敗）
+  - [x] 五個分頁都能打開、沒有 console error；範圍外頁面的文字都看得見（實機截圖確認）
+- **測試策略**：`tests/motu-skin.test.js` — 讀檔解析 CSS：①雜湊與原檔一致；②沒有 preflight 與 url；③lumina 變數全數被覆寫（邊界：`--grad-*` 這類漸層變數也要涵蓋）；④`motu-skin.css` 不得出現 `--motu-*` 以外的新色值（防止順手自創顏色）。
+- **完成定義**：`npm test` 全綠（≥314）＋瀏覽器實機五頁無 console error＋截圖＋slice-reviewer
+- **對外介面**：
+  - 檔案：`app/styles/motu.css`（遊戲組 `@layer motu-contract` 逐字擷取，提供全部 `--motu-*` token 與 `.motu-*` class；本段 sha256 `443e237c…`）、`app/styles/motu-skin.css`（未分層、`index.html` 最後載入）
+  - lumina 語意變數全數改指向 Motu：`--text`→`--motu-color-text`、`--muted`/`--faint`→`--motu-color-text-muted`、`--surface`→白、`--surface-2`/`--bg-2`→沙色、`--stroke`→暖灰線、`--green`→success(海洋青)、`--teal`→primary、`--yellow`→warning(金)、`--red`→danger(珊瑚)、`--frame-ok`→`--motu-color-info`(藍)、`--frame-adjust`→`--motu-fx-campfire-accent`(橘)、`--grad-*`→同色平塗 `linear-gradient`、`--radius`→xl、`--radius-sm`→lg、`--shadow`→`--motu-shadow-sm`、`--glow-primary`→`--motu-shadow-primary`、`--font-body`/`--font-display`→Inter＋中文系統字、`--glass-blur`→0px
+  - 元件外觀：`.card` 白卡；`.btn` pill＋深青底白字（小字對比）；`.btn.secondary` 白底深藍字；`.pill` 奶油 chip；`.section-title` Motu label
+  - 外殼／範圍外可讀性修補（只修文字消失，不美化）：`.topbar` `.tabbar` `.tab` `.tb-coins` `.toast` `.isl-hint` `.isl-goal` `.isl-sheet` `.isl-place-bar` `.isl-right` `.isl-sheet-x` `.isl-zi` `.trk-rec-grade`
+  - 字型：Inter 800/900 `@font-face`（`vendor/fonts/inter-800.woff2`、`inter-900.woff2`）
+  - 給下游：後續 Slice 改樣式請寫在 `motu-skin.css` 或各畫面 CSS，**不得改 `motu.css`**（雜湊測試會擋）；`motu-skin.css` 不得出現 `--motu-*` 以外的色值（測試會擋）
+  - 已知留給後續：訓練頁金色「最多 N」(`.wk2-coin`/`.wk-rec-coin`) 對比 1.9–2.05 → Slice 3；範圍外頁面金／珊瑚文字 2.05–2.7 → Slice 6
+- **審查紀錄**：slice-reviewer 第 1 輪 BLOCK（`.isl-right` 深底上的縮放百分比看不見）→ 修正後複審 PASS（2026-09-24）
 - **依賴**：無
 - **平行組**：獨立
-- **完成於**：2026-09-19（commit 7324798）｜測試 295 → 306；合成序列比對前後判定逐項相同
-- **未處理（已申報）**：`ui/pose3d.js` 的高抬腿示範動畫仍以「膝抬到髖高」編排，
-  低於本系統 55° 的門檻。屬 3D 動畫編排，改動會影響示範外觀，另案處理。
 
-### [x] Slice 23 — 判定量尺度不變化與重新標定
-- **目標**：深蹲與高抬腿的判定分母不再被動作本身與鏡頭距離污染。
-- **前置阻塞**：`docs/verification/scripts/data` 已不存在。必須先以 `fetch_data.py`
-  取回 UI-PRMD／REHAB24-6／EC3D 三個資料集，並重跑 `measure.mjs` 確認與 `EXPECTED.md` 相符。
-  **取不到就停止並回報，不得以合成資料替代標定。**
+### [ ] Slice 2 — 建立 Lucide 圖示模組
+- **目標**：程式碼可以用一行 `icon('coins')` 產生遊戲端同款線條圖示，取代 emoji。
 - **範圍內**：
-  (a) `engine.js` 的 `standThigh` 與當幀大腿長改為先除以尺度不變量再取比值；
-      `highknees.js` 依重新標定調整 `THIGH_LIFT_TARGET`／`THIGH_LIFT_ENTER`。
-  (b) `engine.js` 增設「站立基準腿長」；`squat.js` 的 `depth` 分母改用它，
-      取代會被蹲姿污染的當幀 `legLength` 與 `distance(髖,膝)×2` 備援。
-  (c) `.gitignore` 加入資料目錄；產出標定報告。
-- **範圍外**：不動 `torso_lean`／`knee_valgus`／`head_tilt` 的門檻與嚴重度；
-  不動相位映射（`targetEnter`／`attemptEnter` 的 norm 區間）。
-- **改動檔案**：`app/core/engine.js`、`app/core/exercises/highknees.js`、
-  `app/core/exercises/squat.js`、`tests/highknees-lift.test.js`、`tests/engine.test.js`、
-  `.gitignore`、`docs/verification/尺度不變標定報告.md`（新增）
-- **設計要點**：N/A ｜ 純判定邏輯
-- **UI Slice?**：NO
+  - 新增 `app/ui/icons.js`：放入 Slice 3–4 需要的 Lucide 圖示 SVG 路徑（先盤點 `workout.js` 裡當圖示用的 emoji，約 40 種，一種對一個 Lucide 名稱），檔頭寫 ISC 授權與 Lucide 版本。
+  - `icon(name, { size, label })` 回傳 SVG 字串：`stroke="currentColor"`、`stroke-width="2"`、`fill="none"`；沒有 label 時加 `aria-hidden="true"`，有 label 時加 `role="img"` 與 `aria-label`；名稱不存在時回傳同尺寸的空白佔位並 `console.warn`，不拋錯。
+  - emoji → Lucide 對照表寫在檔內註解，給 Slice 3–4 查。
+- **範圍外**：把畫面上的 emoji 換掉（Slice 3–4）。
+- **改動檔案**：`app/ui/icons.js`（新增）、`tests/icons.test.js`（新增）
+- **設計要點**：尺寸只允許 token（16／18／20／24），不接受任意值。
+- **UI Slice?**：NO（純函式）
 - **驗收標準**：
-  - [ ] 合成序列施加 ±20% 距離縮放：達門檻者全部計次、未達者全部不計次（現行 ±15–20% 即雙向翻盤）
-  - [ ] 腳踝出框與可見時的深蹲深度判定差異小於報告所訂容許值
-  - [ ] 重新標定的誤判率**不得低於**現行水準；靈敏度若無標註資料可用，須明寫「未標定」
-  - [ ] 既有防作弊測試（半程、彎腰代償、作弊樣本）全數維持判否
-  - [ ] Slice 22 建立的達標線單一來源機制在新門檻下自動對齊，無需再改 `workout.js`
-- **測試策略**：`tests/highknees-lift.test.js` 補距離不變性測試（±10/20/30%）；
-  `tests/engine.test.js` 補「腳踝出框 vs 可見」一致性測試；
-  邊界案例：站立基準未建立時須 fail-closed（progress 恆 0、不計次）。
-- **🔴 風險**：動到本作品最核心的判定量。若重新標定後誤判率變差，
-  **保留現行實作並如實記錄**，不得為了「改完了」而硬上。
-- **完成定義**：`npm test` 全綠 ＋ 標定報告與 `EXPECTED.md` 比對表
-- **對外介面**：`engine.js` 的 scale 物件新增 `frameThighMax`（已以當幀軀幹長正規化的
-  左右大腿長最大值，供 `updateStandBaseline` 使用）。`standThigh` 的單位由原始像素長度
-  改為「大腿長 ÷ 當幀軀幹長」的比值 —— 傳原始長度進去會讓整個比值失去意義。
-  `highknees.js` 的 `s.thighForeL/R` 語意不變（仍是 0＝站直的縮短率），門檻未動。
+  - [ ] 對照表涵蓋 `workout.js` 裡所有當圖示用的 emoji（測試掃描原始碼比對）
+  - [ ] 未知名稱不拋錯、回傳佔位
+  - [ ] 無 label 必有 `aria-hidden`，有 label 必有 `aria-label`
+  - [ ] 每個圖示都是 24×24 viewBox、stroke 2
+- **測試策略**：`tests/icons.test.js` — 正常輸出、size 非 token 值時退回 18（邊界）、未知名稱、aria 屬性、對照表涵蓋率。
+- **完成定義**：`npm test` 全綠＋slice-reviewer
+- **對外介面**：
 - **依賴**：無
 - **平行組**：獨立
-- **完成於**：2026-09-19（commit 2daed2c）｜測試 311 → 313
-- **裁決**：(a) 高抬腿尺度不變化 **採用**；(b) 深蹲分母改站立基準 **不採用**（證據不足，
-  一致率僅高 1.5 個百分點＝3 段／n=200，落在雜訊範圍；原動機「腳踝出框」本資料集
-  無法與取景關卡分離）。深蹲所有門檻維持原值。詳見 `docs/verification/尺度不變標定報告.md`。
-- **前置阻塞已解除**：三個資料集已取回，`EXPECTED.md` 九項數值逐項重現。
+
+### [ ] Slice 3 — 訓練頁非相機畫面換成 Motu 樣式
+- **目標**：動作清單、動作說明、暖身、倒數、結算、領取獎勵六個畫面，截圖出來和遊戲端是同一個產品。
+- **範圍內**：`workout.css` 中這六個畫面相關選擇器的寫死色換成 token；`workout.js` 對應 render 函式（`renderMenu`、`renderIntro`、`runWarmup`、`runCountdown`、`renderResult`、`renderReward`、`gameResourceCard`）的 emoji 換成 `icon()`；獎勵卡改用 `.motu-reward` 的視覺語言（金色只當底色／圖示，數字用深藍）。
+- **範圍外**：相機即時判定畫面與組間休息（Slice 4）；任何文案語意、流程、按鈕行為。
+- **改動檔案**：`app/features/workout/workout.css`（修改）、`app/features/workout/workout.js`（修改）、`tests/game-resource-card.test.js`（修改：追加斷言）
+- **設計要點**：遵守對比規則（文字只用深藍／深藍淡／深青）；評級環 S/A/B/C 的色彩改由 Motu 色票對應，仍保留字母。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [ ] 六個畫面沒有任何 emoji 圖示（語音稿與說明文字內容不動）
+  - [ ] 六個畫面沒有深色玻璃殘留（實機截圖）
+  - [ ] 文字對比全部 ≥4.5:1（大數字 ≥3:1）
+  - [ ] 流程從清單走到領取獎勵，功能與原本相同
+- **測試策略**：`tests/game-resource-card.test.js` 追加：輸出含 `<svg`、不含 emoji（先失敗→再通過）；邊界：碎片與抽獎券皆為 0 時仍不渲染。
+- **完成定義**：`npm test` 全綠＋實機截圖六張＋slice-reviewer
+- **對外介面**：
+- **依賴**：Slice 1、Slice 2
+- **平行組**：獨立
+
+### [ ] Slice 4 — 相機即時判定畫面與組間休息換成 Motu 樣式
+- **目標**：訓練中全螢幕畫面（HUD 數字、深度量表、提示條、取景與光線提示、暫停／結束按鈕、組間休息）換成遊戲端視覺，而且疊在任何相機影像上都讀得清楚。
+- **範圍內**：`lv-*` 系列選擇器與休息畫面的寫死色換成 token；HUD 磚改為白 92% 底＋`--motu-shadow-md`＋深藍字；按鈕改 Motu；該區 emoji 換成 `icon()`；`workout.js` 內 HUD 相關的寫死色。
+- **範圍外**：骨架疊圖的判定色（不變量 2）；深度量表的語意顏色（`gaugeColor` 不動）；任何判定邏輯。
+- **改動檔案**：`app/features/workout/workout.css`（修改）、`app/features/workout/workout.js`（修改）、`app/ui/feedback.js`（僅限非判定用的裝飾色，若有）、`tests/display-colors.test.js`（修改：追加鎖定斷言）、`tests/ui-no-emoji.test.js`（新增）
+- **設計要點**：HUD 不用半透明玻璃；最小觸控目標 44px；計時與次數用等寬數字。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [ ] `PALETTES` 三套配色數值與換皮前完全相同（測試鎖定）
+  - [ ] `workout.js` 在註解以外沒有任何 emoji
+  - [ ] 分別在亮背景與暗背景的相機畫面（或示範模式）截圖，HUD 文字都清楚
+  - [ ] 示範模式能完整跑完一組並進到結算
+- **測試策略**：`tests/display-colors.test.js` 追加 `PALETTES` 快照斷言（先寫好，換皮過程中若誤改就會失敗）；`tests/ui-no-emoji.test.js` 掃描 `workout.js`（去掉註解）不得含 emoji（先失敗→本 Slice 完成後通過）；邊界：語音用的純文字常數若含 emoji 也算違規。
+- **完成定義**：`npm test` 全綠＋亮／暗背景各一張實機截圖＋slice-reviewer
+- **對外介面**：
+- **依賴**：Slice 1、Slice 2、Slice 3
+- **平行組**：獨立
+
+### [ ] Slice 5 — 微互動與動效對齊 Motu
+- **目標**：按鈕按壓、卡片 hover、進場、數字跳動的節奏和遊戲端一致。
+- **範圍內**：訓練頁的 transition／animation 改用 `--motu-duration-*`、`--motu-ease-*`；按壓 `scale(.98)`；`focus-visible` 外框用 `--motu-color-focus`；進場 stagger 30–50ms；可領取狀態用 `.motu-is-claimable` 的脈動；全部在 `prefers-reduced-motion` 下關閉。
+- **範圍外**：新增任何動畫種類以外的功能；範圍外頁面。
+- **改動檔案**：`app/features/workout/workout.css`（修改）、`app/styles/motu-skin.css`（修改）、`tests/motu-skin.test.js`（修改）
+- **設計要點**：只動 transform／opacity，不動 width／height。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [ ] 範圍內 CSS 沒有 `transition`／`animation` 寫死 ms 數（全部走 token）
+  - [ ] reduced-motion 下所有動畫停止（實機用 DevTools 模擬）
+  - [ ] 所有可點元素都有 `focus-visible` 外框
+- **測試策略**：`tests/motu-skin.test.js` 追加：掃描範圍內 CSS 的 `transition`／`animation` 宣告，不得出現寫死的 ms／s 數值（邊界：`0s` 與 reduced-motion 區塊內的 `0.001ms` 例外）。
+- **完成定義**：`npm test` 全綠＋實機錄一段按壓與進場＋slice-reviewer
+- **對外介面**：
+- **依賴**：Slice 3、Slice 4
+- **平行組**：獨立
+
+### [ ] Slice 6 — 無障礙與對比收尾，產出企劃書截圖
+- **目標**：交出一組可以直接放進企劃書的健身畫面截圖，而且全部通過對比與無障礙檢查。
+- **範圍內**：
+  - 新增純函式 `contrastRatio(a, b)`，列出範圍內所有「文字色 × 底色」組合並檢查 ≥4.5（大字 ≥3）；修掉不合格的組合。
+  - 只有圖示的按鈕補 `aria-label`；觸控目標 ≥44px。
+  - 範圍外頁面（今日、島嶼、健康、設定）與外殼只做可讀性檢查，發現文字看不見才修，不美化。
+  - 截圖：動作清單、動作說明、倒數、即時判定（示範模式，亮／暗背景）、組間休息、結算、領取獎勵。截圖時隱藏外殼（用 `setChrome(false)` 或裁切），存到 `文件/初審圖/健身端_Motu/`。
+- **範圍外**：新功能、文案改寫。
+- **改動檔案**：`app/ui/contrast.js`（新增）、`tests/contrast.test.js`（新增）、`app/styles/motu-skin.css`（修改）、`app/features/workout/workout.css`（修改，視檢查結果）、`app/features/workout/workout.js`（修改：aria-label）
+- **設計要點**：對比組合清單寫成資料放在測試裡，之後換色時會自動再驗。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [ ] 對比測試涵蓋範圍內每一組文字／底色，全部通過
+  - [ ] 截圖存到指定資料夾，每張檔名標明畫面名稱
+  - [ ] 使用者看過截圖並確認可放進企劃書
+- **測試策略**：`tests/contrast.test.js` — `contrastRatio` 的已知值（黑白 21:1、同色 1:1，邊界）；對比組合清單全數達標。
+- **完成定義**：`npm test` 全綠＋截圖交付＋使用者確認＋收尾批次審查（Final Validation）
+- **對外介面**：
+- **依賴**：Slice 1–5
+- **平行組**：獨立
+
