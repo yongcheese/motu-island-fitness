@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { gameResourceCard } from '../app/features/workout/workout.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(root, p), 'utf8');
@@ -100,4 +101,117 @@ test('Inter 800/900 字型已放在本機並有 @font-face', () => {
     eq(buf.subarray(0, 4).toString('latin1'), 'wOF2', `inter-${w}.woff2 不是 woff2`);
     assert(new RegExp(`font-weight:\\s*${w};[^}]*inter-${w}\\.woff2`).test(skin), `缺 Inter ${w} 的 @font-face`);
   }
+});
+
+/* ---------- Slice 5：微互動與動效對齊 Motu ---------- */
+// 範圍內 CSS：訓練頁 + 換皮層。transition／animation 的時長一律走 --motu-duration-*，不得寫死秒數。
+const MOTION_FILES = ['app/features/workout/workout.css', 'app/styles/motu-skin.css'];
+
+// 去掉 `@media (prefers-reduced-motion: reduce) { ... }` 區塊（括號需配對：區塊裡還有巢狀規則）
+function dropReducedMotion(css) {
+  let out = '', i = 0;
+  const re = /@media\s*\(\s*prefers-reduced-motion\s*:\s*reduce\s*\)\s*\{/g;
+  for (let m; (m = re.exec(css)); ) {
+    out += css.slice(i, m.index);
+    let depth = 1, j = re.lastIndex;
+    while (j < css.length && depth > 0) { if (css[j] === '{') depth++; else if (css[j] === '}') depth--; j++; }
+    i = re.lastIndex = j;
+  }
+  return out + css.slice(i);
+}
+
+// 回傳寫死時長的 transition／animation 宣告（`0s` 例外：它的意思是「沒有時長」）
+function hardcodedMotion(css) {
+  const body = dropReducedMotion(stripComments(css));
+  const bad = [];
+  for (const [, prop, val] of body.matchAll(/(?:^|[;{\s])((?:transition|animation)(?:-[\w-]+)?)\s*:\s*([^;{}]+)/g)) {
+    const times = [...val.matchAll(/(?<![\w.-])(\d*\.?\d+)(ms|s)\b/g)].filter(t => Number(t[1]) !== 0);
+    if (times.length) bad.push(`${prop}: ${val.trim()}`);
+  }
+  return bad;
+}
+
+test('範圍內 CSS 的 transition／animation 沒有寫死的時長（全部走 --motu-duration-*）', () => {
+  for (const f of MOTION_FILES) {
+    const bad = hardcodedMotion(read(f));
+    eq(bad.join(' | '), '', `${f} 仍有寫死時長`);
+  }
+});
+
+test('寫死時長偵測本身有效：抓得到 .2s／120ms，放過 0s、token 與 reduced-motion 區塊（邊界）', () => {
+  const probe = `.a { transition: opacity .2s, transform var(--motu-duration-fast); }
+    .b { animation: x 120ms var(--motu-ease-out) both; }
+    .c { transition: none 0s; animation-delay: calc(var(--i) * var(--motu-duration-fast) / 4); transform: scale(.98); }
+    @media (prefers-reduced-motion: reduce) { .d { transition-duration: 0.001ms !important; } .e { animation: none; } }`;
+  const bad = hardcodedMotion(probe);
+  eq(bad.length, 2, `應只抓到 .a 與 .b：${bad.join(' | ')}`);
+  assert(bad[0].includes('.2s') && bad[1].includes('120ms'));
+});
+
+test('範圍內可按壓元素的 :active 縮放一律是 Motu 的 scale(.98)', () => {
+  for (const f of MOTION_FILES) {
+    const css = stripComments(read(f));
+    const scales = [...css.matchAll(/:active[^{]*\{[^}]*scale\(([\d.]+)\)/g)].map(m => Number(m[1]));
+    assert(scales.length > 0, `${f} 沒有任何 :active 縮放（掃描可能失效）`);
+    eq(scales.filter(s => s !== 0.98).join(','), '', `${f} 有非 .98 的按壓縮放`);
+  }
+  assert(/\.btn:active\s*\{[^}]*scale\(\.98\)/.test(stripComments(read('app/styles/motu-skin.css'))), '.btn 缺按壓回饋');
+});
+
+test('motu-skin.css 為所有可聚焦元素提供 focus-visible 外框（--motu-color-focus）', () => {
+  const css = stripComments(read('app/styles/motu-skin.css'));
+  const m = css.match(/(?:^|\})\s*:focus-visible\s*\{([^}]*)\}/);
+  assert(m, '缺全域 :focus-visible 規則');
+  assert(/outline:\s*2px solid var\(--motu-color-focus\)/.test(m[1]), 'focus 外框要用 --motu-color-focus');
+});
+
+test('reduced-motion：全域停掉無限循環動畫（iteration-count 1），不只縮短時長', () => {
+  const css = stripComments(read('app/styles/motu-skin.css'));
+  const block = css.length - dropReducedMotion(css).length;
+  assert(block > 0, 'motu-skin.css 缺 prefers-reduced-motion 區塊');
+  assert(/prefers-reduced-motion[\s\S]*animation-iteration-count:\s*1\s*!important/.test(css), '缺 animation-iteration-count: 1');
+});
+
+test('可領取脈動 .motu-is-claimable 引用的 keyframes 已在本機定義（motu.css 只有引用）', () => {
+  const motu = read('app/styles/motu.css');
+  assert(/\.motu-is-claimable[^{]*\{[^}]*fragment-ready-pulse/.test(motu), 'motu.css 應有 claimable 規則');
+  const wk = stripComments(read('app/features/workout/workout.css'));
+  assert(/@keyframes fragment-ready-pulse\s*\{/.test(wk), 'workout.css 缺 @keyframes fragment-ready-pulse');
+});
+
+test('碎片／抽獎券膠囊套用 .motu-is-claimable；只有一項時也只有一顆在脈動（邊界）', () => {
+  const both = gameResourceCard({ shards: 2, tickets: 1 });
+  eq((both.match(/motu-is-claimable/g) || []).length, 2, '兩顆膠囊都要脈動');
+  eq((gameResourceCard({ shards: 0, tickets: 1 }).match(/motu-is-claimable/g) || []).length, 1);
+  eq(gameResourceCard({ shards: 0, tickets: 0 }), '', '全 0 仍不渲染');
+});
+
+// 只切頂層逗號（:is(a, b) 裡的逗號不切）
+function splitSelectors(sel) {
+  const out = []; let depth = 0, cur = '';
+  for (const ch of sel) {
+    if (ch === '(') depth++; else if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) { out.push(cur.trim()); cur = ''; } else cur += ch;
+  }
+  return [...out, cur.trim()].filter(Boolean);
+}
+
+test('workout.css 每一個播放 keyframes 的選擇器，在 reduced-motion 區塊都有被另行處理', () => {
+  const css = stripComments(read('app/features/workout/workout.css'));
+  const outside = dropReducedMotion(css).replace(/@keyframes[^{]*\{(?:[^{}]*\{[^}]*\})*[^}]*\}/g, '');
+  const reduced = css.slice(css.search(/@media\s*\(\s*prefers-reduced-motion/));
+  const users = [...outside.matchAll(/([^{}]+)\{[^}]*\banimation\s*:\s*(?!none)[^;}]+/g)]
+    .flatMap(m => splitSelectors(m[1].trim()));
+  assert(users.length >= 8, `掃到的動畫選擇器太少（${users.length}），解析可能失效`);
+  const missing = users.filter(sel => !reduced.includes(sel));
+  eq(missing.join(' | '), '', '這些動畫在減少動態模式下沒有被關掉');
+});
+
+test('減少動態下計次閃現仍看得到：不縮放、不位移，只有顯示與消失（邊界：判定回饋不能被關掉）', () => {
+  const css = stripComments(read('app/features/workout/workout.css'));
+  const reduced = css.slice(css.search(/@media\s*\(\s*prefers-reduced-motion/));
+  const rule = reduced.match(/\.lv-repflash\.pop\s*\{([^}]*)\}/);
+  assert(rule && /lvRepHold/.test(rule[1]) && /steps\(1/.test(rule[1]), '閃現應改用 lvRepHold + steps(1)');
+  const kf = css.match(/@keyframes lvRepHold\s*\{([^]*?\})\s*\}/);
+  assert(kf && !/transform/.test(kf[1]), 'lvRepHold 不得有 transform');
 });

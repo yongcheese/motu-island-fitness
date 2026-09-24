@@ -1307,7 +1307,8 @@ export function gameResourceCard(session) {
   const shards = session?.shards || 0;
   const tickets = session?.tickets || 0;
   if (shards <= 0 && tickets <= 0) return '';
-  const pill = (ic, n, label) => `<span class="pill wk-rw-res-pill">${icon(ic, { size: 16 })} ${label} <b>+${n}</b></span>`;
+  // 合體 Slice 5：碎片／抽獎券是「到島嶼遊戲領用」的資源，套遊戲端的可領取脈動
+  const pill = (ic, n, label) => `<span class="pill wk-rw-res-pill motu-is-claimable">${icon(ic, { size: 16 })} ${label} <b>+${n}</b></span>`;
   return `
       <div class="card wk-rw-res">
         <div class="wk-rw-res-row">

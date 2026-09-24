@@ -105,6 +105,30 @@ body {
 }
 .btn.secondary:hover { color: var(--motu-teal-dark); border-color: var(--motu-teal-light); background: var(--motu-cream); }
 .btn.ghost { background: none; color: var(--motu-color-text-muted); box-shadow: none; border-color: transparent; }
+/* 合體 Slice 5：按鈕節奏照 .motu-btn —— 位移用 fast、顏色與陰影用 base；按壓縮到 .98 */
+.btn {
+  transition: transform var(--motu-duration-fast) var(--motu-ease-standard),
+              color var(--motu-duration-base) var(--motu-ease-standard),
+              background-color var(--motu-duration-base) var(--motu-ease-standard),
+              border-color var(--motu-duration-base) var(--motu-ease-standard),
+              box-shadow var(--motu-duration-base) var(--motu-ease-standard);
+}
+.btn:active { transform: scale(.98); }
+
+/* 鍵盤焦點：全站沒有任何 focus 樣式，照 Motu 的 .motu-theme :focus-visible 補上（無障礙底線，不算美化） */
+:focus-visible {
+  outline: 2px solid var(--motu-color-focus);
+  outline-offset: 2px;
+}
+
+/* 減少動態：app.css 只把時長縮成 0.001ms，無限循環的動畫仍會一直重播而閃爍 ——
+   照 motu.css 的 reduced-motion 區塊補上次數 1（它只作用在 .motu-theme 底下，我們沒有掛這個 class） */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
 
 /* —— pill：Motu chip —— */
 .pill {

@@ -19,7 +19,7 @@
 .wk-input {
   width: 100%; padding: 12px 18px 12px 44px; border-radius: var(--motu-radius-pill); border: 1px solid var(--motu-color-border);
   background: var(--motu-color-surface); color: var(--motu-color-text); font-size: 15px; outline: none;
-  box-shadow: var(--motu-shadow-sm); transition: border-color .2s, box-shadow .2s;
+  box-shadow: var(--motu-shadow-sm); transition: border-color var(--motu-duration-base) var(--motu-ease-standard), box-shadow var(--motu-duration-base) var(--motu-ease-standard);
 }
 .wk-input:focus { border-color: var(--motu-color-focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--motu-color-focus) 20%, transparent); }
 .wk-input::placeholder { color: var(--motu-color-text-muted); }
@@ -30,10 +30,10 @@
   position: relative; border-radius: var(--motu-radius-xl); overflow: hidden; cursor: pointer;
   background: var(--motu-color-surface);
   border: 1px solid var(--motu-color-border); box-shadow: var(--motu-shadow-sm);
-  transition: transform .25s var(--ease), border-color .25s, box-shadow .25s;
+  transition: transform var(--motu-duration-slow) var(--motu-ease-out), border-color var(--motu-duration-slow) var(--motu-ease-out), box-shadow var(--motu-duration-slow) var(--motu-ease-out);   /* 同 .motu-card--interactive */
 }
 .wk2:hover { transform: translateY(-3px); border-color: var(--motu-teal-light); box-shadow: var(--motu-shadow-md); }
-.wk2:active { transform: scale(.99); }
+.wk2:active { transform: scale(.98); }
 .wk2-hero {
   position: relative; height: 132px; display: grid; place-items: center;
   background:
@@ -41,9 +41,9 @@
     var(--motu-mint-pale);
 }
 .wk2-hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top, var(--motu-color-surface), transparent 45%); }
-.wk2-emoji { font-size: 64px; z-index: 1; transition: transform .35s var(--ease); }
+.wk2-emoji { font-size: 64px; z-index: 1; transition: transform var(--motu-duration-slow) var(--motu-ease-out); }
 .wk2:hover .wk2-emoji { transform: scale(1.08); }
-.wk2-canvas { width: 100%; height: 100%; display: block; transition: transform .35s var(--ease); }
+.wk2-canvas { width: 100%; height: 100%; display: block; transition: transform var(--motu-duration-slow) var(--motu-ease-out); }
 .wk2:hover .wk2-canvas { transform: scale(1.05); }
 .wk2-lock { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; color: var(--motu-color-text-muted); background: var(--motu-color-surface); box-shadow: var(--motu-shadow-porthole); z-index: 1; }
 .wk2-badge {
@@ -67,7 +67,7 @@
 .wk2-target, .wk-rec-target { color: var(--motu-color-text-muted); }
 .wk2-target .icon, .wk-rec-target .icon, .wk2-stats.dim > span:last-child .icon { color: var(--motu-coral); }
 .wk2-target small { font-weight: 600; font-size: 10px; opacity: .75; }
-.wk2-go { margin-left: auto; color: var(--motu-teal-dark); font-size: 20px; transition: transform .2s; }
+.wk2-go { margin-left: auto; color: var(--motu-teal-dark); font-size: 20px; transition: transform var(--motu-duration-base) var(--motu-ease-standard); }
 .wk2:hover .wk2-go { transform: translateX(3px); }
 .wk2-stats.dim { opacity: .45; }
 .wk2-soon { color: var(--motu-color-text-muted); font-size: 12px; white-space: nowrap; }
@@ -82,17 +82,19 @@
   padding: 14px 22px; border: 0; border-radius: var(--motu-radius-pill);
   background: var(--motu-teal-dark); color: var(--motu-white); font-weight: 900; font-size: 15px;
   box-shadow: var(--motu-shadow-primary); z-index: 200;
-  transition: transform .15s var(--ease), box-shadow .15s var(--ease);
+  transition: transform var(--motu-duration-fast) var(--motu-ease-standard), box-shadow var(--motu-duration-base) var(--motu-ease-standard);
 }
 .wk-fab:hover { transform: scale(1.05); box-shadow: var(--motu-shadow-primary-hover); }
-.wk-fab:active { transform: scale(.96); }
+.wk-fab:active { transform: scale(.98); }
 @media (min-width: 960px) { .wk-fab { bottom: 32px; } }
 .wk-groups { display: flex; gap: 8px; overflow-x: auto; padding: 2px 4px 8px; scrollbar-width: none; }
 .wk-groups::-webkit-scrollbar { display: none; }
 .wk-chip {
   flex-shrink: 0; padding: 8px 16px; border-radius: var(--motu-radius-pill); border: 1px solid var(--motu-color-border);
-  background: var(--motu-color-surface); color: var(--motu-color-text-muted); font-weight: 700; font-size: 13px; transition: all .2s var(--ease);
+  background: var(--motu-color-surface); color: var(--motu-color-text-muted); font-weight: 700; font-size: 13px;
+  transition: color var(--motu-duration-base) var(--motu-ease-standard), background-color var(--motu-duration-base) var(--motu-ease-standard), border-color var(--motu-duration-base) var(--motu-ease-standard), transform var(--motu-duration-fast) var(--motu-ease-standard);
 }
+.wk-chip:active { transform: scale(.98); }
 .wk-chip:hover { color: var(--motu-teal-dark); border-color: var(--motu-teal-light); }
 /* 不加陰影：.wk-groups 是橫向捲動容器，陰影會被裁成方塊 */
 .wk-chip.on { background: var(--motu-teal-dark); color: var(--motu-white); border-color: transparent; }
@@ -100,7 +102,7 @@
 .wk-list { display: flex; flex-direction: column; gap: 10px; }
 .wk-card {
   display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: var(--radius);
-  background: var(--grad-card); border: 1px solid var(--stroke); transition: transform .15s var(--ease), border-color .2s;
+  background: var(--grad-card); border: 1px solid var(--stroke); transition: transform var(--motu-duration-fast) var(--motu-ease-standard), border-color var(--motu-duration-base) var(--motu-ease-standard);
 }
 .wk-card:not(.soon):active { transform: scale(.98); border-color: var(--stroke-strong); }
 .wk-card.soon { opacity: .55; }
@@ -130,8 +132,8 @@
 .wk-toggle span { flex: 1; }
 .wk-toggle span .icon { color: var(--motu-coral); }
 .wk-toggle input { display: none; }
-.wk-toggle i { width: 46px; height: 28px; border-radius: var(--motu-radius-pill); background: var(--motu-line); position: relative; transition: background .25s; flex-shrink: 0; }
-.wk-toggle i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--motu-white); box-shadow: var(--motu-shadow-sm); transition: transform .25s var(--ease); }
+.wk-toggle i { width: 46px; height: 28px; border-radius: var(--motu-radius-pill); background: var(--motu-line); position: relative; transition: background-color var(--motu-duration-base) var(--motu-ease-standard); flex-shrink: 0; }
+.wk-toggle i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--motu-white); box-shadow: var(--motu-shadow-sm); transition: transform var(--motu-duration-base) var(--motu-ease-standard); }
 .wk-toggle input:checked + i { background: var(--motu-teal); }
 .wk-toggle input:checked + i::after { transform: translateX(18px); }
 .wk-cta { display: flex; gap: 10px; margin: 16px 0 8px; }
@@ -163,6 +165,8 @@
 .lv-zoom-lbl { font-size: 12px; color: var(--motu-color-text-muted); font-weight: 800; }
 .lv-zoom input[type="range"] { -webkit-appearance: none; appearance: none; width: 130px; height: 5px; border-radius: 99px;
   background: var(--motu-color-surface-sunken); outline: none; }
+/* 上一條的 outline: none 權重高於全域 :focus-visible，鍵盤操作時要把外框補回來 */
+.lv-zoom input[type="range"]:focus-visible { outline: 2px solid var(--motu-color-focus); outline-offset: 4px; }
 .lv-zoom input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px;
   border-radius: 50%; background: var(--motu-teal); border: 2px solid var(--motu-white); cursor: pointer; box-shadow: var(--motu-shadow-sm); }
 .lv-zoom input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--motu-teal); border: 2px solid var(--motu-white); cursor: pointer; }
@@ -195,13 +199,13 @@
   border-radius: var(--motu-radius-pill); background: var(--motu-color-surface);
   border: 4px solid var(--motu-teal); box-shadow: var(--motu-shadow-lg);
   font-size: 110px; font-weight: 900; line-height: 1; color: var(--motu-color-text);
-  font-variant-numeric: tabular-nums; animation: cdpop .68s var(--ease);
+  font-variant-numeric: tabular-nums; animation: cdpop calc(var(--motu-duration-slow) * 2) var(--motu-ease-out);   /* 600ms，每秒換一個數字，留 400ms 停在定格 */
 }
 /* Slice3 補修：「開始！」是準備轉場提示，用取景藍非訓練綠。合體後藍色只放外框（藍字在白底只有 2.2:1） */
 .lv-count.go { font-size: 64px; height: 140px; border-color: var(--frame-ok); }
 @keyframes cdpop { 0% { transform: scale(.4); opacity: 0; } 35% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); opacity: .9; } }
 /* 教練字幕：優先級只用外框色區分（珊瑚／金／海洋青），字一律深藍 */
-.lv-wrap .lv-coach { position: absolute; left: 50%; transform: translateX(-50%); bottom: 168px; max-width: 80%; text-align: center; background: var(--lv-hud-bg); color: var(--motu-color-text); border: 2px solid var(--motu-color-border); box-shadow: var(--motu-shadow-md); padding: 10px 18px; border-radius: var(--motu-radius-lg); font-weight: 800; font-size: 15px; z-index: 3; transition: opacity .2s; }
+.lv-wrap .lv-coach { position: absolute; left: 50%; transform: translateX(-50%); bottom: 168px; max-width: 80%; text-align: center; background: var(--lv-hud-bg); color: var(--motu-color-text); border: 2px solid var(--motu-color-border); box-shadow: var(--motu-shadow-md); padding: 10px 18px; border-radius: var(--motu-radius-lg); font-weight: 800; font-size: 15px; z-index: 3; transition: opacity var(--motu-duration-base) var(--motu-ease-standard); }
 .lv-coach:empty { opacity: 0; }
 .lv-coach[data-p="high"] { border-color: var(--motu-coral); }
 .lv-coach[data-p="mid"] { border-color: var(--motu-gold); }
@@ -214,7 +218,7 @@
   text-align: center; padding: 9px 20px; border-radius: 14px; font-weight: 800; font-size: 18px;
   letter-spacing: .02em; white-space: nowrap; z-index: 4; pointer-events: none;
   background: var(--lv-hud-bg); color: var(--motu-color-text); border: 2px solid var(--motu-color-border); box-shadow: var(--motu-shadow-md);
-  transition: color .18s, border-color .18s, transform .18s var(--ease); }
+  transition: color var(--motu-duration-fast) var(--motu-ease-standard), border-color var(--motu-duration-fast) var(--motu-ease-standard), transform var(--motu-duration-fast) var(--motu-ease-standard); }
 .lv-next[data-p="go"]  { border-color: var(--motu-gold); }
 .lv-next[data-p="hit"] { border-color: var(--motu-teal); border-width: 3px; transform: translateX(-50%) scale(1.06); }
 .lv-next[data-p="off"] { color: var(--motu-color-text-muted); }
@@ -224,18 +228,19 @@
 
 .lv-hud { position: absolute; left: 0; right: 0; bottom: 84px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 0 16px; z-index: 3; }
 .lv-wrap .lv-metric { background: var(--lv-hud-bg); border: 1px solid var(--motu-color-border); border-radius: var(--motu-radius-lg); padding: 10px 6px; text-align: center; box-shadow: var(--motu-shadow-md); }
-.m-v { font-weight: 900; font-size: 22px; color: var(--motu-color-text); font-variant-numeric: tabular-nums; transition: color .25s; }
+.m-v { font-weight: 900; font-size: 22px; color: var(--motu-color-text); font-variant-numeric: tabular-nums; transition: color var(--motu-duration-base) var(--motu-ease-standard); }
 /* 最後 10 秒：珊瑚字在白底只有 2.7:1 → 數字維持深藍、整格換珊瑚外框與淡底，並保留閃爍 */
-.m-v.low { animation: lowpulse 1s infinite; }
+.m-v.low { animation: lowpulse calc(var(--motu-duration-base) * 4) var(--motu-ease-standard) infinite; }   /* 1 秒一閃，與倒數同拍 */
 .lv-wrap .lv-metric:has(.m-v.low) { border-color: var(--motu-coral); background: color-mix(in srgb, var(--motu-coral) 14%, var(--motu-white)); }
 @keyframes lowpulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
-.m-v.pop { animation: popv .4s var(--ease); }
+.m-v.pop { animation: popv calc(var(--motu-duration-base) + var(--motu-duration-fast)) var(--motu-ease-out); }
 @keyframes popv { 0% { transform: scale(1); color: var(--motu-teal-dark); } 40% { transform: scale(1.4); color: var(--motu-teal-dark); } 100% { transform: scale(1); } }
 .m-k { font-size: 10.5px; font-weight: 700; color: var(--motu-color-text-muted); margin-top: 2px; }
 .lv-ctrls { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 16px); display: flex; gap: 10px; justify-content: center; align-items: center; z-index: 3; }
-.lv-wrap .lv-btn { display: inline-grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--motu-color-border); background: var(--lv-hud-bg); color: var(--motu-color-text); box-shadow: var(--motu-shadow-md); transition: opacity .15s, transform .12s; }
+.lv-wrap .lv-btn { display: inline-grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--motu-color-border); background: var(--lv-hud-bg); color: var(--motu-color-text); box-shadow: var(--motu-shadow-md); transition: opacity var(--motu-duration-fast) var(--motu-ease-standard), transform var(--motu-duration-fast) var(--motu-ease-standard); }
 .lv-wrap .lv-btn .icon { color: currentColor; }
-.lv-btn:active { transform: scale(.92); }
+/* 按壓：沿用 .lv-wrap 前綴，否則 lumina.css 同權重規則在後面載入會蓋掉 */
+.lv-wrap .lv-btn:active { transform: scale(.98); }
 .lv-wrap .lv-btn.muted { color: var(--motu-color-text-muted); background: var(--motu-color-surface-sunken); }
 /* 暫停是主行動：深青底白字（15px 小字，白字放海洋青只有 3.3:1） */
 .lv-wrap .lv-pause { display: inline-flex; gap: 6px; width: auto; border-radius: var(--motu-radius-pill); padding: 0 22px; font-weight: 900; font-size: 15px; color: var(--motu-white); background: var(--motu-teal-dark); border-color: transparent; box-shadow: var(--motu-shadow-primary); }
@@ -244,7 +249,7 @@
 .wk-result { padding-top: 6px; }
 .wk-grade { text-align: center; padding: 18px 0 8px; }
 /* 評級環：字母一律深藍；--gc（Motu 色票）只用在外框、淡底與光暈，仍保留字母 */
-.wk-grade-ring { width: 110px; height: 110px; margin: 0 auto; border-radius: 50%; display: grid; place-items: center; font-size: 52px; font-weight: 900; color: var(--motu-color-text); background: color-mix(in srgb, var(--gc) 14%, var(--motu-white)); border: 5px solid var(--gc); box-shadow: 0 0 0 6px var(--motu-color-surface), 0 10px 28px color-mix(in srgb, var(--gc) 35%, transparent); animation: gradePop .6s var(--ease) both; }
+.wk-grade-ring { width: 110px; height: 110px; margin: 0 auto; border-radius: 50%; display: grid; place-items: center; font-size: 52px; font-weight: 900; color: var(--motu-color-text); background: color-mix(in srgb, var(--gc) 14%, var(--motu-white)); border: 5px solid var(--gc); box-shadow: 0 0 0 6px var(--motu-color-surface), 0 10px 28px color-mix(in srgb, var(--gc) 35%, transparent); animation: gradePop calc(var(--motu-duration-slow) * 2) var(--motu-ease-spring) both; }
 @keyframes gradePop { from { transform: scale(.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 .wk-grade-t { font-weight: 900; font-size: 22px; margin-top: 14px; color: var(--motu-color-text); }
 .wk-grade-s { color: var(--motu-color-text-muted); font-size: 14px; margin-top: 4px; }
@@ -294,7 +299,7 @@
 .lv-stages { display: flex; gap: 5px; }
 .lv-stages span { padding: 5px 10px; border-radius: 8px; font-size: 12px; font-weight: 700;
   color: var(--motu-color-text-muted); background: var(--lv-hud-bg); border: 1px solid var(--motu-color-border); box-shadow: var(--motu-shadow-sm);
-  transition: all .12s ease; }
+  transition: color var(--motu-duration-fast) var(--motu-ease-standard), background-color var(--motu-duration-fast) var(--motu-ease-standard), border-color var(--motu-duration-fast) var(--motu-ease-standard), box-shadow var(--motu-duration-fast) var(--motu-ease-standard), transform var(--motu-duration-fast) var(--motu-ease-standard); }
 .lv-stages span.on { color: var(--motu-white); background: var(--motu-teal-dark); border-color: var(--motu-teal-dark);
   box-shadow: var(--motu-shadow-primary); transform: translateY(-1px); }
 
@@ -305,7 +310,7 @@
 .lv-gauge-track { position: relative; width: 16px; height: min(200px, 32vh); border-radius: 10px;
   background: var(--lv-hud-bg); border: 1px solid var(--motu-color-border); box-shadow: var(--motu-shadow-md); overflow: visible; }
 .lv-gauge-track i { position: absolute; left: 1px; right: 1px; bottom: 1px; height: 0%;
-  border-radius: 8px; background: var(--green); transition: height .08s linear;
+  border-radius: 8px; background: var(--green); transition: height calc(var(--motu-duration-fast) / 2) linear;   /* 判定回饋：75ms，要跟得上動作 */
   box-shadow: 0 0 12px color-mix(in srgb, var(--green) 55%, transparent); }
 /* 合體 Slice 4：量表填色是判定回饋（與骨架同語意），刻意不換成 Motu 色票 —— 金與珊瑚色相太近，黃／紅會分不出來 */
 .lv-gauge-track i[data-c="yellow"] { background: #ffd23f; box-shadow: 0 0 12px rgba(255,210,63,.5); }
@@ -327,7 +332,8 @@
 /* ✓／✗ 仍以海洋青／珊瑚區分（放在外框），字色守對比：有效用深青、無效用深藍 */
 .lv-repflash.ok  { font-size: 60px; color: var(--motu-teal-dark); border-color: var(--motu-teal); }
 .lv-repflash.bad { font-size: 28px; color: var(--motu-color-text); border-color: var(--motu-coral); }
-.lv-repflash.pop { animation: lvRepPop .95s ease forwards; }
+.lv-repflash.pop { animation: lvRepPop calc(var(--motu-duration-slow) * 3) var(--motu-ease-standard) forwards; }
+@keyframes lvRepHold { from { opacity: 1; } to { opacity: 0; } }   /* 配 steps(1, end)：整段維持 1，結束才跳 0，中間沒有漸變 */
 @keyframes lvRepPop {
   0%   { opacity: 0; transform: translate(-50%, -50%) scale(.55); }
   16%  { opacity: 1; transform: translate(-50%, -50%) scale(1.12); }
@@ -348,10 +354,10 @@
   margin: 4px 4px 18px; padding: 16px; cursor: pointer;
   border-color: color-mix(in srgb, var(--motu-gold) 55%, var(--motu-line));
   box-shadow: var(--motu-shadow-md);
-  transition: transform .15s var(--ease), box-shadow .2s var(--ease);
+  transition: transform var(--motu-duration-fast) var(--motu-ease-standard), box-shadow var(--motu-duration-base) var(--motu-ease-standard);
 }
 .wk-rec:hover { transform: translateY(-2px); box-shadow: var(--motu-shadow-lg); }
-.wk-rec:active { transform: scale(.99); }
+.wk-rec:active { transform: scale(.98); }
 .wk-rec:focus-visible { outline: 2px solid var(--motu-color-focus); outline-offset: 2px; }
 .wk-rec-hero {
   flex-shrink: 0; width: 84px; border-radius: var(--motu-radius-lg);
@@ -377,7 +383,7 @@
 .wk-rec-plan { color: var(--motu-color-text-muted); font-size: 12.5px; margin: 2px 0 0; }
 .wk-rec-stats { display: flex; align-items: center; gap: 14px; margin-top: 12px; font-weight: 800; font-size: 15px; }
 .wk-rec-target small { font-weight: 600; font-size: 10px; opacity: .75; }
-.wk-rec-go { margin-left: auto; color: var(--motu-teal-dark); font-size: 20px; transition: transform .2s; }
+.wk-rec-go { margin-left: auto; color: var(--motu-teal-dark); font-size: 20px; transition: transform var(--motu-duration-base) var(--motu-ease-standard); }
 .wk-rec:hover .wk-rec-go { transform: translateX(3px); }
 @media (min-width: 960px) {
   .wk-rec { padding: 20px; gap: 18px; }
@@ -475,7 +481,8 @@
 .wk-coin-fly {
   position: fixed; z-index: 60; pointer-events: none;
   font-size: 20px; line-height: 1; color: var(--motu-gold);
-  transition: transform .52s cubic-bezier(.34, .8, .3, 1), opacity .52s ease-in;
+  /* 500ms：workout.js 在 560ms 移除金幣，時長必須短於它 */
+  transition: transform calc(var(--motu-duration-base) * 2) var(--motu-ease-out), opacity calc(var(--motu-duration-base) * 2) var(--motu-ease-standard);
   will-change: transform, opacity;
 }
 
@@ -486,19 +493,62 @@
 }
 .wk-rw-goalbar i {
   display: block; height: 100%; border-radius: 99px; background: var(--motu-teal);
-  transition: width .7s cubic-bezier(.2, .8, .2, 1);
+  transition: width calc(var(--motu-duration-slow) * 2) var(--motu-ease-out);   /* 寬度由 workout.js 寫入百分比，無法改成 transform */
 }
 /* 金幣落袋瞬間的回饋：卡片輕微亮一下，不用位移（位移會讓下面的按鈕跟著跳） */
 .wk-rw-island.hit {
   border-color: var(--motu-teal-light);
   box-shadow: var(--motu-shadow-primary);
-  transition: box-shadow .25s ease-out, border-color .25s ease-out;
+  transition: box-shadow var(--motu-duration-base) var(--motu-ease-out), border-color var(--motu-duration-base) var(--motu-ease-out);
 }
 .wk-rw-coins { font-variant-numeric: tabular-nums; }   /* 滾動時寬度不跳動 */
+
+/* ===== 合體 Slice 5：進場節奏對齊 Motu ===== */
+/* 訓練頁的整頁淡入：app.css 的 .fade-in 是 500ms，這裡收斂到 --motu-duration-slow。
+   選單外層沒有專屬 class（在 workout.js），用 :has(#wk-list) 認出來，不影響其他分頁。 */
+.fade-in:is(.wk-intro, .wk-result, .wk-rw), .fade-in:has(#wk-list) {
+  animation: fadeUp var(--motu-duration-slow) var(--motu-ease-out) backwards;
+}
+/* 逐項進場：每項晚 fast/4 ≈ 37.5ms（落在 30–50ms），第 8 項起不再往後延，長清單不會等太久。
+   fadeUp（app.css）只動 opacity 與 transform。
+   填充用 backwards 不用 both：both 會在動畫結束後一直鎖住 transform，卡片的 hover 浮起與按壓縮放全部失效。 */
+:is(.wk-grid, .wk-stats, .wk-res-grid, .wk-rw).stagger > * {
+  animation: fadeUp var(--motu-duration-slow) var(--motu-ease-out) backwards;
+  animation-delay: calc(var(--wk-i, 0) * var(--motu-duration-fast) / 4);
+}
+.stagger > :nth-child(2) { --wk-i: 1; }
+.stagger > :nth-child(3) { --wk-i: 2; }
+.stagger > :nth-child(4) { --wk-i: 3; }
+.stagger > :nth-child(5) { --wk-i: 4; }
+.stagger > :nth-child(6) { --wk-i: 5; }
+.stagger > :nth-child(7) { --wk-i: 6; }
+.stagger > :nth-child(n+8) { --wk-i: 7; }
+
+/* 可領取脈動：遊戲端的 .motu-is-claimable（motu.css）只引用 fragment-ready-pulse，
+   keyframes 定義在遊戲組原檔的 Tailwind 段（第 8782 行），我們沒有載入那一段 → 在這裡逐字補上，色值不改。 */
+@keyframes fragment-ready-pulse {
+  0%, 100% {
+    box-shadow: inset 0 1px 2px rgba(38, 70, 83, 0.10), 0 0 0 1px rgba(142, 140, 235, 0.30), 0 4px 12px -5px rgba(206, 132, 216, 0.45);
+  }
+  50% {
+    box-shadow: inset 0 1px 2px rgba(38, 70, 83, 0.10), 0 0 0 1px rgba(206, 132, 216, 0.55), 0 6px 18px -4px rgba(232, 131, 106, 0.70);
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .wk-coin-fly { display: none; }
   .wk-rw-goalbar i, .wk-rw-island.hit { transition: none; }
+  /* 無限循環與按壓位移：縮短時長不夠，直接關掉 */
+  .m-v.low, .motu-is-claimable,
+  .fade-in:is(.wk-intro, .wk-result, .wk-rw), .fade-in:has(#wk-list),
+  :is(.wk-grid, .wk-stats, .wk-res-grid, .wk-rw).stagger > * { animation: none; }   /* 進場延遲也要歸零，否則內容會空白一下 */
+  /* 一次性彈出：終態與原本樣式相同，直接不播 */
+  .lv-count, .m-v.pop, .wk-grade-ring { animation: none; }
+  /* 計次閃現是判定回饋，不能跟著消失：改成不縮放、不位移，停留同樣時間後直接消失。
+     !important 是為了蓋過 app.css 對 * 的 0.001ms（那條會讓閃現瞬間變回透明，減少動態的人看不到判定） */
+  .lv-repflash.pop { animation: lvRepHold calc(var(--motu-duration-slow) * 3) steps(1, end) forwards !important; }
+  :is(.wk2, .wk-rec, .wk-fab, .wk-chip):is(:hover, :active), .wk-card:not(.soon):active,
+  .lv-wrap .lv-btn:active { transform: none; }
 }
 
 /* advisory：不扣次數的姿勢提醒。刻意用中性藍而非紅／黃 ——

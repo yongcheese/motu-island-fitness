@@ -58,7 +58,7 @@
 
 ## 進度總覽
 - 總 Slice 數：6
-- 已完成：4 / 6
+- 已完成：5 / 6
 - 平行組：無（Slice 1 碰共用的 `index.html` 與全域 token；Slice 3–6 都會碰 `workout.css` 或 `motu-skin.css`，全部序列執行）
 
 ---
@@ -176,20 +176,27 @@
 - **依賴**：Slice 1、Slice 2、Slice 3
 - **平行組**：獨立
 
-### [ ] Slice 5 — 微互動與動效對齊 Motu
+### [x] Slice 5 — 微互動與動效對齊 Motu
 - **目標**：按鈕按壓、卡片 hover、進場、數字跳動的節奏和遊戲端一致。
 - **範圍內**：訓練頁的 transition／animation 改用 `--motu-duration-*`、`--motu-ease-*`；按壓 `scale(.98)`；`focus-visible` 外框用 `--motu-color-focus`；進場 stagger 30–50ms；可領取狀態用 `.motu-is-claimable` 的脈動；全部在 `prefers-reduced-motion` 下關閉。
 - **範圍外**：新增任何動畫種類以外的功能；範圍外頁面。
-- **改動檔案**：`app/features/workout/workout.css`（修改）、`app/styles/motu-skin.css`（修改）、`tests/motu-skin.test.js`（修改）
+- **改動檔案**：`app/features/workout/workout.css`（修改）、`app/styles/motu-skin.css`（修改）、`tests/motu-skin.test.js`（修改）；**計畫外補登**：`app/features/workout/workout.js`（1 行：資源膠囊加 `motu-is-claimable`，CSS 無法替元素加 class）
 - **設計要點**：只動 transform／opacity，不動 width／height。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [ ] 範圍內 CSS 沒有 `transition`／`animation` 寫死 ms 數（全部走 token）
-  - [ ] reduced-motion 下所有動畫停止（實機用 DevTools 模擬）
-  - [ ] 所有可點元素都有 `focus-visible` 外框
+  - [x] 範圍內 CSS 沒有 `transition`／`animation` 寫死 ms 數（全部走 token）
+  - [x] reduced-motion 下所有動畫停止（實機用 DevTools 模擬）
+  - [x] 所有可點元素都有 `focus-visible` 外框
 - **測試策略**：`tests/motu-skin.test.js` 追加：掃描範圍內 CSS 的 `transition`／`animation` 宣告，不得出現寫死的 ms／s 數值（邊界：`0s` 與 reduced-motion 區塊內的 `0.001ms` 例外）。
 - **完成定義**：`npm test` 全綠＋實機錄一段按壓與進場＋slice-reviewer
 - **對外介面**：
+  - `motu-skin.css`（全域）：`.btn` transition 改走 token（transform fast／其餘 base，`--motu-ease-standard`）、`.btn:active` → `scale(.98)`（原 .96）；新增全域 `:focus-visible { outline: 2px solid var(--motu-color-focus); outline-offset: 2px }`；新增 reduced-motion 全域 `animation-iteration-count: 1 !important`＋`scroll-behavior: auto`。**範圍外頁面的 `.btn` 也會套到按壓與焦點外框**（審查員判定不違規）
+  - `workout.css`：所有 transition／animation 時長走 `--motu-duration-*`（倍數用 `calc`）；按壓一律 `.98`；新增 `@keyframes fragment-ready-pulse`（逐字取自遊戲組原檔第 8782 行，供 motu.css 的 `.motu-is-claimable` 使用）、`@keyframes lvRepHold`（減少動態用）；進場 `.fade-in`（訓練頁）與 `:is(.wk-grid, .wk-stats, .wk-res-grid, .wk-rw).stagger > *` 改 300ms `--motu-ease-out`、**填充 `backwards`**、每項延遲 `calc(var(--wk-i) * fast / 4)`≈37.5ms（第 8 項起封頂）；`--wk-i` 由 `.stagger > :nth-child(n)` 設定
+  - `workout.js`：`gameResourceCard` 的膠囊多一個 class `motu-is-claimable`（簽名與全 0 行為不變）
+  - 時長微調（token 倍數）：計次閃現 950→900ms、倒數 680→600ms、金幣飛行 520→500ms（JS 560ms 移除，必須更短）、深度量表 80→75ms、成績環改 `--motu-ease-spring`
+  - 修掉的換皮前問題：①進場動畫 `both` 填充鎖住 transform → 動作卡 hover／按壓原本完全無效 ②減少動態下計次閃現原本永遠看不到 → 改為不縮放、停留 900ms 後消失
+  - 給 Slice 6：`.wk2` 動作卡是 `div` 無 `tabindex`，鍵盤無法聚焦；`.wk-toggle input` 為 `display:none`，開關鍵盤碰不到（需改 workout.js）；完成定義的「錄一段按壓與進場」只做了截圖＋computed style 實測，未錄影
+- **審查紀錄**：slice-reviewer 第 1 輪 BLOCK（reduced-motion 漏 4 個一次性動畫）→ 修正＋補測試 → 第 2 輪 PASS（2026-09-25；npm test 350/350）
 - **依賴**：Slice 3、Slice 4
 - **平行組**：獨立
 
