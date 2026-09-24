@@ -58,7 +58,7 @@
 
 ## 進度總覽
 - 總 Slice 數：6
-- 已完成：1 / 6
+- 已完成：2 / 6
 - 平行組：無（Slice 1 碰共用的 `index.html` 與全域 token；Slice 3–6 都會碰 `workout.css` 或 `motu-skin.css`，全部序列執行）
 
 ---
@@ -93,7 +93,7 @@
 - **依賴**：無
 - **平行組**：獨立
 
-### [ ] Slice 2 — 建立 Lucide 圖示模組
+### [x] Slice 2 — 建立 Lucide 圖示模組
 - **目標**：程式碼可以用一行 `icon('coins')` 產生遊戲端同款線條圖示，取代 emoji。
 - **範圍內**：
   - 新增 `app/ui/icons.js`：放入 Slice 3–4 需要的 Lucide 圖示 SVG 路徑（先盤點 `workout.js` 裡當圖示用的 emoji，約 40 種，一種對一個 Lucide 名稱），檔頭寫 ISC 授權與 Lucide 版本。
@@ -104,13 +104,21 @@
 - **設計要點**：尺寸只允許 token（16／18／20／24），不接受任意值。
 - **UI Slice?**：NO（純函式）
 - **驗收標準**：
-  - [ ] 對照表涵蓋 `workout.js` 裡所有當圖示用的 emoji（測試掃描原始碼比對）
-  - [ ] 未知名稱不拋錯、回傳佔位
-  - [ ] 無 label 必有 `aria-hidden`，有 label 必有 `aria-label`
-  - [ ] 每個圖示都是 24×24 viewBox、stroke 2
+  - [x] 對照表涵蓋 `workout.js` 裡所有當圖示用的 emoji（測試掃描原始碼比對）
+  - [x] 未知名稱不拋錯、回傳佔位
+  - [x] 無 label 必有 `aria-hidden`，有 label 必有 `aria-label`
+  - [x] 每個圖示都是 24×24 viewBox、stroke 2
 - **測試策略**：`tests/icons.test.js` — 正常輸出、size 非 token 值時退回 18（邊界）、未知名稱、aria 屬性、對照表涵蓋率。
 - **完成定義**：`npm test` 全綠＋slice-reviewer
 - **對外介面**：
+  - 模組 `app/ui/icons.js`（Lucide v1.47.0，ISC，48 個圖示）：
+    - `icon(name, { size?, label? }) → string`：SVG 字串，`class="icon"`、24×24 viewBox、stroke 2、`currentColor`；`size` 只收 `16/18/20/24`，其他退回 18；無 label → `aria-hidden="true"`，有 label → `role="img"`＋`aria-label`（已跳脫）；未知名稱 → 同尺寸空白 SVG＋`console.warn`，不拋錯
+    - `iconForEmoji(emoji) → string | null`：忽略 U+FE0F
+    - `EMOJI_ICON`：emoji（不含 FE0F）→ Lucide 名稱，涵蓋 workout.js 註解以外全部 48 種 emoji，每項附用途註解
+    - `ICONS`：名稱 → SVG 形狀字串；`ICON_SIZES = [16, 18, 20, 24]`
+  - 給下游：新增圖示請從同版本 lucide-static `icon-nodes.json` 取形狀，不要手畫；`tests/icons.test.js` 會掃描 workout.js，Slice 3–4 若新增 emoji 會失敗（本來就不該新增）
+  - 需使用者留意：幾個動作的圖示是語意近似選擇（深蹲→`arrow-down-to-line`、仰臥起坐→`chevrons-up`、捲腹→`shrink`、動作品質很棒 👏→`award`），Lucide 沒有對應的人體動作圖示
+- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-24；獨立比對 48 個形狀與官方 icon-nodes.json 逐字相符）
 - **依賴**：無
 - **平行組**：獨立
 
