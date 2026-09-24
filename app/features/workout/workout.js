@@ -14,6 +14,7 @@ import { coachPolicy, repCountdownCue } from '../../core/coach-policy.js';   // 
 import { framingReport, createStabilityTracker, landmarkOk, HEAD_LANDMARKS, cameraHeightHint } from '../../core/framing.js';
 import { sampleVideoLuma, lightingReport } from '../../core/lighting.js';   // 光線品質：量出來並告知，不放寬判定門檻
 import { ALL_FRAME, framingPose, displaySegments, gaugeColor, phaseCueText } from '../../ui/display-colors.js';   // 顏色語意（純函式，可單測）
+import { icon } from '../../ui/icons.js';   // 合體 Slice 3：Lucide 線條圖示，取代 emoji
 
 let CTX = null;
 let root = null;
@@ -102,11 +103,11 @@ function renderMenu(activeGroup = 'all') {
   root.innerHTML = `
     <div class="fade-in">
       <h1 class="h1">開始訓練</h1>
-      <p class="sub">✨ AI 即時判定動作品質 — 只有正確動作才換得到金幣 🪙</p>
+      <p class="sub wk-sub">${icon('sparkles', { size: 16 })} AI 即時判定動作品質 — 只有正確動作才換得到金幣 ${icon('coins', { size: 16 })}</p>
       ${recCardHtml(EXERCISES[REC_ID])}
       <div class="wk-filters">
         <div class="wk-search">
-          <span class="wk-search-ic">🔍</span>
+          <span class="wk-search-ic">${icon('search')}</span>
           <input id="wk-q" class="wk-input" placeholder="搜尋動作（深蹲、開合跳…）" />
         </div>
         <div class="wk-groups">
@@ -115,7 +116,7 @@ function renderMenu(activeGroup = 'all') {
       </div>
       <div class="wk-grid stagger" id="wk-list"></div>
     </div>
-    <button class="wk-fab" id="wk-fab">🚀 <span>快速開始 AI 訓練</span></button>`;
+    <button class="wk-fab" id="wk-fab">${icon('rocket', { size: 20 })} <span>快速開始 AI 訓練</span></button>`;
 
   const listEl = root.querySelector('#wk-list');
   const renderCards = (items) => {
@@ -124,11 +125,11 @@ function renderMenu(activeGroup = 'all') {
     listEl.querySelectorAll('[data-id]').forEach(c => {
       c.onclick = () => {
         const ex = EXERCISES[c.dataset.id];
-        if (ex) renderIntro(ex); else CTX.toast('此動作開發中，敬請期待 🛠️');
+        if (ex) renderIntro(ex); else CTX.toast('此動作開發中，敬請期待');
       };
     });
     listEl.querySelectorAll('[data-soon]').forEach(c => {
-      c.onclick = () => CTX.toast('此動作開發中，敬請期待 🛠️');
+      c.onclick = () => CTX.toast('此動作開發中，敬請期待');
     });
     startCardAnims();
   };
@@ -156,7 +157,11 @@ function renderMenu(activeGroup = 'all') {
   }
 }
 
-const ACCENT = { lower: '#22e0a1', cardio: '#2fd6c6', upper: '#ff7a59', core: '#ffd23f', glute: '#c792ff' };
+// 分類色：合體 Slice 3 改用 Motu 色票（只當裝飾填色，不當文字色）
+const ACCENT = {
+  lower: 'var(--motu-teal)', cardio: 'var(--motu-color-info)', upper: 'var(--motu-coral)',
+  core: 'var(--motu-gold)', glute: 'var(--motu-fragment-4)',
+};
 // Slice2 R1：今日推薦寫死深蹲（Demo 取景最穩、對應今日任務動作）。
 // TODO(R3): 接 store 任務欄位——推薦讀今日任務、無任務時退化為預設深蹲；FAB 一併接推薦。
 const REC_ID = 'squat';
@@ -180,8 +185,8 @@ function estimateRoundCoins(e) {
   return coinsFor({ validReps: reps, baseCoinPerRep: e.baseCoinPerRep, targetRate: 1, streakDays: 0 });
 }
 function rewardBadges(e, p) {
-  return `<span class="${p}-coin" title="全部有效時的整輪上限">🪙 最多 ${estimateRoundCoins(e)}</span>
-          <span class="${p}-target">🎯 ${e.meta?.target || '全身'}</span>`;
+  return `<span class="${p}-coin" title="全部有效時的整輪上限">${icon('coins', { size: 16 })} 最多 ${estimateRoundCoins(e)}</span>
+          <span class="${p}-target">${icon('target', { size: 16 })} ${e.meta?.target || '全身'}</span>`;
 }
 // 依使用者設定的難度換算該動作的訓練量。**所有**顯示與執行都必須經由此函式，
 // 否則簡介頁寫「3 組 × 12 下」、實際跑 2 組，使用者會以為系統壞了。
@@ -189,10 +194,10 @@ function planOf(ex) { return planFor(ex?.meta, CTX.store.getState().prefs?.diffi
 // 課表句（R4 簡介文案一致化的單一來源）。
 function planText(meta) { return planLabel(planFor(meta, CTX.store.getState().prefs?.difficulty)); }
 // 推薦理由 caption。TODO(R3): 改讀 store 任務欄位（無任務→預設推薦文案）。
-function recWhyText() { return '🎯 今天練下肢 · 完成今日任務：20 個有效深蹲'; }
+function recWhyText() { return `${icon('target', { size: 16 })} 今天練下肢 · 完成今日任務：20 個有效深蹲`; }
 // Demo 取景提示：深蹲只需到膝、最易成功(預設推薦)；開合跳需腳踝＋橫向空間。
-const RECOMMEND = { squat: '⭐ Demo 推薦' };
-const SPACE_NOTE = { jumpingjack: '⚠️ 需較大空間' };
+const RECOMMEND = { squat: `${icon('star', { size: 16 })} Demo 推薦` };
+const SPACE_NOTE = { jumpingjack: `${icon('triangle-alert', { size: 16 })} 需較大空間` };
 const TAGLINE = {
   squat: '持續專注於重心平穩', jumpingjack: '燃燒全身脂肪', highknees: '提高瞬發爆發力',
   pushup: '強化胸大肌與核心', lunge: '精準雕塑臀部線條', burpee: '極速燃脂之王',
@@ -207,10 +212,10 @@ function recCardHtml(e) {
   return `
     <div class="wk-rec card" data-rec-id="${e.id}" role="button" tabindex="0"
       aria-label="今日推薦：${e.name}" style="--accent:${ACCENT[e.group] || 'var(--green)'}">
-      <div class="wk-rec-hero">${exIcon(e.id)}</div>
+      <div class="wk-rec-hero"><span class="wk-ic-disc">${exIcon(e.id, 24)}</span></div>
       <div class="wk-rec-body">
         <div class="wk-rec-head">
-          <span class="pill wk-rec-badge">☀️ 今日推薦</span>
+          <span class="pill wk-rec-badge">${icon('sun', { size: 16 })} 今日推薦</span>
           <span class="wk-rec-diff" title="難度 ${d}/3">${diffDots(d)}</span>
         </div>
         <h3 class="wk-rec-name">${e.name}</h3>
@@ -231,11 +236,11 @@ function cardHtml(e) {
   if (!e.ready) {
     return `
     <div class="wk2 locked" data-soon="1">
-      <div class="wk2-hero"><span class="wk2-lock">🔒</span><span class="wk2-badge soon">規劃中</span></div>
+      <div class="wk2-hero"><span class="wk2-lock">${icon('lock', { size: 24 })}</span><span class="wk2-badge soon">規劃中</span></div>
       <div class="wk2-body">
         <div class="wk2-top"><h3 class="wk2-name">${exIcon(e.id)} ${e.name}</h3><span class="wk2-soon">即將推出</span></div>
         <p class="wk2-tag">${grp}${tag ? ' · ' + tag : ''}</p>
-        <div class="wk2-stats dim"><span>🪙 --</span><span>🔥 --</span></div>
+        <div class="wk2-stats dim"><span>${icon('coins', { size: 16 })} --</span><span>${icon('flame', { size: 16 })} --</span></div>
       </div>
     </div>`;
   }
@@ -258,9 +263,21 @@ function cardHtml(e) {
       </div>
     </div>`;
 }
-function exIcon(id) {
-  return { squat: '🦵', jumpingjack: '🤸', highknees: '🏃', pushup: '💪',
-    lunge: '🚶', burpee: '🔥', situp: '🧎', crunch: '🌀', glutebridge: '🌉', sidelunge: '↔️' }[id] || '🏋️';
+// 動作圖示：對照 icons.js 的 EMOJI_ICON（原本的 emoji 註記在右側，方便回查）
+function exIcon(id, size) {
+  const name = {
+    squat: 'arrow-down-to-line',   // 🦵
+    jumpingjack: 'person-standing', // 🤸
+    highknees: 'activity',         // 🏃
+    pushup: 'biceps-flexed',       // 💪
+    lunge: 'footprints',           // 🚶
+    burpee: 'flame',               // 🔥
+    situp: 'chevrons-up',          // 🧎
+    crunch: 'shrink',              // 🌀
+    glutebridge: 'bridge',         // 🌉
+    sidelunge: 'move-horizontal',  // ↔
+  }[id] || 'dumbbell';             // 🏋
+  return icon(name, { size });
 }
 
 /* ---------------- 簡介 ---------------- */
@@ -274,24 +291,24 @@ function renderIntro(ex) {
       <button class="wk-back" id="wk-back">‹ 返回</button>
       <div class="wk-hero card">
         <div id="wk-demo" class="wk-demo3d"></div>
-        <div class="wk-hero-badge">${exIcon(ex.id)} ${ex.name}</div>
+        <div class="wk-hero-badge">${exIcon(ex.id, 16)} ${ex.name}</div>
       </div>
       <h1 class="h1">${ex.name}</h1>
       <p class="sub">${ex.meta.desc}</p>
       <div class="wk-stats stagger">
-        ${stat('🎯 部位', ex.meta.target)}
-        ${stat('🔁 組數', `${planOf(ex).sets} 組 × ${planOf(ex).repsPerSet} 下`)}
-        ${stat('⏱️ 組間休息', `${planOf(ex).restSec} 秒`)}
-        ${stat('🪙 可得金幣', `${ex.baseCoinPerRep} / 有效次 · 整輪最多 ${estimateRoundCoins(ex)}`)}
-        ${stat('🔥 強度', `${ex.met} MET`)}
-        ${stat('📷 鏡頭', ex.id === 'pushup' ? '側面' : ex.id === 'jumpingjack' ? '正面 · 需全身入鏡' : '正面')}
+        ${stat('target', '部位', ex.meta.target)}
+        ${stat('repeat', '組數', `${planOf(ex).sets} 組 × ${planOf(ex).repsPerSet} 下`)}
+        ${stat('timer', '組間休息', `${planOf(ex).restSec} 秒`)}
+        ${stat('coins', '可得金幣', `${ex.baseCoinPerRep} / 有效次 · 整輪最多 ${estimateRoundCoins(ex)}`)}
+        ${stat('flame', '強度', `${ex.met} MET`)}
+        ${stat('camera', '鏡頭', ex.id === 'pushup' ? '側面' : ex.id === 'jumpingjack' ? '正面 · 需全身入鏡' : '正面')}
       </div>
       <div class="wk-judge card">
-        <div class="wk-judge-t">✅ 判定關鍵</div>
+        <div class="wk-judge-t">${icon('circle-check')} 判定關鍵</div>
         <div class="wk-judge-d">${judgeText(ex.id)}</div>
       </div>
       <label class="wk-toggle">
-        <span>🔥 開始前先暖身（約 1 分鐘）</span>
+        <span>${icon('flame')} 開始前先暖身（約 1 分鐘）</span>
         <input type="checkbox" id="wk-warm" ${warm ? 'checked' : ''}/>
         <i></i>
       </label>
@@ -305,7 +322,7 @@ function renderIntro(ex) {
   root.querySelector('#wk-start').onclick = () => startLive(ex, root.querySelector('#wk-warm').checked);
   animDemo(ex.id, root.querySelector('#wk-demo'));
 }
-function stat(k, v) { return `<div class="wk-stat card"><div class="k">${k}</div><div class="v">${v}</div></div>`; }
+function stat(ic, k, v) { return `<div class="wk-stat card"><div class="k">${icon(ic, { size: 16 })} ${k}</div><div class="v">${v}</div></div>`; }
 function judgeText(id) {
   return {
     squat: '髖部需低於膝蓋高度、起身回穩；排除只彎腰、半蹲。',
@@ -782,10 +799,10 @@ function bindLiveControls() {
 async function runWarmup(run) {
   const statusEl = root.querySelector('#lv-status');
   const coachEl = root.querySelector('#lv-coach');
-  coachEl.textContent = '暖身：原地踏步、活動關節 🤸';
+  coachEl.textContent = '暖身：原地踏步、活動關節';
   CTX.coach.say('開始暖身，原地踏步活動一下關節', 'mid');
   statusEl.innerHTML = `
-    <div class="lv-loading">🤸 暖身：原地踏步、活動關節<br>
+    <div class="lv-loading lv-warmup">${icon('person-standing', { size: 24 })} 暖身：原地踏步、活動關節<br>
       <span id="lv-warm-cd">暖身倒數 10 秒</span>
       <div class="lv-demo-actions"><button class="btn secondary" id="lv-skipwarm">跳過暖身 ›</button></div>
     </div>`;
@@ -1221,7 +1238,8 @@ function renderResult(ex, summary, session) {
   // advisory：不影響有效次數，但值得提醒的姿勢問題。與「常見問題」分開呈現 ——
   // 混在一起會讓使用者以為這些是被扣次數的原因。
   const advisories = Object.entries(summary.advisoryCounts || {}).sort((a, b) => b[1] - a[1]);
-  const gColor = { S: 'var(--gold)', A: 'var(--green)', B: 'var(--teal)', C: 'var(--muted)' }[session.grade];
+  // 評級色改由 Motu 色票對應，只用在外框與淡底；字母本身一律深藍（金／藍放在白底上對比不足）
+  const gColor = { S: 'var(--motu-gold)', A: 'var(--motu-teal)', B: 'var(--motu-color-info)', C: 'var(--motu-navy-soft)' }[session.grade];
   root.innerHTML = `
     <div class="fade-in wk-result">
       <div class="wk-grade" style="--gc:${gColor}">
@@ -1230,19 +1248,19 @@ function renderResult(ex, summary, session) {
         <div class="wk-grade-s">${ex.name} · ${fmtTime(session.durationSec)}</div>
       </div>
       <div class="wk-res-grid stagger">
-        ${resCell('🪙 獲得金幣', '+' + session.coinsEarned, 'gold')}
-        ${resCell('✅ 有效次數', summary.validReps)}
-        ${resCell('⚠️ 無效次數', summary.invalidReps)}
-        ${resCell('🎯 達標率', tr + '%')}
-        ${resCell('📋 主要問題', topFaultLabel(session.faults))}
-        ${resCell('⏱️ 時長', fmtTime(session.durationSec))}
+        ${resCell('coins', '獲得金幣', '+' + session.coinsEarned, 'gold')}
+        ${resCell('circle-check', '有效次數', summary.validReps)}
+        ${resCell('triangle-alert', '無效次數', summary.invalidReps)}
+        ${resCell('target', '達標率', tr + '%')}
+        ${resCell('clipboard-list', '主要問題', topFaultLabel(session.faults))}
+        ${resCell('timer', '時長', fmtTime(session.durationSec))}
       </div>
       ${faults.length ? `<div class="wk-faults card">
         <div class="wk-judge-t">常見問題</div>
         ${faults.map(([f, n]) => `<div class="wk-fault-row"><span>${faultName(f)}</span><span class="pill">${n} 次</span></div>`).join('')}
-      </div>` : `<div class="wk-faults card"><div class="wk-judge-t">👏 動作品質很棒，沒有明顯錯誤！</div></div>`}
+      </div>` : `<div class="wk-faults card"><div class="wk-judge-t">${icon('award')} 動作品質很棒，沒有明顯錯誤！</div></div>`}
       ${advisories.length ? `<div class="wk-faults card wk-advis">
-        <div class="wk-judge-t">💡 可以更好（不影響有效次數）</div>
+        <div class="wk-judge-t">${icon('lightbulb')} 可以更好（不影響有效次數）</div>
         ${advisories.map(([f, n]) => `<div class="wk-fault-row"><span>${faultName(f)}</span><span class="pill">${n} 次</span></div>`).join('')}
       </div>` : ''}
       <div class="wk-cta">
@@ -1264,27 +1282,29 @@ export function gameResourceCard(session) {
   const shards = session?.shards || 0;
   const tickets = session?.tickets || 0;
   if (shards <= 0 && tickets <= 0) return '';
-  const pill = (icon, n, label) => `<span class="pill wk-rw-res-pill">${icon} ${label} <b>+${n}</b></span>`;
+  const pill = (ic, n, label) => `<span class="pill wk-rw-res-pill">${icon(ic, { size: 16 })} ${label} <b>+${n}</b></span>`;
   return `
       <div class="card wk-rw-res">
         <div class="wk-rw-res-row">
-          ${shards > 0 ? pill('🧩', shards, '碎片') : ''}
-          ${tickets > 0 ? pill('🎟️', tickets, '抽獎券') : ''}
+          ${shards > 0 ? pill('puzzle', shards, '碎片') : ''}
+          ${tickets > 0 ? pill('ticket', tickets, '抽獎券') : ''}
         </div>
         <div class="wk-rw-res-s">於島嶼遊戲中使用 · 不會出現在錢包</div>
       </div>`;
 }
 
 /* Slice4 R3 第二幕島嶼行：與島嶼目標條共用 nextGoal——同一函式、同一數字。三態文案，皆非死路。 */
+// 合體 Slice 3：建築的 emoji（g.item.icon）是島嶼頁的資料，這裡不再顯示，只留名稱；差額數字用深藍、金幣圖示帶金色。
 function rewardIslandLine(s) {
   const n = s.island.placed.length;
   const g = nextGoal(s);
+  const built = `${icon('house', { size: 16 })} 已建 <b>${n}</b> 棟`;
   if (g.kind === 'save') {
-    const cheer = g.gap <= 100 ? '快到了！再練一輪衝刺 💪' : '';
-    return `🏠 已建 <b>${n}</b> 棟 · 下一個目標：${g.item.icon} ${g.item.name} <b style="color:var(--gold)">差 ${g.gap}🪙</b>${cheer ? ' · ' + cheer : ''}`;
+    const cheer = g.gap <= 100 ? `快到了！再練一輪衝刺 ${icon('biceps-flexed', { size: 16 })}` : '';
+    return `${built} · 下一個目標：${g.item.name} <b class="wk-rw-gap">差 ${g.gap} ${icon('coins', { size: 16 })}</b>${cheer ? ' · ' + cheer : ''}`;
   }
-  if (g.kind === 'unlock') return `🏠 已建 <b>${n}</b> 棟 · ${g.item.icon} ${g.item.name}：${g.hint}`;
-  return `🏠 已建 <b>${n}</b> 棟 · 島嶼全部解鎖 🎉`;
+  if (g.kind === 'unlock') return `${built} · ${g.item.name}：${g.hint}`;
+  return `${built} · 島嶼全部解鎖 ${icon('party-popper', { size: 16 })}`;
 }
 
 /* D-1 獎勵轉換儀式：金幣滾動 → 飛向島嶼 → 島嶼進度推進 → 落袋音。
@@ -1321,7 +1341,7 @@ function flyCoins(fromEl, toEl, n, onLand) {
   for (let i = 0; i < count; i++) {
     rwAfter(i * 70, () => {
       const c = document.createElement('span');
-      c.className = 'wk-coin-fly'; c.textContent = '🪙';
+      c.className = 'wk-coin-fly'; c.innerHTML = icon('coins', { size: 20 });
       // 起點在金幣數字附近散開，終點收斂到島嶼卡中心 —— 散開再收攏才有「被吸進去」的感覺
       c.style.left = (a.left + a.width * (0.25 + Math.random() * 0.5)) + 'px';
       c.style.top = (a.top + a.height * 0.4) + 'px';
@@ -1354,23 +1374,23 @@ function renderReward(ex, session) {
   const pctOf = (c) => (cost > 0 ? Math.max(0, Math.min(100, Math.round(c / cost * 100))) : 100);
   root.innerHTML = `
     <div class="fade-in wk-rw stagger">
-      <div class="card wk-rw-card">
-        <div class="wk-rw-isl">${empty ? '💪' : '🏝️'}</div>
+      <div class="card motu-reward wk-rw-card">
+        <div class="wk-rw-isl"><span class="wk-ic-disc">${icon(empty ? 'biceps-flexed' : 'tree-palm', { size: 24 })}</span></div>
         ${empty ? `
         <div class="wk-rw-title">這次沒有獲得金幣</div>
         <p class="wk-rw-s">只有有效動作才換得到金幣，再試一次！</p>` : `
         <div class="wk-rw-title">獎勵入袋！</div>
-        <div class="wk-rw-coins">+<span id="wk-rw-num">0</span><span class="ico"> 🪙</span></div>
+        <div class="wk-rw-coins">+<span id="wk-rw-num">0</span><span class="ico">${icon('coins', { size: 24, label: '金幣' })}</span></div>
         <p class="wk-rw-s">金幣已存入錢包 · 去島上蓋新建築吧</p>`}
       </div>
       <div class="card wk-rw-xp">
-        <div class="wk-rw-xp-head"><span class="pill">⭐ Lv.${s.wallet.level}</span><span class="wk-rw-xpgain">+${xpGain} XP</span></div>
+        <div class="wk-rw-xp-head"><span class="pill">${icon('star', { size: 16 })} Lv.${s.wallet.level}</span><span class="wk-rw-xpgain">+${xpGain} XP</span></div>
         <div class="wk-rw-bar"><i style="width:${Math.round(ratio * 100)}%"></i></div>
         <div class="wk-rw-xp-s">再 ${Math.max(0, xp.need - xp.cur)} XP 升級</div>
       </div>
       ${gameResourceCard(session)}
       <div class="card wk-rw-island" id="wk-rw-island">
-        ${empty ? `🏠 我的島嶼 · 已建 <b>${s.island.placed.length}</b> 棟建築` : rewardIslandLine(s)}
+        ${empty ? `${icon('house', { size: 16 })} 我的島嶼 · 已建 <b>${s.island.placed.length}</b> 棟建築` : rewardIslandLine(s)}
         ${!empty && cost > 0 ? `
         <div class="wk-rw-goalbar" role="img" aria-label="距下一個目標的存款進度">
           <i id="wk-rw-goalfill" style="width:${pctOf(prevCoins)}%"></i>
@@ -1379,7 +1399,7 @@ function renderReward(ex, session) {
       <div class="wk-cta">
         ${empty
           ? `<button class="btn" id="wk-rw-retry" style="flex:1">再一次</button>`
-          : `<button class="btn" id="wk-rw-go" style="flex:1">🏝️ 去蓋房子</button>`}
+          : `<button class="btn" id="wk-rw-go" style="flex:1">${icon('tree-palm')} 去蓋房子</button>`}
         <button class="btn secondary" id="wk-rw-done" style="flex:1">完成</button>
       </div>
     </div>`;
@@ -1411,11 +1431,11 @@ function renderReward(ex, session) {
 /** 本次最常見的錯誤（結算格用）。全部做對時回「無」——這是好消息，不該留白。 */
 function topFaultLabel(faults) {
   const list = Object.entries(faults || {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
-  if (!list.length) return '無 ✨';
+  if (!list.length) return `無 ${icon('sparkles', { size: 16 })}`;
   const [key, n] = list[0];
   return `${faultName(key)} ×${n}`;
 }
-function resCell(k, v, cls = '') { return `<div class="wk-res card ${cls}"><div class="rv">${v}</div><div class="rk">${k}</div></div>`; }
+function resCell(ic, k, v, cls = '') { return `<div class="wk-res card ${cls}"><div class="rv">${v}</div><div class="rk">${icon(ic, { size: 16 })} ${k}</div></div>`; }
 // 一下被判無效時要說的話：優先用該動作 spec 已寫好的修正口令（每個動作講法不同，
 // 例如深蹲的 half_rep 該說「再往下蹲」、伏地挺身該說「胸口往下壓」），沒有才退回通用句。
 const REJECT_FALLBACK = {

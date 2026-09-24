@@ -1,80 +1,101 @@
 /* ===== Workout (Tab2) ===== */
+/* 合體 Slice 3：換成遊戲組 Motu 樣式。對比規則 ——
+   文字只用深藍（--motu-color-text）／深藍淡（--motu-color-text-muted）／深青（--motu-teal-dark）；
+   海洋青、金、珊瑚、資訊藍只當填色、外框與圖示色，不當文字色（白底上不到 4.5:1）。 */
+
+/* Lucide 圖示（app/ui/icons.js 輸出的 <svg class="icon">）：與文字基線對齊、不被 flex 壓縮 */
+.icon { display: inline-block; vertical-align: -0.2em; flex-shrink: 0; }
+/* 大圖示放在圓形 porthole 裡（圖示本身維持 24px token，不放大線條） */
+.wk-ic-disc {
+  display: inline-grid; place-items: center; width: 56px; height: 56px; border-radius: 50%;
+  background: var(--motu-color-surface); color: var(--motu-teal-dark); box-shadow: var(--motu-shadow-porthole);
+}
+
+.wk-sub .icon { color: var(--motu-teal-dark); }
+.wk-sub .icon:last-child { color: var(--motu-gold); }
 .wk-filters { margin: 8px 4px 16px; }
 .wk-search { position: relative; margin-bottom: 12px; }
-.wk-search-ic { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); opacity: .7; pointer-events: none; }
+.wk-search-ic { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); display: grid; color: var(--motu-color-text-muted); pointer-events: none; }
 .wk-input {
-  width: 100%; padding: 12px 18px 12px 44px; border-radius: 99px; border: 1px solid var(--stroke);
-  background: var(--surface); color: var(--text); font-size: 15px; outline: none; transition: border-color .2s, box-shadow .2s;
+  width: 100%; padding: 12px 18px 12px 44px; border-radius: var(--motu-radius-pill); border: 1px solid var(--motu-color-border);
+  background: var(--motu-color-surface); color: var(--motu-color-text); font-size: 15px; outline: none;
+  box-shadow: var(--motu-shadow-sm); transition: border-color .2s, box-shadow .2s;
 }
-.wk-input:focus { border-color: color-mix(in srgb, var(--green) 55%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 12%, transparent); }
-.wk-input::placeholder { color: var(--faint); }
+.wk-input:focus { border-color: var(--motu-color-focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--motu-color-focus) 20%, transparent); }
+.wk-input::placeholder { color: var(--motu-color-text-muted); }
 
-/* ===== 動作網格卡（Stitch / Lumina Isles 落地版，離線、接真資料） ===== */
+/* ===== 動作網格卡：白卡＋暖灰線＋柔影 ===== */
 .wk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
 .wk2 {
-  position: relative; border-radius: 24px; overflow: hidden; cursor: pointer;
-  background: rgba(255,255,255,.03); backdrop-filter: blur(20px);
-  border: 1px solid color-mix(in srgb, var(--green) 28%, transparent);
+  position: relative; border-radius: var(--motu-radius-xl); overflow: hidden; cursor: pointer;
+  background: var(--motu-color-surface);
+  border: 1px solid var(--motu-color-border); box-shadow: var(--motu-shadow-sm);
   transition: transform .25s var(--ease), border-color .25s, box-shadow .25s;
 }
-.wk2:hover { transform: translateY(-3px); border-color: var(--green); box-shadow: 0 0 18px color-mix(in srgb, var(--green) 28%, transparent); }
+.wk2:hover { transform: translateY(-3px); border-color: var(--motu-teal-light); box-shadow: var(--motu-shadow-md); }
 .wk2:active { transform: scale(.99); }
 .wk2-hero {
   position: relative; height: 132px; display: grid; place-items: center;
   background:
-    radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--accent, #22e0a1) 34%, transparent), transparent 70%),
-    linear-gradient(160deg, var(--surface-2), var(--surface));
+    radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--accent, var(--motu-teal)) 22%, transparent), transparent 70%),
+    var(--motu-mint-pale);
 }
-.wk2-hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top, var(--bg-1), transparent 58%); }
-.wk2-emoji { font-size: 64px; filter: drop-shadow(0 6px 14px rgba(0,0,0,.45)); z-index: 1; transition: transform .35s var(--ease); }
+.wk2-hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top, var(--motu-color-surface), transparent 45%); }
+.wk2-emoji { font-size: 64px; z-index: 1; transition: transform .35s var(--ease); }
 .wk2:hover .wk2-emoji { transform: scale(1.08); }
 .wk2-canvas { width: 100%; height: 100%; display: block; transition: transform .35s var(--ease); }
 .wk2:hover .wk2-canvas { transform: scale(1.05); }
-.wk2-lock { font-size: 40px; opacity: .4; }
+.wk2-lock { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; color: var(--motu-color-text-muted); background: var(--motu-color-surface); box-shadow: var(--motu-shadow-porthole); z-index: 1; }
 .wk2-badge {
   position: absolute; left: 12px; bottom: 12px; z-index: 2;
-  padding: 3px 11px; border-radius: 99px; font-size: 11px; font-weight: 700;
-  background: color-mix(in srgb, var(--accent, #22e0a1) 22%, transparent); color: var(--text);
-  border: 1px solid color-mix(in srgb, var(--accent, #22e0a1) 40%, transparent);
+  padding: 3px 11px; border-radius: var(--motu-radius-pill); font-size: 11px; font-weight: 700;
+  background: var(--motu-color-surface); color: var(--motu-color-text);
+  border: 1px solid color-mix(in srgb, var(--accent, var(--motu-teal)) 55%, var(--motu-line));
 }
-.wk2-badge.soon { background: var(--surface-2); color: var(--muted); border-color: var(--stroke); }
+.wk2-badge.soon { background: var(--motu-color-surface-sunken); color: var(--motu-color-text-muted); border-color: var(--motu-color-border); }
 .wk2-body { padding: 14px 16px 16px; }
 .wk2-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-.wk2-name { font-size: 18px; font-weight: 800; margin: 0; }
+.wk2-name { font-size: 18px; font-weight: 800; margin: 0; color: var(--motu-color-text); }
 .wk2-diff { display: inline-flex; gap: 4px; align-items: center; margin-top: 6px; flex-shrink: 0; }
-.wk2-diff i { width: 7px; height: 7px; border-radius: 50%; background: var(--surface-2); }
-.wk2-diff i.on { background: var(--accent, #22e0a1); }
-.wk2-tag { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
-.wk2-stats { display: flex; align-items: center; gap: 14px; margin-top: 12px; font-weight: 800; font-size: 15px; }
-.wk2-coin { color: var(--gold); }
-.wk2-target { color: var(--coral); }
+.wk2-diff i { width: 7px; height: 7px; border-radius: 50%; background: var(--motu-line); }
+.wk2-diff i.on { background: var(--accent, var(--motu-teal)); }
+.wk2-tag { color: var(--motu-color-text-muted); font-size: 12.5px; margin: 6px 0 0; }
+.wk2-stats { display: flex; align-items: center; gap: 14px; margin-top: 12px; font-weight: 800; font-size: 15px; color: var(--motu-color-text); }
+/* 金幣／部位：數字文字用深藍，顏色只給圖示 */
+.wk2-coin, .wk-rec-coin { color: var(--motu-color-text); }
+.wk2-coin .icon, .wk-rec-coin .icon, .wk2-stats.dim > span:first-child .icon { color: var(--motu-gold); }
+.wk2-target, .wk-rec-target { color: var(--motu-color-text-muted); }
+.wk2-target .icon, .wk-rec-target .icon, .wk2-stats.dim > span:last-child .icon { color: var(--motu-coral); }
 .wk2-target small { font-weight: 600; font-size: 10px; opacity: .75; }
-.wk2-go { margin-left: auto; color: var(--accent, #22e0a1); font-size: 20px; transition: transform .2s; }
+.wk2-go { margin-left: auto; color: var(--motu-teal-dark); font-size: 20px; transition: transform .2s; }
 .wk2:hover .wk2-go { transform: translateX(3px); }
-.wk2-stats.dim { opacity: .35; }
-.wk2-soon { color: var(--muted); font-size: 12px; white-space: nowrap; }
-.wk2.locked { cursor: default; opacity: .6; filter: grayscale(.4); border-color: var(--stroke); background: rgba(255,255,255,.012); }
-.wk2.locked:hover { transform: none; box-shadow: none; border-color: var(--stroke); }
+.wk2-stats.dim { opacity: .45; }
+.wk2-soon { color: var(--motu-color-text-muted); font-size: 12px; white-space: nowrap; }
+.wk2.locked { cursor: default; opacity: .7; filter: grayscale(.4); border-color: var(--motu-color-border); background: var(--motu-color-surface); box-shadow: none; }
+.wk2.locked .wk2-hero { background: var(--motu-color-surface-sunken); }
+.wk2.locked:hover { transform: none; box-shadow: none; border-color: var(--motu-color-border); }
 
-/* 浮動「快速開始」鈕 */
+/* 浮動「快速開始」鈕：15px 字，白字需放深青底才有 5.2:1 */
 .wk-fab {
   position: fixed; right: 24px; bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 18px);
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 14px 22px; border: 0; border-radius: 99px;
-  background: var(--grad-teal); color: #06231c; font-weight: 800; font-size: 15px;
-  box-shadow: 0 0 25px color-mix(in srgb, var(--green) 50%, transparent); z-index: 200;
-  transition: transform .15s var(--ease);
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px;
+  padding: 14px 22px; border: 0; border-radius: var(--motu-radius-pill);
+  background: var(--motu-teal-dark); color: var(--motu-white); font-weight: 900; font-size: 15px;
+  box-shadow: var(--motu-shadow-primary); z-index: 200;
+  transition: transform .15s var(--ease), box-shadow .15s var(--ease);
 }
-.wk-fab:hover { transform: scale(1.05); }
+.wk-fab:hover { transform: scale(1.05); box-shadow: var(--motu-shadow-primary-hover); }
 .wk-fab:active { transform: scale(.96); }
 @media (min-width: 960px) { .wk-fab { bottom: 32px; } }
 .wk-groups { display: flex; gap: 8px; overflow-x: auto; padding: 2px 4px 8px; scrollbar-width: none; }
 .wk-groups::-webkit-scrollbar { display: none; }
 .wk-chip {
-  flex-shrink: 0; padding: 8px 16px; border-radius: 99px; border: 1px solid var(--stroke);
-  background: var(--surface); color: var(--muted); font-weight: 600; font-size: 13px; transition: all .2s var(--ease);
+  flex-shrink: 0; padding: 8px 16px; border-radius: var(--motu-radius-pill); border: 1px solid var(--motu-color-border);
+  background: var(--motu-color-surface); color: var(--motu-color-text-muted); font-weight: 700; font-size: 13px; transition: all .2s var(--ease);
 }
-.wk-chip.on { background: var(--grad-accent); color: #0b1c20; border-color: transparent; }
+.wk-chip:hover { color: var(--motu-teal-dark); border-color: var(--motu-teal-light); }
+/* 不加陰影：.wk-groups 是橫向捲動容器，陰影會被裁成方塊 */
+.wk-chip.on { background: var(--motu-teal-dark); color: var(--motu-white); border-color: transparent; }
 
 .wk-list { display: flex; flex-direction: column; gap: 10px; }
 .wk-card {
@@ -90,23 +111,28 @@
 .wk-card-est { font-size: 12px; color: var(--gold); font-weight: 700; text-align: right; flex-shrink: 0; }
 
 /* intro */
-.wk-back { background: none; border: 0; color: var(--muted); font-size: 15px; padding: 8px 0; font-weight: 600; }
-.wk-hero { position: relative; height: 260px; border-radius: var(--radius); overflow: hidden; display: grid; place-items: center; margin: 4px 0 6px; background: radial-gradient(circle at 50% 40%, rgba(47,214,198,.16), transparent 70%), var(--grad-card); }
+.wk-back { background: none; border: 0; color: var(--motu-color-text-muted); font-size: 15px; padding: 8px 0; min-height: 44px; font-weight: 700; }
+.wk-back:hover { color: var(--motu-teal-dark); }
+.wk-hero { position: relative; height: 260px; border-radius: var(--motu-radius-panel); overflow: hidden; display: grid; place-items: center; margin: 4px 0 6px; background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--motu-mint) 35%, transparent), transparent 70%), var(--motu-mint-pale); }
 .wk-hero canvas { max-width: 100%; }
-.wk-hero-badge { position: absolute; left: 14px; bottom: 14px; padding: 7px 14px; border-radius: 99px; background: rgba(8,22,28,.7); border: 1px solid var(--stroke); font-weight: 700; font-size: 14px; }
+.wk-hero-badge { position: absolute; left: 14px; bottom: 14px; display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: var(--motu-radius-pill); background: var(--motu-color-surface); border: 1px solid var(--motu-color-border); box-shadow: var(--motu-shadow-sm); color: var(--motu-color-text); font-weight: 800; font-size: 14px; }
+.wk-hero-badge .icon { color: var(--motu-teal-dark); }
 .wk-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0; }
-.wk-stat { padding: 12px; border-radius: 14px; }
-.wk-stat .k { color: var(--muted); font-size: 11.5px; }
-.wk-stat .v { font-weight: 700; font-size: 14px; margin-top: 3px; }
-.wk-judge { padding: 14px 16px; border-radius: 14px; margin: 10px 0; }
-.wk-judge-t { font-weight: 700; font-size: 14px; margin-bottom: 6px; }
-.wk-judge-d { color: var(--muted); font-size: 13.5px; line-height: 1.6; }
-.wk-toggle { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--stroke); margin: 10px 0; font-weight: 600; font-size: 14px; }
+.wk-stat { padding: 12px; border-radius: var(--motu-radius-lg); }
+.wk-stat .k { color: var(--motu-color-text-muted); font-size: 11.5px; font-weight: 700; }
+.wk-stat .k .icon { color: var(--motu-teal-dark); }
+.wk-stat .v { font-weight: 800; font-size: 14px; margin-top: 3px; color: var(--motu-color-text); }
+.wk-judge { padding: 14px 16px; border-radius: var(--motu-radius-lg); margin: 10px 0; }
+.wk-judge-t { font-weight: 800; font-size: 14px; margin-bottom: 6px; color: var(--motu-color-text); }
+.wk-judge-t .icon { color: var(--motu-teal-dark); }
+.wk-judge-d { color: var(--motu-color-text-muted); font-size: 13.5px; line-height: 1.6; }
+.wk-toggle { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: var(--motu-radius-lg); background: var(--motu-color-surface); border: 1px solid var(--motu-color-border); box-shadow: var(--motu-shadow-sm); margin: 10px 0; font-weight: 700; font-size: 14px; color: var(--motu-color-text); }
 .wk-toggle span { flex: 1; }
+.wk-toggle span .icon { color: var(--motu-coral); }
 .wk-toggle input { display: none; }
-.wk-toggle i { width: 46px; height: 28px; border-radius: 99px; background: var(--surface-2); position: relative; transition: background .25s; flex-shrink: 0; }
-.wk-toggle i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform .25s var(--ease); }
-.wk-toggle input:checked + i { background: var(--green); }
+.wk-toggle i { width: 46px; height: 28px; border-radius: var(--motu-radius-pill); background: var(--motu-line); position: relative; transition: background .25s; flex-shrink: 0; }
+.wk-toggle i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--motu-white); box-shadow: var(--motu-shadow-sm); transition: transform .25s var(--ease); }
+.wk-toggle input:checked + i { background: var(--motu-teal); }
 .wk-toggle input:checked + i::after { transform: translateX(18px); }
 .wk-cta { display: flex; gap: 10px; margin: 16px 0 8px; }
 
@@ -138,16 +164,31 @@
 .lv-demo-prompt p { color: var(--muted); line-height: 1.7; margin: 12px 0 4px; }
 .lv-demo-prompt p b { color: var(--text); }
 .lv-demo-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
-.lv-loading { color: var(--text); font-size: 16px; line-height: 1.8; }
-.lv-loading span { color: var(--muted); font-size: 13px; }
+/* 合體 Slice 3：暖身／載入／開始前說明／倒數都疊在相機影像上，影像亮暗不可控 ——
+   一律白卡（Motu 不用半透明玻璃）＋深藍字，不靠影像本身的明暗。 */
+.lv-loading {
+  color: var(--motu-color-text); font-size: 16px; font-weight: 700; line-height: 1.8;
+  background: var(--motu-color-surface); border: 1px solid var(--motu-color-border);
+  border-radius: var(--motu-radius-xl); box-shadow: var(--motu-shadow-md); padding: 20px 26px; max-width: 340px;
+}
+.lv-loading .icon { color: var(--motu-teal-dark); }
+.lv-loading span { color: var(--motu-color-text-muted); font-size: 13px; }
 /* 開始前：動作說明卡 */
-.lv-prestart { background: rgba(8,22,28,.85); border: 1px solid var(--stroke); border-radius: 18px; padding: 22px 24px; max-width: 340px; }
-.lv-ps-name { font-weight: 800; font-size: 19px; margin-bottom: 8px; }
-.lv-prestart p { color: var(--text); line-height: 1.75; font-size: 15px; margin: 0; }
-.lv-ps-tip { color: var(--green); font-weight: 700; font-size: 13px; margin-top: 14px; }
-/* 3、2、1 倒數大字 */
-.lv-count { font-size: 120px; font-weight: 900; color: #fff; text-shadow: 0 0 40px rgba(47,214,198,.6); animation: cdpop .68s var(--ease); }
-.lv-count.go { font-size: 76px; color: var(--frame-ok); }   /* Slice3 補修：「開始！」是準備轉場提示，用取景藍非訓練綠 */
+.lv-prestart { background: var(--motu-color-surface); border: 1px solid var(--motu-color-border); border-radius: var(--motu-radius-xl); box-shadow: var(--motu-shadow-md); padding: 22px 24px; max-width: 340px; color: var(--motu-color-text); }
+.lv-ps-name { font-weight: 900; font-size: 19px; margin-bottom: 8px; }
+.lv-ps-name .icon { color: var(--motu-teal-dark); }
+.lv-prestart p { color: var(--motu-color-text); line-height: 1.75; font-size: 15px; margin: 0; }
+.lv-ps-tip { color: var(--motu-teal-dark); font-weight: 800; font-size: 13px; margin-top: 14px; }
+/* 3、2、1 倒數大字：白色圓牌＋深藍數字，疊在任何影像上都讀得到 */
+.lv-count {
+  display: grid; place-items: center; min-width: 180px; height: 180px; padding: 0 28px;
+  border-radius: var(--motu-radius-pill); background: var(--motu-color-surface);
+  border: 4px solid var(--motu-teal); box-shadow: var(--motu-shadow-lg);
+  font-size: 110px; font-weight: 900; line-height: 1; color: var(--motu-color-text);
+  font-variant-numeric: tabular-nums; animation: cdpop .68s var(--ease);
+}
+/* Slice3 補修：「開始！」是準備轉場提示，用取景藍非訓練綠。合體後藍色只放外框（藍字在白底只有 2.2:1） */
+.lv-count.go { font-size: 64px; height: 140px; border-color: var(--frame-ok); }
 @keyframes cdpop { 0% { transform: scale(.4); opacity: 0; } 35% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); opacity: .9; } }
 .lv-coach { position: absolute; left: 50%; transform: translateX(-50%); bottom: 168px; max-width: 80%; text-align: center; background: rgba(8,22,28,.8); border: 1px solid var(--stroke); padding: 10px 18px; border-radius: 14px; font-weight: 700; font-size: 15px; z-index: 3; transition: opacity .2s; }
 .lv-coach:empty { opacity: 0; }
@@ -187,17 +228,23 @@
 /* result */
 .wk-result { padding-top: 6px; }
 .wk-grade { text-align: center; padding: 18px 0 8px; }
-.wk-grade-ring { width: 110px; height: 110px; margin: 0 auto; border-radius: 50%; display: grid; place-items: center; font-size: 52px; font-weight: 900; color: var(--gc); border: 4px solid var(--gc); box-shadow: 0 0 40px color-mix(in srgb, var(--gc) 40%, transparent); animation: gradePop .6s var(--ease) both; }
+/* 評級環：字母一律深藍；--gc（Motu 色票）只用在外框、淡底與光暈，仍保留字母 */
+.wk-grade-ring { width: 110px; height: 110px; margin: 0 auto; border-radius: 50%; display: grid; place-items: center; font-size: 52px; font-weight: 900; color: var(--motu-color-text); background: color-mix(in srgb, var(--gc) 14%, var(--motu-white)); border: 5px solid var(--gc); box-shadow: 0 0 0 6px var(--motu-color-surface), 0 10px 28px color-mix(in srgb, var(--gc) 35%, transparent); animation: gradePop .6s var(--ease) both; }
 @keyframes gradePop { from { transform: scale(.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-.wk-grade-t { font-weight: 800; font-size: 22px; margin-top: 14px; }
-.wk-grade-s { color: var(--muted); font-size: 14px; margin-top: 4px; }
+.wk-grade-t { font-weight: 900; font-size: 22px; margin-top: 14px; color: var(--motu-color-text); }
+.wk-grade-s { color: var(--motu-color-text-muted); font-size: 14px; margin-top: 4px; }
 .wk-res-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 16px 0; }
-.wk-res { padding: 14px 8px; text-align: center; border-radius: 14px; }
-.wk-res .rv { font-weight: 800; font-size: 20px; }
-.wk-res .rk { font-size: 11px; color: var(--muted); margin-top: 4px; }
-.wk-res.gold .rv { color: var(--gold); }
-.wk-faults { padding: 14px 16px; border-radius: 14px; }
-.wk-fault-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-top: 1px solid var(--stroke); color: var(--muted); font-size: 14px; }
+.wk-res { padding: 14px 8px; text-align: center; border-radius: var(--motu-radius-lg); }
+.wk-res .rv { font-weight: 900; font-size: 20px; color: var(--motu-color-text); font-variant-numeric: tabular-nums; }
+.wk-res .rk { font-size: 11px; font-weight: 700; color: var(--motu-color-text-muted); margin-top: 4px; }
+.wk-res .rk .icon { color: var(--motu-teal-dark); }
+.wk-res .rv .icon { color: var(--motu-gold); }
+/* 金幣格：金色只當淡底、外框與圖示，數字維持深藍 */
+.wk-res.gold { background: color-mix(in srgb, var(--motu-gold) 12%, var(--motu-white)); border-color: color-mix(in srgb, var(--motu-gold) 45%, var(--motu-line)); }
+.wk-res.gold .rk .icon { color: var(--motu-gold); }
+.wk-faults { padding: 14px 16px; border-radius: var(--motu-radius-lg); }
+.wk-faults .wk-judge-t .icon { color: var(--motu-gold); }
+.wk-fault-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-top: 1px solid var(--motu-color-border); color: var(--motu-color-text-muted); font-size: 14px; }
 .wk-fault-row:first-of-type { border-top: 0; }
 
 @media (min-width: 620px) {
@@ -272,64 +319,72 @@
 .wk-rec {
   display: flex; align-items: stretch; gap: 14px;
   margin: 4px 4px 18px; padding: 16px; cursor: pointer;
-  border-color: color-mix(in srgb, var(--gold) 55%, transparent);
-  box-shadow: 0 0 22px color-mix(in srgb, var(--gold) 14%, transparent), var(--shadow);
+  border-color: color-mix(in srgb, var(--motu-gold) 55%, var(--motu-line));
+  box-shadow: var(--motu-shadow-md);
   transition: transform .15s var(--ease), box-shadow .2s var(--ease);
 }
-.wk-rec:hover { transform: translateY(-2px); box-shadow: 0 0 28px color-mix(in srgb, var(--gold) 24%, transparent), var(--shadow); }
+.wk-rec:hover { transform: translateY(-2px); box-shadow: var(--motu-shadow-lg); }
 .wk-rec:active { transform: scale(.99); }
-.wk-rec:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.wk-rec:focus-visible { outline: 2px solid var(--motu-color-focus); outline-offset: 2px; }
 .wk-rec-hero {
-  flex-shrink: 0; width: 84px; border-radius: var(--radius-sm);
-  display: grid; place-items: center; font-size: 44px;
-  background: radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--accent, var(--green)) 26%, transparent), transparent 75%), var(--surface);
-  border: 1px solid var(--stroke);
+  flex-shrink: 0; width: 84px; border-radius: var(--motu-radius-lg);
+  display: grid; place-items: center;
+  background: radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--accent, var(--motu-teal)) 26%, transparent), transparent 75%), var(--motu-mint-pale);
+  border: 1px solid var(--motu-color-border);
 }
 .wk-rec-body { flex: 1; min-width: 0; }
 .wk-rec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* 今日推薦 chip：金色只當淡底與圖示，字維持深藍 */
 .wk-rec-badge {
-  background: color-mix(in srgb, var(--gold) 15%, transparent);
-  border-color: color-mix(in srgb, var(--gold) 45%, transparent);
-  color: var(--gold); font-weight: 700;
+  background: color-mix(in srgb, var(--motu-gold) 16%, var(--motu-white));
+  border-color: color-mix(in srgb, var(--motu-gold) 50%, var(--motu-line));
+  color: var(--motu-color-text); font-weight: 800;
 }
+.wk-rec-badge .icon { color: var(--motu-gold); }
 .wk-rec-diff { display: inline-flex; gap: 4px; align-items: center; }
-.wk-rec-diff i { width: 7px; height: 7px; border-radius: 50%; background: var(--surface-2); }
-.wk-rec-diff i.on { background: var(--accent, var(--green)); }
-.wk-rec-name { font-size: 19px; font-weight: 800; margin: 10px 0 0; }
-.wk-rec-why { color: var(--muted); font-size: 12.5px; margin: 4px 0 0; }
-.wk-rec-plan { color: var(--muted); font-size: 12.5px; margin: 2px 0 0; }
+.wk-rec-diff i { width: 7px; height: 7px; border-radius: 50%; background: var(--motu-line); }
+.wk-rec-diff i.on { background: var(--accent, var(--motu-teal)); }
+.wk-rec-name { font-size: 19px; font-weight: 900; margin: 10px 0 0; color: var(--motu-color-text); }
+.wk-rec-why { color: var(--motu-color-text-muted); font-size: 12.5px; margin: 4px 0 0; }
+.wk-rec-why .icon, .wk2-tag .icon { color: var(--motu-teal-dark); }
+.wk-rec-plan { color: var(--motu-color-text-muted); font-size: 12.5px; margin: 2px 0 0; }
 .wk-rec-stats { display: flex; align-items: center; gap: 14px; margin-top: 12px; font-weight: 800; font-size: 15px; }
-.wk-rec-coin { color: var(--gold); }
-.wk-rec-target { color: var(--coral); }
 .wk-rec-target small { font-weight: 600; font-size: 10px; opacity: .75; }
-.wk-rec-go { margin-left: auto; color: var(--gold); font-size: 20px; transition: transform .2s; }
+.wk-rec-go { margin-left: auto; color: var(--motu-teal-dark); font-size: 20px; transition: transform .2s; }
 .wk-rec:hover .wk-rec-go { transform: translateX(3px); }
 @media (min-width: 960px) {
   .wk-rec { padding: 20px; gap: 18px; }
-  .wk-rec-hero { width: 112px; font-size: 58px; }
+  .wk-rec-hero { width: 112px; }
 }
 
 /* ===== Slice4 R1：結算第二幕（獎勵畫面）.wk-rw ===== */
 .wk-rw { max-width: 560px; margin: 18px auto 0; padding: 0 4px; display: flex; flex-direction: column; gap: 14px; }
+/* 第一張卡沿用遊戲端 .motu-reward 的視覺語言：白卡、暖灰線、柔影、置中；
+   但 .motu-reward__amount 的金字（#C98A24）在白底只有 2.9:1，這裡數字改深藍，金色只給圖示與光暈。 */
 .wk-rw-card { padding: 24px 20px; text-align: center; }
-.wk-rw-isl { font-size: 56px; filter: drop-shadow(0 0 24px color-mix(in srgb, var(--teal) 45%, transparent)); }
-.wk-rw-title { font-size: 20px; font-weight: 800; margin-top: 8px; }
+.wk-rw-isl .wk-ic-disc { color: var(--motu-teal-dark); }
+.wk-rw-title { font-size: 20px; font-weight: 900; margin-top: 12px; color: var(--motu-color-text); }
 .wk-rw-coins {
+  display: inline-flex; align-items: center;
   font-family: var(--font-display, inherit); font-variant-numeric: tabular-nums;
-  font-size: clamp(40px, 12vw, 56px); font-weight: 800; color: var(--gold);
+  font-size: clamp(40px, 12vw, 56px); font-weight: 900; color: var(--motu-color-text);
   line-height: 1; margin-top: 10px;
-  text-shadow: 0 0 28px color-mix(in srgb, var(--gold) 40%, transparent);
+  text-shadow: 0 0 18px color-mix(in srgb, var(--motu-gold) 38%, transparent);
 }
-.wk-rw-coins .ico { font-size: .55em; }
-.wk-rw-s { color: var(--muted); font-size: 13px; margin: 10px 0 0; }
+.wk-rw-coins .ico { margin-left: 10px; display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; color: var(--motu-gold); background: color-mix(in srgb, var(--motu-gold) 16%, var(--motu-white)); }
+.wk-rw-s { color: var(--motu-color-text-muted); font-size: 13px; margin: 10px 0 0; }
 .wk-rw-xp { padding: 16px 20px; }
 .wk-rw-xp-head { display: flex; justify-content: space-between; align-items: center; }
-.wk-rw-xpgain { color: var(--teal); font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; }
-.wk-rw-bar { height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; margin-top: 10px; }
-.wk-rw-bar > i { display: block; height: 100%; background: var(--grad-teal); border-radius: 99px; }
-.wk-rw-xp-s { color: var(--faint); font-size: 12px; margin-top: 8px; }
-.wk-rw-island { padding: 14px 20px; text-align: center; color: var(--muted); font-size: 14px; }
-.wk-rw-island b { color: var(--green); }
+.wk-rw-xp-head .pill .icon { color: var(--motu-gold); }
+.wk-rw-xpgain { color: var(--motu-teal-dark); font-weight: 900; font-size: 14px; font-variant-numeric: tabular-nums; }
+.wk-rw-bar { height: 8px; border-radius: var(--motu-radius-pill); background: var(--motu-color-surface-sunken); overflow: hidden; margin-top: 10px; }
+.wk-rw-bar > i { display: block; height: 100%; background: var(--motu-teal); border-radius: var(--motu-radius-pill); }
+.wk-rw-xp-s { color: var(--motu-color-text-muted); font-size: 12px; margin-top: 8px; }
+.wk-rw-island { padding: 14px 20px; text-align: center; color: var(--motu-color-text-muted); font-size: 14px; }
+.wk-rw-island b { color: var(--motu-teal-dark); }
+.wk-rw-island .icon { color: var(--motu-teal-dark); }
+.wk-rw-island .wk-rw-gap { color: var(--motu-color-text); }
+.wk-rw-island .wk-rw-gap .icon { color: var(--motu-gold); }
 
 /* ===== Slice3 R1：訓練中三個靜態版型（預設 hidden、零邏輯；R3 接線） ===== */
 /* hidden 保護：新規則的 display 不得覆蓋 [hidden]（預設流程零可見差異的保證線） */
@@ -388,7 +443,7 @@
    掛在裡面的話金幣飛到卡片邊緣就被切掉了。相對地，切頁時必須手動移除（見 unmount）。 */
 .wk-coin-fly {
   position: fixed; z-index: 60; pointer-events: none;
-  font-size: 20px; line-height: 1;
+  font-size: 20px; line-height: 1; color: var(--motu-gold);
   transition: transform .52s cubic-bezier(.34, .8, .3, 1), opacity .52s ease-in;
   will-change: transform, opacity;
 }
@@ -396,16 +451,16 @@
 /* 距下一個目標的存款進度：金幣落袋後往前長 */
 .wk-rw-goalbar {
   height: 8px; margin-top: 10px; border-radius: 99px; overflow: hidden;
-  background: rgba(255, 255, 255, .08); border: 1px solid var(--stroke);
+  background: var(--motu-color-surface-sunken); border: 1px solid var(--motu-color-border);
 }
 .wk-rw-goalbar i {
-  display: block; height: 100%; border-radius: 99px; background: var(--grad-accent);
+  display: block; height: 100%; border-radius: 99px; background: var(--motu-teal);
   transition: width .7s cubic-bezier(.2, .8, .2, 1);
 }
 /* 金幣落袋瞬間的回饋：卡片輕微亮一下，不用位移（位移會讓下面的按鈕跟著跳） */
 .wk-rw-island.hit {
-  border-color: var(--stroke-strong);
-  box-shadow: var(--shadow), 0 0 22px rgba(34, 224, 161, .32);
+  border-color: var(--motu-teal-light);
+  box-shadow: var(--motu-shadow-primary);
   transition: box-shadow .25s ease-out, border-color .25s ease-out;
 }
 .wk-rw-coins { font-variant-numeric: tabular-nums; }   /* 滾動時寬度不跳動 */
@@ -417,20 +472,26 @@
 
 /* advisory：不扣次數的姿勢提醒。刻意用中性藍而非紅／黃 ——
    紅黃在本作品代表「無效」，用在這裡會讓使用者以為次數被扣掉了。 */
-.wk-advis { border-left: 3px solid var(--teal, #22c8e0); }
-.wk-advis .wk-judge-t { color: var(--teal, #22c8e0); }
+/* 合體 Slice 3：藍色只放左側色條與圖示，標題字用深藍（資訊藍在白底只有 2.2:1） */
+.wk-advis { border-left: 3px solid var(--motu-color-info); }
+.wk-advis .wk-judge-t { color: var(--motu-color-text); }
+.wk-advis .wk-judge-t .icon { color: var(--motu-color-info); }
 
 /* 第二幕的遊戲資源卡（碎片／抽獎券）。
-   配色用 --coral —— lumina.css 對該色票的定義正是「Secondary / 遊戲化」，
+   配色用珊瑚 —— lumina.css 對該色票的定義正是「Secondary / 遊戲化」，
    而碎片與抽獎券正是遊戲端資源。
-   ⚠️ 不可用 --teal：它與 --green 同值 (#22e0a1)，在本作品代表「有效／達標」，
-   用在這裡會讓使用者以為這兩項也是健身端的成就。亦不可用 --gold（金幣）或 --red（錯誤）。 */
+   ⚠️ 不可用海洋青：它在本作品代表「有效／達標」，
+   用在這裡會讓使用者以為這兩項也是健身端的成就。亦不可用金（金幣）。
+   合體 Slice 3：珊瑚在白底只有 2.7:1，只放外框與圖示，字改深藍。 */
 .wk-rw-res { padding: 12px 14px; }
 .wk-rw-res-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .wk-rw-res-pill {
   font-variant-numeric: tabular-nums;   /* 等寬數字：多次結算時數字不會左右跳動 */
-  border: 1px solid color-mix(in srgb, var(--coral, #ff7a59) 45%, transparent);
-  color: var(--coral, #ff7a59);
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--motu-coral) 55%, var(--motu-line));
+  background: color-mix(in srgb, var(--motu-coral) 10%, var(--motu-white));
+  color: var(--motu-color-text);
 }
-.wk-rw-res-pill b { font-weight: 700; }
-.wk-rw-res-s { margin-top: 8px; font-size: 12px; color: var(--muted, #93a4b3); }
+.wk-rw-res-pill .icon { color: var(--motu-coral); }
+.wk-rw-res-pill b { font-weight: 900; }
+.wk-rw-res-s { margin-top: 8px; font-size: 12px; color: var(--motu-color-text-muted); }

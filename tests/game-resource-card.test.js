@@ -49,6 +49,30 @@ test('資源卡: 缺欄位或髒輸入不得拋例外或印出 undefined（邊�
   eq(gameResourceCard({ validReps: 20, coinsEarned: 100 }), '', '舊存檔紀錄不應渲染資源卡');
 });
 
+// 合體第一階段 Slice 3：圖示改用 Lucide 線條 SVG，與遊戲端同一套，不再用 emoji。
+test('資源卡: 圖示是 Lucide SVG，輸出不含任何 emoji', () => {
+  for (const [s, t] of [[3, 0], [0, 2], [4, 1]]) {
+    const html = gameResourceCard(sess(s, t));
+    assert(html.includes('<svg'), `應輸出 SVG 圖示，實得：${html}`);
+    const emoji = html.match(/\p{Extended_Pictographic}/gu);
+    assert(!emoji, `不得含 emoji，實得：${emoji?.join(' ')}`);
+  }
+});
+
+test('資源卡: 每個項目各一個圖示，且圖示為裝飾（文字已說明，不重複唸）', () => {
+  const both = gameResourceCard(sess(3, 1));
+  eq((both.match(/<svg/g) || []).length, 2, '碎片與抽獎券各一個圖示');
+  assert(both.includes('M15.39 4.39'), '碎片應用 puzzle 圖示');
+  assert(both.includes('M2 9a3 3 0 0 1 0 6'), '抽獎券應用 ticket 圖示');
+  eq((both.match(/aria-hidden="true"/g) || []).length, 2, '旁邊已有文字標籤，圖示應 aria-hidden');
+  eq((gameResourceCard(sess(3, 0)).match(/<svg/g) || []).length, 1, '只有碎片時只畫一個圖示');
+});
+
+test('資源卡: 換成圖示後，兩者皆 0 仍不渲染（邊界）', () => {
+  eq(gameResourceCard(sess(0, 0)), '', '全 0 不得因為圖示而多出任何輸出');
+  eq(gameResourceCard(sess(-1, 0)), '', '負數視同沒有');
+});
+
 test('資源卡: 不得使用金幣或經驗值的視覺樣式（屬於遊戲端資產）', () => {
   const html = gameResourceCard(sess(3, 1));
   assert(!html.includes('wk-rw-coins'), '不得沿用金幣的大數字樣式');

@@ -58,7 +58,7 @@
 
 ## 進度總覽
 - 總 Slice 數：6
-- 已完成：2 / 6
+- 已完成：3 / 6
 - 平行組：無（Slice 1 碰共用的 `index.html` 與全域 token；Slice 3–6 都會碰 `workout.css` 或 `motu-skin.css`，全部序列執行）
 
 ---
@@ -122,7 +122,7 @@
 - **依賴**：無
 - **平行組**：獨立
 
-### [ ] Slice 3 — 訓練頁非相機畫面換成 Motu 樣式
+### [x] Slice 3 — 訓練頁非相機畫面換成 Motu 樣式
 - **目標**：動作清單、動作說明、暖身、倒數、結算、領取獎勵六個畫面，截圖出來和遊戲端是同一個產品。
 - **範圍內**：`workout.css` 中這六個畫面相關選擇器的寫死色換成 token；`workout.js` 對應 render 函式（`renderMenu`、`renderIntro`、`runWarmup`、`runCountdown`、`renderResult`、`renderReward`、`gameResourceCard`）的 emoji 換成 `icon()`；獎勵卡改用 `.motu-reward` 的視覺語言（金色只當底色／圖示，數字用深藍）。
 - **範圍外**：相機即時判定畫面與組間休息（Slice 4）；任何文案語意、流程、按鈕行為。
@@ -130,13 +130,22 @@
 - **設計要點**：遵守對比規則（文字只用深藍／深藍淡／深青）；評級環 S/A/B/C 的色彩改由 Motu 色票對應，仍保留字母。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [ ] 六個畫面沒有任何 emoji 圖示（語音稿與說明文字內容不動）
-  - [ ] 六個畫面沒有深色玻璃殘留（實機截圖）
-  - [ ] 文字對比全部 ≥4.5:1（大數字 ≥3:1）
-  - [ ] 流程從清單走到領取獎勵，功能與原本相同
+  - [x] 六個畫面沒有任何 emoji 圖示（語音稿與說明文字內容不動）
+  - [x] 六個畫面沒有深色玻璃殘留（實機截圖）
+  - [x] 文字對比全部 ≥4.5:1（大數字 ≥3:1）
+  - [x] 流程從清單走到領取獎勵，功能與原本相同
 - **測試策略**：`tests/game-resource-card.test.js` 追加：輸出含 `<svg`、不含 emoji（先失敗→再通過）；邊界：碎片與抽獎券皆為 0 時仍不渲染。
 - **完成定義**：`npm test` 全綠＋實機截圖六張＋slice-reviewer
 - **對外介面**：
+  - `workout.js` 內部函式簽名變更（未 export，只影響本檔）：`exIcon(id, size?) → SVG 字串`（原回傳 emoji）、`stat(icon名稱, 標籤, 值)`、`resCell(icon名稱, 標籤, 值, cls?)`
+  - `gameResourceCard(session)`（已 export）：輸出改含 Lucide SVG（puzzle／ticket，`aria-hidden`），簽名與「全 0 回傳空字串」行為不變
+  - `ACCENT` 分類色改為 Motu token：lower→`--motu-teal`、cardio→`--motu-color-info`、upper→`--motu-coral`、core→`--motu-gold`、glute→`--motu-fragment-4`
+  - 評級環 `--gc`：S→`--motu-gold`、A→`--motu-teal`、B→`--motu-color-info`、C→`--motu-navy-soft`；字母一律深藍
+  - 新增 CSS class（`workout.css`）：`.icon`（全域對齊規則，目前只有訓練頁用）、`.wk-ic-disc`（56px porthole 圖示圓盤）、`.wk-sub`、`.lv-warmup`、`.wk-rw-gap`；`.wk-rw-card` 加掛 `.motu-reward`
+  - `.lv-loading`／`.lv-prestart`／`.lv-count` 已改白卡深藍字（`.lv-loading` 同時被相機載入畫面使用，Slice 4 不必再處理底色，只剩 emoji）
+  - 給 Slice 4：`workout.js` 殘留 emoji 全部在相機 HUD（lv-track／lv-coach／lv-gate／lv-btn／TRACK_LABEL／GOOD_TIPS／相機載入與 offerDemo）；icons.test 的涵蓋率掃描仍會通過
+  - 需使用者留意：①獎勵畫面「下一個目標」不再顯示島嶼建築的 emoji（資料在 island/goals.js，範圍外），只留名稱 ②兩處純文字（toast「此動作開發中」、暖身字幕）直接刪掉 emoji ③動作卡 3D 人偶腳下的深色圓台是 `ui/avatar3d.js` 的場景物件，不在本 Slice 檔案範圍，未處理
+- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-24；重跑 headless QA：七畫面 emoji=0、對比不合格=0、深色底=0、流程回清單 OK、console error 0）
 - **依賴**：Slice 1、Slice 2
 - **平行組**：獨立
 
