@@ -27,7 +27,8 @@ function countWarn(fn) {
 test('對照表涵蓋 workout.js 註解以外的每一個 emoji', () => {
   const src = readFileSync(join(root, 'app/features/workout/workout.js'), 'utf8');
   const found = emojisOutsideComments(src);
-  assert(found.length > 0 || !/\p{Extended_Pictographic}/u.test(src), '掃描失效');
+  // 合體 Slice 4 起 workout.js 註解外已無 emoji，found 為空是預期結果（由 ui-no-emoji.test.js 鎖定）；
+  // 掃描器本身是否有效，由下一個 probe 測試獨立保證。
   const missing = found.filter(e => !EMOJI_ICON[e]);
   eq(missing.join(' '), '', '這些 emoji 沒有對應的 Lucide 圖示');
 });

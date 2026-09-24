@@ -58,7 +58,7 @@
 
 ## 進度總覽
 - 總 Slice 數：6
-- 已完成：3 / 6
+- 已完成：4 / 6
 - 平行組：無（Slice 1 碰共用的 `index.html` 與全域 token；Slice 3–6 都會碰 `workout.css` 或 `motu-skin.css`，全部序列執行）
 
 ---
@@ -149,7 +149,7 @@
 - **依賴**：Slice 1、Slice 2
 - **平行組**：獨立
 
-### [ ] Slice 4 — 相機即時判定畫面與組間休息換成 Motu 樣式
+### [x] Slice 4 — 相機即時判定畫面與組間休息換成 Motu 樣式
 - **目標**：訓練中全螢幕畫面（HUD 數字、深度量表、提示條、取景與光線提示、暫停／結束按鈕、組間休息）換成遊戲端視覺，而且疊在任何相機影像上都讀得清楚。
 - **範圍內**：`lv-*` 系列選擇器與休息畫面的寫死色換成 token；HUD 磚改為白 92% 底＋`--motu-shadow-md`＋深藍字；按鈕改 Motu；該區 emoji 換成 `icon()`；`workout.js` 內 HUD 相關的寫死色。
 - **範圍外**：骨架疊圖的判定色（不變量 2）；深度量表的語意顏色（`gaugeColor` 不動）；任何判定邏輯。
@@ -157,13 +157,22 @@
 - **設計要點**：HUD 不用半透明玻璃；最小觸控目標 44px；計時與次數用等寬數字。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [ ] `PALETTES` 三套配色數值與換皮前完全相同（測試鎖定）
-  - [ ] `workout.js` 在註解以外沒有任何 emoji
-  - [ ] 分別在亮背景與暗背景的相機畫面（或示範模式）截圖，HUD 文字都清楚
-  - [ ] 示範模式能完整跑完一組並進到結算
+  - [x] `PALETTES` 三套配色數值與換皮前完全相同（測試鎖定）
+  - [x] `workout.js` 在註解以外沒有任何 emoji
+  - [x] 分別在亮背景與暗背景的相機畫面（或示範模式）截圖，HUD 文字都清楚
+  - [x] 示範模式能完整跑完一組並進到結算
 - **測試策略**：`tests/display-colors.test.js` 追加 `PALETTES` 快照斷言（先寫好，換皮過程中若誤改就會失敗）；`tests/ui-no-emoji.test.js` 掃描 `workout.js`（去掉註解）不得含 emoji（先失敗→本 Slice 完成後通過）；邊界：語音用的純文字常數若含 emoji 也算違規。
 - **完成定義**：`npm test` 全綠＋亮／暗背景各一張實機截圖＋slice-reviewer
 - **對外介面**：
+  - `app/ui/feedback.js`：`drawProgressRing` 預設色 `#2fd6c6` → `#2A9D8F`（Motu 海洋青，本組次數進度環，裝飾色）；`drawSkeleton`／`drawCountdownRing`／`COLOR` 未動
+  - `workout.js` 內部新增（未 export）：`setTrack(el, 圖示名, 文字)`（追蹤膠囊，內容沒變就不重寫 DOM，文字經跳脫）、`trackHtml()`、`pauseHtml(paused)`、`setVoiceBtn(b, on)`／`setBgmBtn(b, on)`（純圖示按鈕，帶 `aria-label`＋`aria-pressed`）、`escHtml()`；`TRACK_LABEL` 值改為 `[圖示名, 文字]`
+  - 模組 `export default` 的 `icon` 欄位由 `'🏋️'` 改為 `'dumbbell'`（分頁列實際讀 main.js 的 TABS，此欄位沒有消費端）
+  - CSS：`.lv-wrap` 定義 `--lv-hud-bg`（白 92%）；因 `lumina.css` 在 `workout.css` 之後載入且有同權重規則，`.lv-metric`／`.lv-btn`／`.lv-exit`／`.lv-coach`／`.lv-pause` 一律加 `.lv-wrap` 前綴 —— **Slice 5 改這幾個選擇器的動效時要沿用前綴，否則會被 lumina.css 蓋掉**
+  - 刻意保留：深度量表填色 `i[data-c=yellow/red]` 的寫死色（判定語意，金／珊瑚色相太近會分不出黃紅）；組間休息遮罩用遊戲端 modal token `--motu-scrim`
+  - 測試：`tests/ui-no-emoji.test.js`（新）鎖定 workout.js 註解外無 emoji；`tests/display-colors.test.js` 鎖定 `PALETTES` 換皮前數值
+  - 計畫外改動（已申報、審查員判定合理）：`tests/icons.test.js` 移除一條「註解外找不到 emoji 即視為掃描失效」的前提斷言（Slice 4 後此前提不再成立；掃描器有效性仍由同檔 probe 測試把關）
+  - 給 Slice 5／6：`.wk-chip.on` 也被 `lumina.css:136` 覆寫成 `--grad-accent` 底＋`#04231a` 字（對比仍合格，但不是 Slice 3 原意的深青底白字）；`.wk-grade-ring` 的 box-shadow 同樣被 `lumina.css` 覆寫 —— 這兩處屬 Slice 3 範圍，未在本 Slice 處理
+- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-24；獨立重跑 npm test 341/341、demo／cam 兩種 QA；附帶觀察：週期燈 `transition` 過場瞬間的取樣偽陽性，穩態白字配深青 5.2:1）
 - **依賴**：Slice 1、Slice 2、Slice 3
 - **平行組**：獨立
 

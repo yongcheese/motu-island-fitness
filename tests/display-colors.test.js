@@ -147,3 +147,23 @@ test('display: 每個動作都必須宣告 judgedSegments（新增動作時不�
     }
   }
 });
+
+/* ---------- 合體 Slice 4：換皮不得動到判定回饋色 ---------- */
+// 不變量 2：骨架三色與三套配色屬於判定回饋，不算樣式。以下是換皮前（2026-09-24）的數值快照，
+// 換皮過程若有人「順手」把它們改成 Motu 色票，這裡會失敗。
+import { PALETTES, paletteFor } from '../app/ui/display-colors.js';
+const PALETTES_BEFORE_MOTU = {
+  tricolor: { green: '#27e6a6', yellow: '#ffd23f', red: '#ff5d6c', frame: '#3aa8ff', dim: 'rgba(255,255,255,.4)' },
+  high:     { green: '#0072B2', yellow: '#F0E442', red: '#D55E00', frame: '#56B4E9', dim: 'rgba(255,255,255,.45)' },
+  mono:     { green: 'rgba(255,255,255,.34)', yellow: 'rgba(255,255,255,.72)', red: '#ffffff', frame: 'rgba(255,255,255,.5)', dim: 'rgba(255,255,255,.22)' },
+};
+test('PALETTES 三套配色與換皮前逐值相同（不變量 2）', () => {
+  eq(JSON.stringify(Object.keys(PALETTES).sort()), JSON.stringify(Object.keys(PALETTES_BEFORE_MOTU).sort()), '配色套數不得增減');
+  for (const [mode, pal] of Object.entries(PALETTES_BEFORE_MOTU)) {
+    eq(JSON.stringify(PALETTES[mode]), JSON.stringify(pal), `${mode} 配色被改動`);
+  }
+});
+test('未知配色模式仍退回換皮前的三色（邊界）', () => {
+  eq(JSON.stringify(paletteFor('motu')), JSON.stringify(PALETTES_BEFORE_MOTU.tricolor));
+  eq(JSON.stringify(paletteFor(undefined)), JSON.stringify(PALETTES_BEFORE_MOTU.tricolor));
+});

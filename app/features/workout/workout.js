@@ -78,7 +78,7 @@ function beep(freq = 640, dur = 0.12, vol = 0.2) {
 }
 
 export default {
-  id: 'workout', label: '訓練', icon: '🏋️',
+  id: 'workout', label: '訓練', icon: 'dumbbell',   // 分頁列實際讀 main.js 的 TABS，這裡只是 Lucide 名稱註記
   mount(el, ctx) { CTX = ctx; root = el; renderMenu(); },
   unmount() { stopLive(); cancelAnimationFrame(demoRaf); disposeIntroAv(); stopCardAnims(); disposeCardAv();
     // 獎勵儀式的 timer 與飛在 body 上的金幣都要清 —— 它們掛在 document.body，
@@ -443,7 +443,7 @@ async function startLive(ex, doWarmup) {
   const video = root.querySelector('#lv-video');
   // 階段一：相機
   try {
-    statusEl.innerHTML = '<div class="lv-loading">📷 啟動相機中…<br><span>瀏覽器跳出詢問時請按「允許」</span></div>';
+    statusEl.innerHTML = `<div class="lv-loading">${icon('camera', { size: 24 })} 啟動相機中…<br><span>瀏覽器跳出詢問時請按「允許」</span></div>`;
     const cam = await startCamera({ video, width: 1280, height: 960 });   // 4:3：垂直視野較大，全身較易入鏡
     if (live !== run) { cam.stop(); return; }   // 等待期間已離開/重開 → 關掉 stream 退出
     live.cam = cam;
@@ -455,7 +455,7 @@ async function startLive(ex, doWarmup) {
   }
   // 階段二：AI 模型
   try {
-    statusEl.innerHTML = '<div class="lv-loading">🧠 載入 AI 模型中…</div>';
+    statusEl.innerHTML = `<div class="lv-loading">${icon('brain', { size: 24 })} 載入 AI 模型中…</div>`;
     const pose = await createPose({ model: 'full' });
     if (live !== run) { try { pose.close(); } catch { } run.cam?.stop(); return; }   // 已過期 → 釋放模型與相機,避免 GPU/相機洩漏
     live.pose = pose;
@@ -598,15 +598,15 @@ function waitForFraming(run) {
           // 訊息優先序刻意這樣排：光線不足會讓後面每一項都量不準，先講它沒有意義 ——
           // 但「完全看不到人」時要先講找不到人，否則使用者只會困惑「我人就在這裡」。
           const people = run.pose.peopleCount || 0;
-          const msg = !lm ? (run.light && !run.light.ok ? `💡 ${run.light.text}` : '🔍 尋找人體…')
-            : run.light && run.light.level === 'dark' ? `💡 ${run.light.text}`
-              : miss.length ? `🔍 看不到：${miss.join('、')}`
-                : !report.ok ? `📏 ${report.text}`
-                  : !stab.stable ? '⏳ 請站穩不動，正在鎖定您的位置…'
-                    : people > 1 ? `📍 已就位（畫面中有 ${people} 人，已鎖定最靠近鏡頭的您）`
-                      : (run.camHint && run.camHint.high) ? `📐 ${run.camHint.text}`
-                        : '📍 已就位，準備開始';
-          live.hud.track.textContent = msg;
+          const [ic, msg] = !lm ? (run.light && !run.light.ok ? ['lightbulb', run.light.text] : ['search', '尋找人體…'])
+            : run.light && run.light.level === 'dark' ? ['lightbulb', run.light.text]
+              : miss.length ? ['search', `看不到：${miss.join('、')}`]
+                : !report.ok ? ['ruler', report.text]
+                  : !stab.stable ? ['hourglass', '請站穩不動，正在鎖定您的位置…']
+                    : people > 1 ? ['map-pin', `已就位（畫面中有 ${people} 人，已鎖定最靠近鏡頭的您）`]
+                      : (run.camHint && run.camHint.high) ? ['ruler-dimension-line', run.camHint.text]
+                        : ['map-pin', '已就位，準備開始'];
+          setTrack(live.hud.track, ic, msg);
           // 語音只講「怎麼改」，且以最高優先的那一項為準（不要三種問題輪播疊在一起）
           if (run.voice && !allOk && lm) {
             if (miss.length) CTX.coach.say(`看不到你的${miss[0]}，請調整位置`, 'mid');
@@ -665,7 +665,7 @@ function cameraErrorMsg(err) {
 function gateHtml() {
   return `<div class="lv-gate" id="lv-gate" hidden>
         <div class="lv-gate-inner">
-          <div class="lv-gate-t">站進畫面中，讓 AI 看見你 👀</div>
+          <div class="lv-gate-t">${icon('eye', { size: 24 })} 站進畫面中，讓 AI 看見你</div>
           <div class="lv-gate-frame"></div>
           <div class="lv-gate-checks">
             <span class="lv-gate-chk ok">✓ 肩膀</span>
@@ -681,7 +681,7 @@ function gateHtml() {
 function restHtml({ setIdx, totalSets, restSec, nextReps }) {
   return `<div class="lv-rest" id="lv-rest" hidden>
         <div class="lv-rest-card">
-          <div class="lv-rest-t">第 ${setIdx} 組完成 💪</div>
+          <div class="lv-rest-t">${icon('biceps-flexed', { size: 24 })} 第 ${setIdx} 組完成</div>
           <div class="lv-rest-ring"><b>${restSec}</b><span>秒</span></div>
           <div class="lv-rest-next">下一組：第 ${setIdx + 1} 組 · ${nextReps} 下</div>
           <div class="lv-rest-s">深呼吸，放鬆一下</div>
@@ -701,12 +701,12 @@ function liveShell(ex) {
         <span class="lv-mode" id="lv-modebadge"></span>
       </div>
       <div class="lv-zoom" id="lv-zoom" hidden>
-        <span class="lv-zoom-ic" title="拉到最左＝最廣（全身入鏡）">🔍</span>
+        <span class="lv-zoom-ic" title="拉到最左＝最廣（全身入鏡）">${icon('search', { size: 16 })}</span>
         <input type="range" id="lv-zoom-range" />
         <span class="lv-zoom-lbl">廣</span>
       </div>
       <div class="lv-hudtop">
-        <span class="lv-track" id="lv-track" data-s="seek">🔍 尋找人體…</span>
+        <span class="lv-track" id="lv-track" data-s="seek">${trackHtml('search', '尋找人體…')}</span>
         <div class="lv-stages" id="lv-stages" title="動作週期：完整走完才計次">
           <span>起始</span><span>進行</span><span>達標</span><span>回復</span>
         </div>
@@ -732,9 +732,9 @@ function liveShell(ex) {
         </div>
       </div>
       <div class="lv-ctrls">
-        <button class="lv-btn" id="lv-voice">🔊</button>
-        <button class="lv-btn" id="lv-bgm">🎵</button>
-        <button class="lv-btn lv-pause" id="lv-pause">⏸ 暫停</button>
+        <button class="lv-btn" id="lv-voice" type="button"></button>
+        <button class="lv-btn" id="lv-bgm" type="button"></button>
+        <button class="lv-btn lv-pause" id="lv-pause" type="button">${pauseHtml(false)}</button>
       </div>
     </div>`;
 }
@@ -771,27 +771,23 @@ function bindLiveControls() {
   root.querySelector('#lv-exit').onclick = () => finishLive();
   root.querySelector('#lv-pause').onclick = (e) => {
     live.paused = !live.paused;
-    e.target.textContent = live.paused ? '▶ 繼續' : '⏸ 暫停';
+    e.currentTarget.innerHTML = pauseHtml(live.paused);   // 按鈕內有 SVG：e.target 可能是圖示，必須用 currentTarget
     if (!live.paused) live.lastFrameTs = performance.now();   // Slice3 R3 申報：累加制時鐘下 resume 重設 lastFrameTs（原 startTs 平移語義失效）
   };
   root.querySelector('#lv-voice').onclick = (e) => {
     live.voice = !live.voice; CTX.coach.setEnabled(live.voice);
     if (!live.voice) CTX.coach.stop();
-    const b = e.currentTarget;
-    b.textContent = live.voice ? '🔊' : '🔇';
-    b.classList.toggle('muted', !live.voice);
+    setVoiceBtn(e.currentTarget, live.voice);
     CTX.toast(live.voice ? '語音已開啟' : '語音已靜音');
   };
   root.querySelector('#lv-bgm').onclick = (e) => {
     live.bgm = !live.bgm; toggleBgm(live.bgm);
-    const b = e.currentTarget;
-    b.textContent = live.bgm ? '🎵' : '🔈';
-    b.classList.toggle('muted', !live.bgm);
+    setBgmBtn(e.currentTarget, live.bgm);
     CTX.toast(live.bgm ? '背景音樂開啟' : '背景音樂關閉');
   };
   // 初始按鈕狀態反映目前設定
-  const vb = root.querySelector('#lv-voice'); vb.textContent = live.voice ? '🔊' : '🔇'; vb.classList.toggle('muted', !live.voice);
-  const bb = root.querySelector('#lv-bgm'); bb.textContent = live.bgm ? '🎵' : '🔈'; bb.classList.toggle('muted', !live.bgm);
+  setVoiceBtn(root.querySelector('#lv-voice'), live.voice);
+  setBgmBtn(root.querySelector('#lv-bgm'), live.bgm);
   if (live.bgm) toggleBgm(true);
   window.addEventListener('resize', resizeCanvas);
 }
@@ -927,9 +923,9 @@ function runCameraLoop(run) {
           live.ctx.restore();
           handleResult(res, now, lm);
         } else {
-          setCoach('找不到人，請站到鏡頭中、保持全身入鏡 🧍', 'mid');
+          setCoach('找不到人，請站到鏡頭中、保持全身入鏡', 'mid');
           if (live.hud) {
-            live.hud.track.dataset.s = 'seek'; live.hud.track.textContent = '🔍 尋找人體…';
+            live.hud.track.dataset.s = 'seek'; setTrack(live.hud.track, 'search', '尋找人體…');
             // 人不在畫面時清掉動作字卡，否則會停在上一句（例如「到位了！收回來」）與「找不到人」打架
             if (live.hud.next) { live.hud.next.hidden = true; live.hud.next.textContent = ''; }
           }
@@ -950,11 +946,11 @@ function offerDemo(ex, statusEl, err) {
   if (live) live.cam = null;
   statusEl.innerHTML = `
     <div class="lv-demo-prompt">
-      <div style="font-size:34px">📷</div>
+      <span class="wk-ic-disc">${icon('camera', { size: 24 })}</span>
       <p>${cameraErrorMsg(err)}</p>
       <div class="lv-demo-actions">
-        <button class="btn" id="lv-retry">🔄 重新嘗試相機</button>
-        <button class="btn secondary" id="lv-demo-go">▶ 改用示範模式</button>
+        <button class="btn" id="lv-retry">${icon('refresh-cw')} 重新嘗試相機</button>
+        <button class="btn secondary" id="lv-demo-go">${icon('play')} 改用示範模式</button>
       </div>
     </div>`;
   root.querySelector('#lv-demo-go').onclick = () => { statusEl.innerHTML = ''; runDemoLoop(ex); };
@@ -1034,13 +1030,41 @@ async function runDemoLoop(ex) {
   live.raf = requestAnimationFrame(loop);
 }
 
+/* 合體 Slice 4：HUD 的圖示＋文字。追蹤膠囊每幀更新，內容沒變就不重寫 DOM（避免每幀 innerHTML）。
+   文字可能含引擎產生的字串，一律跳脫後再放進 innerHTML。 */
+const escHtml = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function trackHtml(ic, text) { return `${icon(ic, { size: 16 })}<span>${escHtml(text)}</span>`; }
+function setTrack(el, ic, text) {
+  if (!el) return;
+  const key = ic + '|' + text;
+  if (el.dataset.k === key) return;
+  el.dataset.k = key;
+  el.innerHTML = trackHtml(ic, text);
+}
+function pauseHtml(paused) { return paused ? `${icon('play', { size: 18 })} 繼續` : `${icon('pause', { size: 18 })} 暫停`; }
+// 只有圖示的按鈕：名稱放在 aria-label，狀態放在 aria-pressed（原本靠 emoji 當可讀名稱）
+function setVoiceBtn(b, on) {
+  if (!b) return;
+  b.innerHTML = icon(on ? 'volume-2' : 'volume-x', { size: 20 });
+  b.setAttribute('aria-label', on ? '語音提示：開啟' : '語音提示：關閉');
+  b.setAttribute('aria-pressed', String(on));
+  b.classList.toggle('muted', !on);
+}
+function setBgmBtn(b, on) {
+  if (!b) return;
+  b.innerHTML = icon(on ? 'music' : 'volume-1', { size: 20 });
+  b.setAttribute('aria-label', on ? '背景音樂：開啟' : '背景音樂：關閉');
+  b.setAttribute('aria-pressed', String(on));
+  b.classList.toggle('muted', !on);
+}
+
 function setCoach(text, p) {
   const el = root.querySelector('#lv-coach'); if (!el) return;
   el.textContent = text; if (p) el.dataset.p = p;
 }
 
 // 沒有錯誤時輪播的正向回饋（節流），讓畫面隨時都有「該怎麼做」的訊息。
-const GOOD_TIPS = ['很好，保持這個節奏 👍', '動作很標準，繼續！', '核心收緊、呼吸放鬆', '很棒，再多幾下！'];
+const GOOD_TIPS = ['很好，保持這個節奏', '動作很標準，繼續！', '核心收緊、呼吸放鬆', '很棒，再多幾下！'];
 let _tipIdx = 0, _tipTs = 0;
 function positiveTip(now) {
   if (now - _tipTs > 3000) { _tipTs = now; _tipIdx = (_tipIdx + 1) % GOOD_TIPS.length; }
@@ -1050,15 +1074,16 @@ function positiveTip(now) {
 const STAGE_OF = { READY: 0, CONCENTRIC: 1, TARGET: 2, ECCENTRIC: 3 };  // 企劃 2.3：起始→發力→達標→回復
 
 // 追蹤膠囊的短標籤（長句留給下方教練字幕，膠囊只給一眼看懂的原因）
+// 合體 Slice 4：emoji 改成 Lucide 圖示名稱，由 setTrack() 組成圖示＋文字
 const TRACK_LABEL = {
-  too_close: '⚠️ 太近了，請後退',
-  no_head: '⚠️ 看不到頭部',
-  no_headroom: '⚠️ 頭頂空間不足',
-  no_footroom: '⚠️ 腳快出畫面了',
-  turned_away: '⚠️ 請正對鏡頭',
-  too_far: '⚠️ 太遠了，請往前',
-  missing: '⚠️ 入鏡不完整',
-  no_pose: '🔍 尋找人體…',
+  too_close: ['triangle-alert', '太近了，請後退'],
+  no_head: ['triangle-alert', '看不到頭部'],
+  no_headroom: ['triangle-alert', '頭頂空間不足'],
+  no_footroom: ['triangle-alert', '腳快出畫面了'],
+  turned_away: ['triangle-alert', '請正對鏡頭'],
+  too_far: ['triangle-alert', '太遠了，請往前'],
+  missing: ['triangle-alert', '入鏡不完整'],
+  no_pose: ['search', '尋找人體…'],
 };
 
 function handleResult(res, now, lm) {
@@ -1070,9 +1095,9 @@ function handleResult(res, now, lm) {
     //    看不到人時直接講「為什麼」（太近／看不到頭／缺哪個部位），不再只寫「入鏡不完整」。
     if (res.visible === false) {
       hud.track.dataset.s = 'warn';
-      hud.track.textContent = TRACK_LABEL[res.framing?.issue] || '⚠️ 入鏡不完整';
+      setTrack(hud.track, ...(TRACK_LABEL[res.framing?.issue] || TRACK_LABEL.missing));
     } else {
-      hud.track.dataset.s = 'ok'; hud.track.textContent = '● 追蹤中 · 33 點';
+      hud.track.dataset.s = 'ok'; setTrack(hud.track, 'activity', '追蹤中 · 33 點');
     }
     // 2) 動作週期燈：READY→發力→達標→回復（Slice3 補修：準備態不亮綠，只在真正做動作時亮）
     const st = (res.visible !== false && !framingPose(res)) ? STAGE_OF[res.phase] : undefined;
@@ -1100,7 +1125,7 @@ function handleResult(res, now, lm) {
 
   // —— 教練訊息（語音 + 字幕）——
   if (res.visible === false) {
-    setCoach(res.cue?.text || '請站到鏡頭中、保持全身入鏡 🧍', 'mid');
+    setCoach(res.cue?.text || '請站到鏡頭中、保持全身入鏡', 'mid');
     return;
   }
   // 這一下被判無效 → 立刻講「為什麼、怎麼改」，並且直接 return，
@@ -1196,7 +1221,7 @@ function checkEndingCues(remainMs) {
   if (!live.warn10 && r <= 10 && r > 3) {
     live.warn10 = true;
     if (live.voice) CTX.coach.say('最後十秒，加油！', 'high');
-    CTX.toast('⏳ 最後 10 秒，全力衝刺！');
+    CTX.toast('最後 10 秒，全力衝刺！');
   }
   const sec = Math.ceil(r);
   if (sec >= 1 && sec <= 3 && live.lastBeepSec !== sec) { live.lastBeepSec = sec; beep(660, 0.1); }

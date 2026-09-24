@@ -164,7 +164,8 @@ export function drawCountdownRing(ctx, ratio, opts = {}) {
  *  故委派同一繪製邏輯、僅換預設色為 teal（--grad-teal 語意）。ratio 先 clamp 0~1（防同幀跨標出界）。
  *  舊簽名 drawCountdownRing 零改動（CONTRACTS §9 只增不改）。R2 不在任何迴圈呼叫；接線歸 Slice3 R3。 */
 export function drawProgressRing(ctx, ratio, opts = {}) {
-  drawCountdownRing(ctx, Math.max(0, Math.min(1, ratio)), { color: '#2fd6c6', ...opts });
+  // 合體 Slice 4：本組次數進度是裝飾色，不屬判定回饋 → 改用 Motu 海洋青（--motu-teal，canvas 讀不到 CSS 變數故寫值）
+  drawCountdownRing(ctx, Math.max(0, Math.min(1, ratio)), { color: '#2A9D8F', ...opts });
 }
 
 export { COLOR };

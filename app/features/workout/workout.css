@@ -137,32 +137,42 @@
 .wk-cta { display: flex; gap: 10px; margin: 16px 0 8px; }
 
 /* live (fullscreen) */
-.lv-wrap { position: absolute; inset: 0; background: #000; overflow: hidden; }
+.lv-wrap {
+  position: absolute; inset: 0; background: var(--motu-navy-dark); overflow: hidden;
+  --lv-hud-bg: color-mix(in srgb, var(--motu-white) 92%, transparent);
+}
+/* 合體 Slice 4：HUD 疊在不可控的相機影像上 —— 一律白 92% 不透明底＋--motu-shadow-md＋深藍字，
+   不用半透明深色玻璃（Motu 規範：避免厚重玻璃與黑色遮罩）。
+   骨架與深度量表的填色是判定回饋（不變量 2），不在換皮範圍。 */
+.lv-wrap .icon { color: var(--motu-teal-dark); }
 /* contain：完整顯示相機畫面（全身入鏡，不裁切）；兩側/上下可能留黑邊 */
-#lv-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; transform: scaleX(-1); background: #000; }
+#lv-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; transform: scaleX(-1); background: var(--motu-navy-dark); }
 #lv-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-.lv-top { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 10px; padding: calc(env(safe-area-inset-top) + 12px) 16px 12px; background: linear-gradient(180deg, rgba(0,0,0,.55), transparent); z-index: 7; }   /* Slice3 R1: 3→7 頂欄(含退出鈕)永遠最上層（申報式，視覺零變化） */
-.lv-exit { background: rgba(0,0,0,.4); border: 1px solid var(--stroke); color: #fff; border-radius: 99px; padding: 8px 14px; font-weight: 600; font-size: 14px; }
-.lv-title { font-weight: 700; flex: 1; }
-.lv-mode { font-size: 12px; color: var(--green); font-weight: 700; }
+.lv-top { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 10px; padding: calc(env(safe-area-inset-top) + 12px) 16px 12px; z-index: 7; }   /* Slice3 R1: 3→7 頂欄(含退出鈕)永遠最上層（申報式，視覺零變化） */
+/* lumina.css 在本檔之後載入、且有同權重的 .lv-metric／.lv-btn／.lv-exit／.lv-coach／.lv-pause 規則 → 這幾個一律加 .lv-wrap 前綴 */
+.lv-wrap .lv-exit { background: var(--lv-hud-bg); border: 1px solid var(--motu-color-border); color: var(--motu-color-text); border-radius: var(--motu-radius-pill); min-height: 44px; padding: 8px 16px; font-weight: 800; font-size: 14px; box-shadow: var(--motu-shadow-md); }
+.lv-title { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; padding: 7px 14px; border-radius: var(--motu-radius-pill); background: var(--lv-hud-bg); color: var(--motu-color-text); font-weight: 900; box-shadow: var(--motu-shadow-md); }
+.lv-mode { font-size: 12px; font-weight: 800; color: var(--motu-color-text); padding: 6px 12px; border-radius: var(--motu-radius-pill); background: var(--lv-hud-bg); box-shadow: var(--motu-shadow-md); }
+.lv-mode:empty { display: none; }
 /* 視野縮放滑桿（右上，玻璃膠囊） */
 .lv-zoom { position: absolute; top: calc(env(safe-area-inset-top) + 60px); right: 16px; z-index: 5;
   display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 99px;
-  background: rgba(8,22,28,.7); border: 1px solid var(--stroke); backdrop-filter: blur(8px); }
+  background: var(--lv-hud-bg); border: 1px solid var(--motu-color-border); box-shadow: var(--motu-shadow-md); }
 .lv-zoom[hidden] { display: none; }
-.lv-zoom-ic { font-size: 15px; }
-.lv-zoom-lbl { font-size: 12px; color: var(--muted); font-weight: 700; }
+.lv-zoom-ic { display: grid; }
+.lv-zoom-lbl { font-size: 12px; color: var(--motu-color-text-muted); font-weight: 800; }
 .lv-zoom input[type="range"] { -webkit-appearance: none; appearance: none; width: 130px; height: 5px; border-radius: 99px;
-  background: var(--surface-2); outline: none; }
+  background: var(--motu-color-surface-sunken); outline: none; }
 .lv-zoom input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px;
-  border-radius: 50%; background: var(--green); border: 2px solid #06231c; cursor: pointer; box-shadow: 0 0 10px color-mix(in srgb, var(--green) 60%, transparent); }
-.lv-zoom input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--green); border: 2px solid #06231c; cursor: pointer; }
-.lv-status { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--text); z-index: 4; padding: 24px; pointer-events: none; }
+  border-radius: 50%; background: var(--motu-teal); border: 2px solid var(--motu-white); cursor: pointer; box-shadow: var(--motu-shadow-sm); }
+.lv-zoom input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--motu-teal); border: 2px solid var(--motu-white); cursor: pointer; }
+.lv-status { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--motu-color-text); z-index: 4; padding: 24px; pointer-events: none; }
 /* 只有狀態框內容(如示範模式按鈕)吃點擊；空白時整層放行，避免擋住結束/靜音/暫停鍵 */
 .lv-status > * { pointer-events: auto; }
-.lv-demo-prompt { background: rgba(8,22,28,.85); border: 1px solid var(--stroke); border-radius: 18px; padding: 26px; max-width: 320px; }
-.lv-demo-prompt p { color: var(--muted); line-height: 1.7; margin: 12px 0 4px; }
-.lv-demo-prompt p b { color: var(--text); }
+.lv-demo-prompt { background: var(--motu-color-surface); border: 1px solid var(--motu-color-border); border-radius: var(--motu-radius-xl); box-shadow: var(--motu-shadow-md); padding: 26px; max-width: 340px; color: var(--motu-color-text); }
+.lv-demo-prompt p { color: var(--motu-color-text-muted); line-height: 1.7; margin: 14px 0 4px; }
+.lv-demo-prompt p b { color: var(--motu-color-text); }
+.lv-demo-actions .btn .icon { color: currentColor; }
 .lv-demo-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
 /* 合體 Slice 3：暖身／載入／開始前說明／倒數都疊在相機影像上，影像亮暗不可控 ——
    一律白卡（Motu 不用半透明玻璃）＋深藍字，不靠影像本身的明暗。 */
@@ -190,11 +200,12 @@
 /* Slice3 補修：「開始！」是準備轉場提示，用取景藍非訓練綠。合體後藍色只放外框（藍字在白底只有 2.2:1） */
 .lv-count.go { font-size: 64px; height: 140px; border-color: var(--frame-ok); }
 @keyframes cdpop { 0% { transform: scale(.4); opacity: 0; } 35% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); opacity: .9; } }
-.lv-coach { position: absolute; left: 50%; transform: translateX(-50%); bottom: 168px; max-width: 80%; text-align: center; background: rgba(8,22,28,.8); border: 1px solid var(--stroke); padding: 10px 18px; border-radius: 14px; font-weight: 700; font-size: 15px; z-index: 3; transition: opacity .2s; }
+/* 教練字幕：優先級只用外框色區分（珊瑚／金／海洋青），字一律深藍 */
+.lv-wrap .lv-coach { position: absolute; left: 50%; transform: translateX(-50%); bottom: 168px; max-width: 80%; text-align: center; background: var(--lv-hud-bg); color: var(--motu-color-text); border: 2px solid var(--motu-color-border); box-shadow: var(--motu-shadow-md); padding: 10px 18px; border-radius: var(--motu-radius-lg); font-weight: 800; font-size: 15px; z-index: 3; transition: opacity .2s; }
 .lv-coach:empty { opacity: 0; }
-.lv-coach[data-p="high"] { border-color: var(--red); color: #ffd9dd; }
-.lv-coach[data-p="mid"] { border-color: var(--yellow); }
-.lv-coach[data-p="good"] { border-color: var(--green); color: #d7fff0; }
+.lv-coach[data-p="high"] { border-color: var(--motu-coral); }
+.lv-coach[data-p="mid"] { border-color: var(--motu-gold); }
+.lv-coach[data-p="good"] { border-color: var(--motu-teal); }
 /* Bug2(b) 即時動作指引：快節奏動作靠語音來不及，改用畫面字卡直接說「現在該做什麼」。
    位置在教練字幕上方，字級較大、對比高，跳動中也看得清。 */
 /* bottom 值需高於 .lv-coach(168px) 加上它可能折到的行數 —— 取景長句在手機上會折 2~3 行，
@@ -202,28 +213,32 @@
 .lv-next { position: absolute; left: 50%; transform: translateX(-50%); bottom: 272px; max-width: 86%;
   text-align: center; padding: 9px 20px; border-radius: 14px; font-weight: 800; font-size: 18px;
   letter-spacing: .02em; white-space: nowrap; z-index: 4; pointer-events: none;
-  background: rgba(8,22,28,.82); border: 1.5px solid var(--stroke); backdrop-filter: blur(8px);
+  background: var(--lv-hud-bg); color: var(--motu-color-text); border: 2px solid var(--motu-color-border); box-shadow: var(--motu-shadow-md);
   transition: color .18s, border-color .18s, transform .18s var(--ease); }
-.lv-next[data-p="go"]  { color: #ffe89a; border-color: rgba(255,210,63,.6); }
-.lv-next[data-p="hit"] { color: #d7fff0; border-color: var(--green); transform: translateX(-50%) scale(1.06); }
-.lv-next[data-p="off"] { color: var(--muted); }
+.lv-next[data-p="go"]  { border-color: var(--motu-gold); }
+.lv-next[data-p="hit"] { border-color: var(--motu-teal); border-width: 3px; transform: translateX(-50%) scale(1.06); }
+.lv-next[data-p="off"] { color: var(--motu-color-text-muted); }
 @media (max-width: 480px) {
   .lv-next { font-size: 15px; bottom: 264px; padding: 7px 14px; white-space: normal; }
 }
 
 .lv-hud { position: absolute; left: 0; right: 0; bottom: 84px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 0 16px; z-index: 3; }
-.lv-metric { background: rgba(8,22,28,.66); border: 1px solid var(--stroke); border-radius: 14px; padding: 10px 6px; text-align: center; backdrop-filter: blur(8px); }
-.m-v { font-weight: 800; font-size: 22px; transition: color .25s; }
-.m-v.low { color: var(--red); animation: lowpulse 1s infinite; }
+.lv-wrap .lv-metric { background: var(--lv-hud-bg); border: 1px solid var(--motu-color-border); border-radius: var(--motu-radius-lg); padding: 10px 6px; text-align: center; box-shadow: var(--motu-shadow-md); }
+.m-v { font-weight: 900; font-size: 22px; color: var(--motu-color-text); font-variant-numeric: tabular-nums; transition: color .25s; }
+/* 最後 10 秒：珊瑚字在白底只有 2.7:1 → 數字維持深藍、整格換珊瑚外框與淡底，並保留閃爍 */
+.m-v.low { animation: lowpulse 1s infinite; }
+.lv-wrap .lv-metric:has(.m-v.low) { border-color: var(--motu-coral); background: color-mix(in srgb, var(--motu-coral) 14%, var(--motu-white)); }
 @keyframes lowpulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
 .m-v.pop { animation: popv .4s var(--ease); }
-@keyframes popv { 0% { transform: scale(1); color: var(--gold); } 40% { transform: scale(1.4); color: var(--gold); } 100% { transform: scale(1); } }
-.m-k { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+@keyframes popv { 0% { transform: scale(1); color: var(--motu-teal-dark); } 40% { transform: scale(1.4); color: var(--motu-teal-dark); } 100% { transform: scale(1); } }
+.m-k { font-size: 10.5px; font-weight: 700; color: var(--motu-color-text-muted); margin-top: 2px; }
 .lv-ctrls { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 16px); display: flex; gap: 10px; justify-content: center; align-items: center; z-index: 3; }
-.lv-btn { width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--stroke); background: rgba(8,22,28,.7); color: #fff; font-size: 20px; backdrop-filter: blur(8px); transition: opacity .15s, transform .12s; }
+.lv-wrap .lv-btn { display: inline-grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--motu-color-border); background: var(--lv-hud-bg); color: var(--motu-color-text); box-shadow: var(--motu-shadow-md); transition: opacity .15s, transform .12s; }
+.lv-wrap .lv-btn .icon { color: currentColor; }
 .lv-btn:active { transform: scale(.92); }
-.lv-btn.muted { opacity: .45; }
-.lv-pause { width: auto; border-radius: 99px; padding: 0 22px; font-weight: 700; font-size: 15px; }
+.lv-wrap .lv-btn.muted { color: var(--motu-color-text-muted); background: var(--motu-color-surface-sunken); }
+/* 暫停是主行動：深青底白字（15px 小字，白字放海洋青只有 3.3:1） */
+.lv-wrap .lv-pause { display: inline-flex; gap: 6px; width: auto; border-radius: var(--motu-radius-pill); padding: 0 22px; font-weight: 900; font-size: 15px; color: var(--motu-white); background: var(--motu-teal-dark); border-color: transparent; box-shadow: var(--motu-shadow-primary); }
 
 /* result */
 .wk-result { padding-top: 6px; }
@@ -254,52 +269,64 @@
 /* ============ v3 Coach HUD：把引擎狀態即時翻譯給使用者 ============ */
 /* 3D 人偶舞台（示範模式）：置於 video 之上、2D canvas(倒數環)之下 */
 .lv-avatar3d { position: absolute; inset: 0; background:
-  radial-gradient(circle at 50% 30%, rgba(47,214,198,.10), transparent 60%), #08161c; }
+  radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--motu-mint) 30%, transparent), transparent 60%), var(--motu-mint-pale); }
 /* 簡介頁 3D 展示窗 */
 .wk-demo3d { position: relative; width: 100%; height: 100%; min-height: 240px; }
 
 /* 追蹤狀態 + 動作週期燈（左上，狀態列下方） */
 .lv-hudtop { position: absolute; top: calc(env(safe-area-inset-top) + 58px); left: 16px;
   display: flex; flex-direction: column; gap: 8px; z-index: 5; align-items: flex-start; }
-.lv-track { padding: 7px 13px; border-radius: 99px; font-size: 13px; font-weight: 800;
-  background: rgba(8,22,28,.78); border: 1px solid var(--stroke); letter-spacing: .02em; }
-.lv-track[data-s="ok"]   { color: var(--green); border-color: color-mix(in srgb, var(--green) 55%, transparent); }
-.lv-track[data-s="warn"] { color: #ffd23f; border-color: rgba(255,210,63,.55); }
-.lv-track[data-s="seek"] { color: var(--muted); }
-/* Slice3 校準 P1：取景階段專屬（青/橘/灰，與訓練 ok/seek/warn 分離，不改訓練綠語意） */
-.lv-track[data-s="frame-ok"]     { color: var(--frame-ok); border-color: color-mix(in srgb, var(--frame-ok) 55%, transparent); }
-.lv-track[data-s="frame-adjust"] { color: var(--frame-adjust); border-color: color-mix(in srgb, var(--frame-adjust) 55%, transparent); }
-.lv-track[data-s="frame-wait"]   { color: var(--faint); }
+/* 追蹤膠囊：狀態色（綠／黃／藍／橘）改放外框與圖示，字一律深藍或深青（對比 ≥4.5） */
+.lv-track { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: var(--motu-radius-pill); font-size: 13px; font-weight: 800;
+  background: var(--lv-hud-bg); color: var(--motu-color-text); border: 2px solid var(--motu-color-border); box-shadow: var(--motu-shadow-md); letter-spacing: .02em; }
+/* 小字在最暗影像上：白 92% 疊深底時深青只有 4.44 → 字用深藍，深青只給圖示與外框 */
+.lv-track[data-s="ok"]   { border-color: var(--motu-teal); }
+.lv-track[data-s="warn"] { border-color: var(--motu-gold); }
+.lv-wrap .lv-track[data-s="warn"] .icon { color: var(--motu-gold-text); }
+.lv-track[data-s="seek"] { color: var(--motu-color-text-muted); }
+/* Slice3 校準 P1：取景階段專屬（藍/橘/灰，與訓練 ok/seek/warn 分離，不改訓練綠語意） */
+.lv-track[data-s="frame-ok"]     { border-color: var(--frame-ok); }
+.lv-wrap .lv-track[data-s="frame-ok"] .icon { color: var(--frame-ok); }
+.lv-track[data-s="frame-adjust"] { border-color: var(--frame-adjust); }
+.lv-wrap .lv-track[data-s="frame-adjust"] .icon { color: var(--frame-adjust); }
+.lv-track[data-s="frame-wait"]   { color: var(--motu-color-text-muted); }
+.lv-wrap .lv-track:is([data-s="seek"], [data-s="frame-wait"]) .icon { color: currentColor; }
 .lv-stages { display: flex; gap: 5px; }
 .lv-stages span { padding: 5px 10px; border-radius: 8px; font-size: 12px; font-weight: 700;
-  color: var(--muted); background: rgba(8,22,28,.72); border: 1px solid var(--stroke);
+  color: var(--motu-color-text-muted); background: var(--lv-hud-bg); border: 1px solid var(--motu-color-border); box-shadow: var(--motu-shadow-sm);
   transition: all .12s ease; }
-.lv-stages span.on { color: #04241e; background: var(--green); border-color: var(--green);
-  box-shadow: 0 0 14px color-mix(in srgb, var(--green) 60%, transparent); transform: translateY(-1px); }
+.lv-stages span.on { color: var(--motu-white); background: var(--motu-teal-dark); border-color: var(--motu-teal-dark);
+  box-shadow: var(--motu-shadow-primary); transform: translateY(-1px); }
 
 /* 深度量表（右側直條 + 達標線） */
 .lv-gauge { position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
   display: flex; flex-direction: column; align-items: center; gap: 7px; z-index: 5; }
-.lv-gauge > span { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .1em; }
+.lv-gauge > span { font-size: 11px; font-weight: 800; color: var(--motu-color-text); letter-spacing: .1em; padding: 3px 8px; border-radius: var(--motu-radius-pill); background: var(--lv-hud-bg); box-shadow: var(--motu-shadow-sm); }
 .lv-gauge-track { position: relative; width: 16px; height: min(200px, 32vh); border-radius: 10px;
-  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); overflow: visible; }
+  background: var(--lv-hud-bg); border: 1px solid var(--motu-color-border); box-shadow: var(--motu-shadow-md); overflow: visible; }
 .lv-gauge-track i { position: absolute; left: 1px; right: 1px; bottom: 1px; height: 0%;
   border-radius: 8px; background: var(--green); transition: height .08s linear;
   box-shadow: 0 0 12px color-mix(in srgb, var(--green) 55%, transparent); }
+/* 合體 Slice 4：量表填色是判定回饋（與骨架同語意），刻意不換成 Motu 色票 —— 金與珊瑚色相太近，黃／紅會分不出來 */
 .lv-gauge-track i[data-c="yellow"] { background: #ffd23f; box-shadow: 0 0 12px rgba(255,210,63,.5); }
 .lv-gauge-track i[data-c="red"]    { background: #ff5a5a; box-shadow: 0 0 12px rgba(255,90,90,.5); }
 .lv-gauge-track i[data-c="frame"]  { background: var(--frame-ok); box-shadow: 0 0 12px color-mix(in srgb, var(--frame-ok) 55%, transparent); }   /* Slice3 補修：準備態取景藍 */
+/* 達標線：白底量表上改深藍線；標籤改白底膠囊（原本靠白字＋黑陰影，放在亮影像上看不見） */
 .lv-gauge-track b { position: absolute; left: -5px; right: -5px; height: 3px; border-radius: 2px;
-  background: #fff; opacity: .9; box-shadow: 0 0 8px rgba(255,255,255,.8); }
-.lv-gauge-track b::after { content: '達標'; position: absolute; right: 22px; top: -7px;
-  font-size: 10px; font-weight: 800; color: #fff; white-space: nowrap; text-shadow: 0 1px 6px rgba(0,0,0,.7); }
+  background: var(--motu-color-text); box-shadow: 0 0 0 1px var(--motu-white); }
+.lv-gauge-track b::after { content: '達標'; position: absolute; right: 24px; top: -9px;
+  font-size: 10px; font-weight: 900; color: var(--motu-color-text); white-space: nowrap;
+  padding: 1px 7px; border-radius: var(--motu-radius-pill); background: var(--lv-hud-bg); box-shadow: var(--motu-shadow-sm); }
 
 /* 計次即時判定（中央大字閃現） */
 .lv-repflash { position: absolute; left: 50%; top: 32%; transform: translate(-50%, -50%);
   font-weight: 900; opacity: 0; pointer-events: none; z-index: 6;
-  text-shadow: 0 6px 28px rgba(0,0,0,.55); white-space: nowrap; }
-.lv-repflash.ok  { font-size: 68px; color: var(--green); }
-.lv-repflash.bad { font-size: 32px; color: #ff8a5c; }
+  white-space: nowrap; padding: 6px 26px; border-radius: var(--motu-radius-pill);
+  background: var(--lv-hud-bg); border: 4px solid var(--motu-color-border); box-shadow: var(--motu-shadow-lg); }
+.lv-repflash:empty { display: none; }
+/* ✓／✗ 仍以海洋青／珊瑚區分（放在外框），字色守對比：有效用深青、無效用深藍 */
+.lv-repflash.ok  { font-size: 60px; color: var(--motu-teal-dark); border-color: var(--motu-teal); }
+.lv-repflash.bad { font-size: 28px; color: var(--motu-color-text); border-color: var(--motu-coral); }
 .lv-repflash.pop { animation: lvRepPop .95s ease forwards; }
 @keyframes lvRepPop {
   0%   { opacity: 0; transform: translate(-50%, -50%) scale(.55); }
@@ -393,47 +420,51 @@
 /* 取景檢查關卡：純視覺遮罩（pointer-events:none 點擊全穿透，退出鈕永遠可按） */
 .lv-gate {
   position: absolute; inset: 0; z-index: 4; pointer-events: none;
-  display: grid; place-items: center; background: rgba(8, 22, 28, .72); text-align: center;
+  display: grid; place-items: center; text-align: center;
+  background: color-mix(in srgb, var(--motu-navy-dark) 22%, transparent);   /* 輕遮罩：使用者要看得到自己 */
 }
 .lv-gate-inner { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 24px; max-width: 480px; }
-.lv-gate-t { font-size: 20px; font-weight: 800; color: var(--text); }
+.lv-gate-t { display: inline-flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 900; color: var(--motu-color-text);
+  padding: 10px 20px; border-radius: var(--motu-radius-pill); background: var(--lv-hud-bg); box-shadow: var(--motu-shadow-md); }
 .lv-gate-frame {
   width: min(46vw, 210px); height: min(60vh, 340px);
-  border: 2px dashed var(--stroke-strong); border-radius: 110px 110px 26px 26px;
+  border: 3px dashed var(--motu-white); border-radius: 110px 110px 26px 26px;
+  filter: drop-shadow(0 0 2px var(--motu-navy-dark));
 }
 .lv-gate-checks { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 .lv-gate-chk {
   padding: 6px 14px; border-radius: 99px; font-size: 13px; font-weight: 700;
-  background: var(--surface); border: 1px solid var(--stroke); color: var(--faint);
+  background: var(--motu-color-surface); border: 2px solid var(--motu-color-border); color: var(--motu-color-text-muted); box-shadow: var(--motu-shadow-sm);
 }
-.lv-gate-chk.ok { color: var(--frame-ok); border-color: color-mix(in srgb, var(--frame-ok) 45%, transparent); background: color-mix(in srgb, var(--frame-ok) 12%, transparent); }   /* Slice3 P1：取景已偵測=青，非訓練綠 */
-.lv-gate-s { color: var(--muted); font-size: 13px; }
+/* Slice3 P1：取景已偵測=藍，非訓練綠。合體後藍只放外框與淡底，字用深藍 */
+.lv-gate-chk.ok { color: var(--motu-color-text); border-color: var(--frame-ok); background: color-mix(in srgb, var(--frame-ok) 16%, var(--motu-white)); }
+.lv-gate-s { color: var(--motu-color-text); font-size: 13px; font-weight: 700; padding: 6px 14px; border-radius: var(--motu-radius-pill); background: var(--lv-hud-bg); }
 /* Slice3 修復 F1：逃生鈕（10 秒後現身）；.lv-gate 為 pointer-events:none，鈕須自行開啟可點 */
 .lv-gate-skip { pointer-events: auto; margin-top: 4px; }
 
 /* 組間休息卡：卡片本體可互動（含跳過鈕）、置中不覆蓋頂欄 */
 .lv-rest {
   position: absolute; inset: 0; z-index: 4; pointer-events: none;
-  display: grid; place-items: center; background: rgba(8, 22, 28, .72);
+  display: grid; place-items: center; background: var(--motu-scrim);   /* 遊戲端 modal 的遮罩 token */
 }
 .lv-rest-card {
   pointer-events: auto;
   display: flex; flex-direction: column; align-items: center; gap: 12px;
-  background: var(--grad-card); border: 1px solid var(--stroke); border-radius: var(--radius);
-  box-shadow: var(--shadow); padding: 24px 32px; text-align: center;
+  background: var(--motu-color-surface); color: var(--motu-color-text); border: 1px solid var(--motu-color-border); border-radius: var(--motu-radius-panel);
+  box-shadow: var(--motu-shadow-modal); padding: 24px 32px; text-align: center;
   margin: 72px 14px 14px;   /* top ≥ 頂欄高：不覆蓋退出鈕區 */
   max-width: 480px;
 }
-.lv-rest-t { font-size: 20px; font-weight: 800; }
+.lv-rest-t { display: inline-flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 900; }
 .lv-rest-ring {
   width: 120px; height: 120px; border-radius: 50%; display: grid; place-items: center; align-content: center;
-  border: 8px solid var(--surface-2); border-top-color: var(--teal); border-right-color: var(--teal);
+  border: 8px solid var(--motu-color-surface-sunken); border-top-color: var(--motu-teal); border-right-color: var(--motu-teal);
   font-variant-numeric: tabular-nums;
 }
-.lv-rest-ring b { font-size: 40px; font-weight: 800; line-height: 1; }
-.lv-rest-ring span { font-size: 12px; color: var(--muted); }
-.lv-rest-next { font-size: 14px; font-weight: 700; color: var(--text); }
-.lv-rest-s { font-size: 13px; color: var(--muted); }
+.lv-rest-ring b { font-size: 40px; font-weight: 900; line-height: 1; color: var(--motu-color-text); }
+.lv-rest-ring span { font-size: 12px; color: var(--motu-color-text-muted); }
+.lv-rest-next { font-size: 14px; font-weight: 800; color: var(--motu-color-text); }
+.lv-rest-s { font-size: 13px; color: var(--motu-color-text-muted); }
 
 /* 倒數欄雙態（成對切換版型；R3 才接切換邏輯） */
 .lv-set-progress { font-variant-numeric: tabular-nums; }
