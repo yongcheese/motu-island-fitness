@@ -196,8 +196,7 @@ function planOf(ex) { return planFor(ex?.meta, CTX.store.getState().prefs?.diffi
 function planText(meta) { return planLabel(planFor(meta, CTX.store.getState().prefs?.difficulty)); }
 // 推薦理由 caption。TODO(R3): 改讀 store 任務欄位（無任務→預設推薦文案）。
 function recWhyText() { return `${icon('target', { size: 16 })} 今天練下肢 · 完成今日任務：20 個有效深蹲`; }
-// Demo 取景提示：深蹲只需到膝、最易成功(預設推薦)；開合跳需腳踝＋橫向空間。
-const RECOMMEND = { squat: `${icon('star', { size: 16 })} Demo 推薦` };
+// 取景提示：開合跳需腳踝＋橫向空間。（原本深蹲另有「Demo 推薦」標籤，與今日推薦卡重複，已移除）
 const SPACE_NOTE = { jumpingjack: `${icon('triangle-alert', { size: 16 })} 需較大空間` };
 const TAGLINE = {
   squat: '持續專注於重心平穩', jumpingjack: '燃燒全身脂肪', highknees: '提高瞬發爆發力',
@@ -260,7 +259,7 @@ function cardHtml(e) {
           <h3 class="wk2-name">${e.name}</h3>
           <span class="wk2-diff" title="難度 ${d}/3">${diffDots(d)}</span>
         </div>
-        <p class="wk2-tag">${grp}${tag ? ' · ' + tag : ''}${[RECOMMEND[e.id], SPACE_NOTE[e.id]].filter(Boolean).map(x => ' · ' + x).join('')}</p>
+        <p class="wk2-tag">${grp}${tag ? ' · ' + tag : ''}${SPACE_NOTE[e.id] ? ' · ' + SPACE_NOTE[e.id] : ''}</p>
         <div class="wk2-stats">
           ${rewardBadges(e, 'wk2')}
           <span class="wk2-go">›</span>
