@@ -52,7 +52,7 @@
 
 ## 進度總覽
 - 總 Slice 數：8
-- 已完成：6 / 8
+- 已完成：7 / 8
 - 平行組：無（Slice 1、3–8 都會碰 `main.js` 或 `shell.css`；Slice 2 雖只碰圖示模組，但 Slice 1 之後才知道確切需要哪些圖示，保守序列執行）
 
 ---
@@ -202,7 +202,7 @@
 - **依賴**：Slice 3、Slice 4
 - **平行組**：獨立
 
-### [ ] Slice 7 — 外殼微互動與動效
+### [x] Slice 7 — 外殼微互動與動效
 - **目標**：外殼按鈕的 hover、按壓、分頁切換節奏和第一階段訓練頁一致。
 - **範圍內**：`shell.css` 的 transition 走 `--motu-duration-*`／`--motu-ease-*`；按壓 `scale(.98)`；分頁切換時選中頁籤的過場；禮物鈕的小點可用遊戲端的可領取脈動（若語意合適）；`prefers-reduced-motion` 下全部停止。
 - **範圍外**：3D 島嶼的動畫；新增動畫種類以外的功能。
@@ -210,12 +210,18 @@
 - **設計要點**：只動 transform／opacity。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [ ] `shell.css` 的 transition／animation 沒有寫死時長
-  - [ ] reduced-motion 下外殼動畫全部停止（實機模擬）
-  - [ ] 所有外殼按鈕按壓縮放為 `.98`
+  - [x] `shell.css` 的 transition／animation 沒有寫死時長
+  - [x] reduced-motion 下外殼動畫全部停止（實機模擬：Playwright `reducedMotion: reduce`，transform／animation／transition 全為 none）
+  - [x] 所有外殼按鈕按壓縮放為 `.98`（直欄、禮物、轉盤、頁籤實測 matrix(0.98…)）
 - **測試策略**：`tests/motu-skin.test.js` 的 `MOTION_FILES` 加入 `app/styles/shell.css`，沿用既有掃描器與 reduced-motion 涵蓋檢查（邊界：`0s` 與 reduced-motion 區塊例外）。
 - **完成定義**：`npm test` 全綠＋實機錄一段切換與按壓＋slice-reviewer
 - **對外介面**：
+  - 無新增 export／props／storage key。僅 shell.css 內部新增 `@keyframes sh-tab-in`（選中頁籤子元素浮上，只動 transform／opacity，不設 fill-mode）。
+  - 給 Slice 8：外殼 hover 上浮包在 `@media (hover: hover)`；檔尾的 `prefers-reduced-motion` 區塊選擇器與上方逐字對應，Slice 8 若新增外殼按鈕 class，要同步加進 `:active` 縮放規則與 reduced-motion 區塊（`tests/motu-skin.test.js` 會抓）。
+- **施工備註**：測試 396 → 400（`MOTION_FILES` 納入 `shell.css`；新增 4 個：transition／keyframes 只動 transform／opacity、四類按鈕都有 .98 按壓、reduced-motion 覆蓋完整〔選擇器逐字比對〕、hover 只在 `@media (hover: hover)` 內〔括號配對取區塊〕）。突變檢查 5 項全被抓到（拿掉 reduce 的 animation:none、.98→.95、寫死 .25s、keyframes 加 color、hover 移出區塊）。實機 1440 錄切換與按壓：`.playwright-mcp/s7_switch_30ms/90ms/300ms.png`、`s7_rail_hover.png`；console 0 error／0 warning。
+- **與計畫文字的落差**：禮物金點**未做**可領取脈動 —— 禮物目前是「即將推出」，脈動會暗示有東西可領；且遊戲端 `fragment-ready-pulse` 改的是 box-shadow，違反「只動 transform／opacity」。計畫原文為「若語意合適」，判定不合適（CSS 註解已註明）。
+- **Circuit Breaker**：Attempt 1 一次（測試解析器把 `@media` 標頭當成選擇器，修正測試本身，CSS 未改）。
+- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-25）
 - **依賴**：Slice 6
 - **平行組**：獨立
 

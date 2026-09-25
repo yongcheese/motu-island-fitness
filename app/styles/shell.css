@@ -2,7 +2,7 @@
    外殼版面（合體第二階段）
    照遊戲端主頁截圖：左上帳號卡、左側直欄、右下禮物與轉盤、底部分頁列。
    Slice 1 做基礎版面（位置、白卡、Motu token）；Slice 6 照截圖細修造型（斜角、虛線、
-   豎線、小圓點、轉盤）；動效在 Slice 7。色值一律 --motu-*，不自創。
+   豎線、小圓點、轉盤）；Slice 7 補微互動與動效（檔尾）。色值一律 --motu-*，不自創。
    ============================================================ */
 
 :root {
@@ -245,4 +245,36 @@
   :root { --sh-view-pad-b: calc(var(--sh-tab-h) + var(--motu-space-4) + env(safe-area-inset-bottom) + var(--motu-space-6)); }
   /* 舊版 ≥960px 的 toast 放在視窗底部 32px，會蓋到懸浮分頁列 */
   .toast { bottom: calc(var(--sh-tab-h) + var(--motu-space-8)); }
+}
+
+/* ============================================================
+   Slice 7：微互動與動效 —— 節奏對齊第一階段訓練頁。
+   只動 transform／opacity；時長與曲線一律 --motu-duration-*／--motu-ease-*；按壓 scale(.98)。
+   直欄按鈕與選中頁籤用 clip-path 裁形，陰影在外層 filter（Slice 6），所以這裡不動陰影。
+   禮物鈕的金點刻意不做可領取脈動：禮物目前是「即將推出」，脈動會暗示有東西可領；
+   遊戲端的 fragment-ready-pulse 也是改 box-shadow，不符合只動 transform／opacity。
+   ============================================================ */
+#shell :is(.sh-rail-btn, .sh-gift, .sh-wheel, .sh-tab),
+.sh-tab-ico { transition: transform var(--motu-duration-fast) var(--motu-ease-standard); }
+
+/* hover 只給有滑鼠的裝置（觸控裝置點完會卡在 hover 態） */
+@media (hover: hover) {
+  #shell :is(.sh-rail-btn, .sh-gift, .sh-wheel):hover { transform: translateY(-2px); }
+  #shell .sh-tab:not(.is-active):hover .sh-tab-ico { transform: translateY(-2px); }
+}
+/* 按壓寫在 hover 之後、同權重，按下時蓋過上浮 */
+#shell :is(.sh-rail-btn, .sh-gift, .sh-wheel, .sh-tab):active { transform: scale(.98); }
+
+/* 分頁切換：main.js 每次切換都重繪分頁列（新節點不會觸發 transition），
+   所以用一次性 animation 讓新選中頁籤的圖示與文字由下方浮上。不設 fill-mode，播完不殘留。 */
+#shell .sh-tab.is-active > * { animation: sh-tab-in var(--motu-duration-base) var(--motu-ease-spring); }
+@keyframes sh-tab-in { from { opacity: 0; transform: translateY(0.375rem); } }
+
+/* 減少動態：過渡、上浮、按壓縮放、切換過場全部停掉（選擇器與權重對應上面，放在最後才蓋得過） */
+@media (prefers-reduced-motion: reduce) {
+  #shell :is(.sh-rail-btn, .sh-gift, .sh-wheel, .sh-tab),
+  .sh-tab-ico { transition: none; }
+  #shell :is(.sh-rail-btn, .sh-gift, .sh-wheel, .sh-tab):is(:hover, :active),
+  #shell .sh-tab:not(.is-active):hover .sh-tab-ico { transform: none; }
+  #shell .sh-tab.is-active > * { animation: none; }
 }

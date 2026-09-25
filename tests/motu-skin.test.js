@@ -104,8 +104,8 @@ test('Inter 800/900 字型已放在本機並有 @font-face', () => {
 });
 
 /* ---------- Slice 5：微互動與動效對齊 Motu ---------- */
-// 範圍內 CSS：訓練頁 + 換皮層。transition／animation 的時長一律走 --motu-duration-*，不得寫死秒數。
-const MOTION_FILES = ['app/features/workout/workout.css', 'app/styles/motu-skin.css'];
+// 範圍內 CSS：訓練頁 + 換皮層 + 外殼（合體第二階段 Slice 7）。transition／animation 的時長一律走 --motu-duration-*，不得寫死秒數。
+const MOTION_FILES = ['app/features/workout/workout.css', 'app/styles/motu-skin.css', 'app/styles/shell.css'];
 
 // 去掉 `@media (prefers-reduced-motion: reduce) { ... }` 區塊（括號需配對：區塊裡還有巢狀規則）
 function dropReducedMotion(css) {
@@ -214,4 +214,66 @@ test('減少動態下計次閃現仍看得到：不縮放、不位移，只有�
   assert(rule && /lvRepHold/.test(rule[1]) && /steps\(1/.test(rule[1]), '閃現應改用 lvRepHold + steps(1)');
   const kf = css.match(/@keyframes lvRepHold\s*\{([^]*?\})\s*\}/);
   assert(kf && !/transform/.test(kf[1]), 'lvRepHold 不得有 transform');
+});
+
+// —— 合體第二階段 Slice 7：外殼動效 ——
+const SHELL_CSS = 'app/styles/shell.css';
+const reducedBlock = (css) => {
+  const start = css.search(/@media\s*\(\s*prefers-reduced-motion\s*:\s*reduce\s*\)/);
+  // 從 @media 的 `{` 之後開始，否則 @media 標頭會被當成第一條規則的選擇器
+  return start < 0 ? '' : css.slice(css.indexOf('{', start) + 1);
+};
+
+test('外殼：transition 只動 transform／opacity，keyframes 也只動 transform／opacity', () => {
+  const css = dropReducedMotion(stripComments(read(SHELL_CSS)));
+  const props = [...css.matchAll(/(?:^|[;{\s])transition\s*:\s*([^;{}]+)/g)]
+    .flatMap(m => m[1].split(',').map(p => p.trim().split(/\s+/)[0]));
+  assert(props.length > 0, 'shell.css 沒有任何 transition（掃描可能失效）');
+  eq(props.filter(p => p !== 'transform' && p !== 'opacity').join(','), '', '外殼 transition 動到 transform／opacity 以外的屬性');
+  const kfs = [...css.matchAll(/@keyframes\s+([\w-]+)\s*\{((?:[^{}]*\{[^}]*\})*)[^}]*\}/g)];
+  assert(kfs.length > 0, 'shell.css 沒有 keyframes（分頁切換過場不見了）');
+  for (const [, name, body] of kfs) {
+    const decl = [...body.matchAll(/([\w-]+)\s*:/g)].map(m => m[1]);
+    eq(decl.filter(p => p !== 'transform' && p !== 'opacity').join(','), '', `@keyframes ${name} 動到其他屬性`);
+  }
+});
+
+test('外殼：直欄、禮物、轉盤、分頁頁籤都有 scale(.98) 按壓', () => {
+  const css = stripComments(read(SHELL_CSS));
+  const m = [...css.matchAll(/([^{}]*:active[^{]*)\{[^}]*scale\(\.98\)/g)].map(x => x[1]).join(' ');
+  for (const cls of ['.sh-rail-btn', '.sh-gift', '.sh-wheel', '.sh-tab']) assert(m.includes(cls), `${cls} 缺按壓縮放`);
+});
+
+test('外殼：減少動態區塊停掉過渡、上浮／按壓位移與分頁切換過場（邊界：選擇器要和外面一字不差才蓋得過）', () => {
+  const css = stripComments(read(SHELL_CSS));
+  const reduced = reducedBlock(css);
+  assert(reduced, 'shell.css 缺 prefers-reduced-motion 區塊');
+  const outside = dropReducedMotion(css).replace(/@keyframes[^{]*\{(?:[^{}]*\{[^}]*\})*[^}]*\}/g, '');
+  // 播放動畫的選擇器 → 減少動態下要有 animation: none
+  const animUsers = [...outside.matchAll(/([^{}]+)\{[^}]*\banimation\s*:\s*(?!none)[^;}]+/g)].flatMap(m => splitSelectors(m[1].trim()));
+  assert(animUsers.length > 0, '掃不到外殼動畫選擇器');
+  const animOff = [...reduced.matchAll(/([^{}]+)\{[^}]*\banimation\s*:\s*none/g)].flatMap(m => splitSelectors(m[1].trim()));
+  eq(animUsers.filter(s => !animOff.includes(s)).join(' | '), '', '這些動畫在減少動態下沒被關掉');
+  // 設 transition 的選擇器 → 減少動態下要有 transition: none
+  const trUsers = [...outside.matchAll(/([^{}]+)\{[^}]*\btransition\s*:\s*(?!none)[^;}]+/g)].flatMap(m => splitSelectors(m[1].trim()));
+  const trOff = [...reduced.matchAll(/([^{}]+)\{[^}]*\btransition\s*:\s*none/g)].flatMap(m => splitSelectors(m[1].trim()));
+  eq(trUsers.filter(s => !trOff.includes(s)).join(' | '), '', '這些過渡在減少動態下沒被關掉');
+  // hover 上浮與按壓縮放 → 減少動態下 transform: none
+  const tfOff = [...reduced.matchAll(/([^{}]+)\{[^}]*\btransform\s*:\s*none/g)].map(m => m[1]).join(' ');
+  assert(/:is\(:hover, :active\)/.test(tfOff), '減少動態下 hover／按壓仍會位移');
+  assert(tfOff.includes('.sh-tab:not(.is-active):hover .sh-tab-ico'), '減少動態下頁籤圖示仍會上浮');
+});
+
+test('外殼：hover 上浮只給有滑鼠的裝置（觸控不會卡在 hover 態）', () => {
+  const css = dropReducedMotion(stripComments(read(SHELL_CSS)));
+  const hovers = [...css.matchAll(/([^{}]*:hover[^{]*)\{[^}]*transform/g)];
+  assert(hovers.length > 0, '掃不到 hover 位移');
+  // 用括號配對取出 @media (hover: hover) 區塊本體（只看「之後」會把區塊外的規則也算進去）
+  const at = css.search(/@media\s*\(\s*hover\s*:\s*hover\s*\)/);
+  assert(at >= 0, '缺 @media (hover: hover)');
+  let depth = 1, j = css.indexOf('{', at) + 1;
+  const from = j;
+  while (j < css.length && depth > 0) { if (css[j] === '{') depth++; else if (css[j] === '}') depth--; j++; }
+  const hoverBlock = css.slice(from, j - 1);
+  for (const [, sel] of hovers) assert(hoverBlock.includes(sel.trim()), `${sel.trim()} 不在 @media (hover: hover) 內`);
 });
