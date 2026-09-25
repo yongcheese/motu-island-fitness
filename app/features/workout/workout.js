@@ -1027,14 +1027,17 @@ async function runDemoLoop(ex) {
       if (live.set.phase === 'WORK') {
         live.elapsedMs += dt;      // 累計 WORK 時間；demo 追補 target 派生於此 → 休息/暫停零 catch-up（互審 #3）
         const target = Math.floor(live.elapsedMs / FRAME_MS);
-        let countedThisBatch = false;
+        // 一次追補可能餵好幾幀：每一個「有結算」的幀都要交給 handleResult，
+        // 否則只看最後一幀會漏掉中間的 +1／✗（Slice 10）
+        let handledLast = false;
         while (live.fed < target) {
           const idx = live.fed % live.frames.length;
           const lm = live.frames[idx];
           const res = live.detector.update(lm, live.fed * FRAME_MS); // 確定性時間戳
           live.lastResult = res;
           live.set.lastValid = res.reps.valid;
-          if (res.repCountedThisFrame && res.repValidThisFrame) countedThisBatch = true;
+          handledLast = res.repCountedThisFrame;
+          if (res.repCountedThisFrame) handleResult(res, now, lm);
           live.fed++;
           if (live.fed % live.frames.length === 0) ({ frames: live.frames, meta: live.meta } = build()); // 每輪換一批（含作弊）
         }
@@ -1043,7 +1046,9 @@ async function runDemoLoop(ex) {
         const m = live.meta[idx];
         live.ctx.clearRect(0, 0, live.canvas.width, live.canvas.height);
         live.avatar.render(pose3d(ex.id, m.d, m.side));   // 3D 公仔以「真 3D 編排姿勢」重現同一時間軸
-        if (live.lastResult) { handleResult(live.lastResult, now, lm); if (countedThisBatch) flashRep(); }
+        // 這一幀沒有新的結算要處理時，只刷新 HUD：拿掉結算旗標再交出去 ——
+        // 60fps 下約每兩個 rAF 才餵一幀合成資料，直接重交 lastResult 會把同一下再閃一次、再嗶一次
+        if (live.lastResult && !handledLast) handleResult({ ...live.lastResult, repCountedThisFrame: false, repValidThisFrame: false }, now, lm);
       } else {
         live.ctx.clearRect(0, 0, live.canvas.width, live.canvas.height);   // REST：不餵幀、清畫布防環殘影（公仔停格）
       }
@@ -1139,16 +1144,13 @@ function handleResult(res, now, lm) {
       hud.next.dataset.p = res.visible === false ? 'off' : (res.phase === 'TARGET' ? 'hit' : 'go');
       hud.next.hidden = !t;
     }
-    // 4) 計次即時判定：✓ +1 / ✗ 原因
-    if (res.repCountedThisFrame) {
-      const okRep = res.repValidThisFrame;
-      // 用引擎給的 repReason，不是當下這一幀的 faults —— 一下在回到起始位置時才結算，
-      // 那時瞬間發生的錯誤已經消失，讀當幀會退回顯示「半程未達標」而報錯原因。
-      hud.flash.textContent = okRep ? '✓ +1' : '✗ ' + faultName(res.repReason || 'half_rep');
-      hud.flash.className = 'lv-repflash pop ' + (okRep ? 'ok' : 'bad');
-      void hud.flash.offsetWidth;  // 重觸發動畫
-    }
+    // 4) 計次即時判定：✓ +1 / ✗ 原因 / −1 撤銷
+    const fl = repFlash(res, live.shownValid);
+    if (fl) popRepFlash(hud.flash, fl);
   }
+  // 撤銷偵測要看「上一幀畫面上的有效次數」，不論 HUD 在不在都要更新
+  const revoked = live.shownValid != null && res.reps.valid < live.shownValid;
+  live.shownValid = res.reps.valid;
 
   // —— 教練訊息（語音 + 字幕）——
   if (res.visible === false) {
@@ -1158,7 +1160,7 @@ function handleResult(res, now, lm) {
   // 這一下被判無效 → 立刻講「為什麼、怎麼改」，並且直接 return，
   // 不能讓下面的稱讚/指導把它蓋掉（否則會出現「剛判你無效」又說「很好，保持節奏」）。
   if (res.repCountedThisFrame && !res.repValidThisFrame) {
-    const msg = rejectHint(res.repReason, live.ex);
+    const msg = revoked ? REVOKE_HINT : rejectHint(res.repReason, live.ex);
     setCoach('✗ ' + msg, 'high');
     if (live.voice) CTX.coach.say(msg, 'high', Date.now());
     return;
@@ -1186,6 +1188,32 @@ function handleResult(res, now, lm) {
     }
   }
   if (res.repCountedThisFrame && res.repValidThisFrame) { flashRep(); positiveRepFeedback(); }
+}
+
+/* 計次閃字（Slice 10）。
+   repFlash：純函式，決定這一幀要閃什麼。prevValid＝上一幀畫面上的有效次數。
+   高抬腿的防作弊規則：同一隻腳連抬兩下，引擎會把「上一下」也作廢（有效次數 −1）。
+   以前畫面只閃「✗ 未左右交替」，數字卻悄悄少 1，使用者看到的就是「次數有時會自己減少」。
+   現在明講「−1」和原因。 */
+const REVOKE_HINT = '上一下不算：左右腳要輪流抬';
+export function repFlash(res, prevValid) {
+  if (!res || !res.repCountedThisFrame) return null;
+  if (res.repValidThisFrame) return { kind: 'ok', text: '✓ +1' };
+  const valid = res.reps?.valid;
+  if (prevValid != null && valid != null && valid < prevValid) return { kind: 'bad', text: '−1 左右腳要輪流' };
+  // 用引擎給的 repReason，不是當下這一幀的 faults —— 一下在回到起始位置時才結算，
+  // 那時瞬間發生的錯誤已經消失，讀當幀會退回顯示「半程未達標」而報錯原因。
+  return { kind: 'bad', text: '✗ ' + faultName(res.repReason || 'half_rep') };
+}
+// 重播閃字動畫：一定要先拿掉 pop、強制 reflow、再加回去。
+// 舊寫法直接覆寫 className —— 連續兩下都有效時 class 字串完全相同，瀏覽器不會重播動畫，
+// 而動畫是 forwards 停在 opacity 0，於是第二下之後的「+1」就看不到（「+1 有時出現有時不會」的根因）。
+export function popRepFlash(el, { kind, text }) {
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove('pop', 'ok', 'bad');
+  void el.offsetWidth;
+  el.classList.add(kind, 'pop');
 }
 
 // Demo 前最小補強：一次有效動作成立時的正向回饋（短音效＋輪播語音）。
