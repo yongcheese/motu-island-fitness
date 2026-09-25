@@ -25,6 +25,9 @@ export default {
   mount(root, ctx) { mountIsland(root, ctx); },
   unmount() { teardown(); },
   onShow() { if (S) S.resize(); },
+  // 選用契約（合體第二階段 Slice 4）：外殼左側「建造」鈕呼叫，開啟既有的造型商店抽屜。
+  // 尚未掛載時不做事；選好建築後沿用原本的放置流程，建造邏輯與資料都不變。
+  openBuild() { if (S) openSheet(); },
 };
 
 /* ---------------- DOM / overlay ---------------- */
@@ -65,6 +68,8 @@ function mountIsland(root, ctx) {
     </div>`;
 
   store = ctx.store;   // 受限介面（main.js 對 island 分頁傳入 islandStore）
+  // 外殼模式：帳號卡、分頁列等由外殼提供，隱藏島嶼自帶的浮層（樣式見 island.css 的 .isl-shelled）
+  if (ctx.hideOverlay) root.querySelector('#isl-stage').classList.add('isl-shelled');
   S = { ctx, root, raf: 0, placing: null, editing: false, selected: null, unsub: null, ro: null };
   initThree();
   buildWorld();

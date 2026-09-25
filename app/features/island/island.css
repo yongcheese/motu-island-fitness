@@ -100,3 +100,21 @@
   .isl-ach { top: 62px; }
   .isl-hint { top: 108px; }
 }
+
+/* ===== 合體第二階段 Slice 4：外殼模式（ctx.hideOverlay） =====
+   帳號卡、分頁列、建造入口改由外殼提供，島嶼自帶的左側鈕、縮放、目標條、提示、成就列一律隱藏；
+   建造時需要的商店抽屜與擺放／選取列保留，但抬到分頁列上方，避免被外殼蓋住。 */
+.isl-shelled .isl-left,
+.isl-shelled .isl-right,
+.isl-shelled .isl-goal,
+.isl-shelled .isl-hint,
+.isl-shelled .isl-ach { display: none; }
+.isl-shelled .isl-sheet,
+.isl-shelled .isl-place-bar { bottom: calc(var(--sh-tab-h, 0px) + env(safe-area-inset-bottom) + var(--motu-space-4, 16px)); }
+/* 抬高後，收合位移（translateY 110%／120%）已不足以移出畫面：收合時改為不可見，等位移動畫結束才隱藏 */
+.isl-shelled .isl-sheet:not(.open),
+.isl-shelled .isl-place-bar:not(.show) { visibility: hidden; transition: transform .35s var(--ease), visibility 0s .35s; }
+/* 商店抽屜開著時，外殼的左側直欄與右下按鈕會壓在品項上（手機尤其明顯）：暫時讓位。
+   #shell 是 #view 的後方兄弟，用 :has 由島嶼狀態驅動，不必新增外殼與島嶼之間的通訊介面。 */
+#view:has(.isl-shelled .isl-sheet.open) ~ #shell .sh-rail,
+#view:has(.isl-shelled .isl-sheet.open) ~ #shell .sh-corner { visibility: hidden; }

@@ -52,7 +52,7 @@
 
 ## 進度總覽
 - 總 Slice 數：8
-- 已完成：3 / 8
+- 已完成：4 / 8
 - 平行組：無（Slice 1、3–8 都會碰 `main.js` 或 `shell.css`；Slice 2 雖只碰圖示模組，但 Slice 1 之後才知道確切需要哪些圖示，保守序列執行）
 
 ---
@@ -129,7 +129,7 @@
 - **依賴**：Slice 1、Slice 2
 - **平行組**：獨立
 
-### [ ] Slice 4 — 主頁隱藏島嶼自帶浮層，左側建造鈕接到島嶼
+### [x] Slice 4 — 主頁隱藏島嶼自帶浮層，左側建造鈕接到島嶼
 - **目標**：主頁上只看得到遊戲端樣式的外殼＋3D 島嶼，不再疊著我方舊的深色浮層；按左側「建造」能打開島嶼原本的建造功能。
 - **範圍內**：
   - `island.js`：模組多提供一個選用的 `openBuild()`（開啟現有商店抽屜／編輯模式，沿用 `openSheet`／`toggleEdit`），並提供隱藏浮層的開關（class 或參數），**不改島嶼的建造邏輯與資料**。
@@ -140,12 +140,19 @@
 - **設計要點**：`openBuild` 是選用契約，必須在 `main.js` 的 feature 契約註解補上說明；島嶼仍只拿受限 store。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [ ] 主頁截圖中沒有 🛒✏️🧭、縮放鈕、目標條、成就徽章
-  - [ ] 按「建造」能開啟島嶼商店並完成一次擺放（或在金幣不足時出現原本的提示）
-  - [ ] 島嶼模組沒有 `openBuild` 時，按「建造」只跳提示、不報錯
+  - [x] 主頁截圖中沒有 🛒✏️🧭、縮放鈕、目標條、成就徽章
+  - [x] 按「建造」能開啟島嶼商店並完成一次擺放（或在金幣不足時出現原本的提示）（實機 1440：石階 1487→1477；390：花圃 1477→1462，帳號卡同步）
+  - [x] 島嶼模組沒有 `openBuild` 時，按「建造」只跳提示、不報錯
 - **測試策略**：靜態／單元測試 — 島嶼模組 export 含選用的 `openBuild`；`main.js` 呼叫時有 `?.` 保護（邊界：模組缺這個方法）；受限 store 的既有斷言保持通過。
 - **完成定義**：`npm test` 全綠＋實機完成一次建造＋slice-reviewer
 - **對外介面**：
+  - 島嶼 feature 契約新增**選用** `openBuild?()`（`app/features/island/island.js`：未掛載時不做事；掛載後開啟既有造型商店抽屜，之後沿用原放置流程）。已寫進 `main.js` 的 feature 契約註解。
+  - 島嶼 mount 的 ctx 多一個旗標 `hideOverlay: true`（只給島嶼的 `featCtx`，共用 `ctx` 不帶）；`island.js` 收到後在 `#isl-stage` 掛 `.isl-shelled`。
+  - `main.js` 新增內部 `openBuild()`：先 `show('island')`，模組沒有 `openBuild` 時 toast「這個島嶼版本沒有提供建造功能」，呼叫出錯 toast「建造功能暫時無法開啟」；`data-act="build"` 改走它。
+  - CSS（`island.css` 的 `.isl-shelled` 區段）：隱藏 `.isl-left/.isl-right/.isl-goal/.isl-hint/.isl-ach`；商店抽屜與擺放／選取列抬到 `--sh-tab-h` 上方、收合時 `visibility:hidden`；**抽屜開啟時用 `#view:has(...) ~ #shell` 讓 `.sh-rail`、`.sh-corner` 暫時隱藏**（依賴 `#view` 與 `#shell` 為相鄰兄弟，Slice 5–8 改 `index.html` 結構時要保留）。
+- **施工備註**：測試 379 → 388（新增 `tests/island-build-entry.test.js` 9 個；既有斷言未改）。Circuit Breaker 2 次：①`hideOverlay` 原本寫進受限 store 那行，撞到 `island-facade.test.js` 鎖定的寫法 → 改成另一行設定，既有斷言不動；②新測試自己的反向 regex 誤判 → 改成逐一檢查選擇器。實機發現手機版左側直欄與右下鈕蓋住商店品項，本 Slice 內以 `:has` 讓位修正。console 0 error／0 warning。
+- **交接／已知缺口**：外殼模式下島嶼的**編輯模式（旋轉、移除建築）與重置視角、縮放鈕無入口**（原本在隱藏的 ✏️🧭＋－；滑鼠滾輪與拖曳仍可縮放旋轉）；商店抽屜與擺放列仍是舊樣式、含 emoji（範圍外，列入交接）。
+- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-25）；其建議的收合時間 0.3s→0.35s 已對齊。
 - **依賴**：Slice 3
 - **平行組**：獨立
 

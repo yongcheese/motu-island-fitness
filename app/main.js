@@ -34,6 +34,9 @@ if (!islandPick.ok) console.error('[island]', islandPick.message);
 // feature 契約（以實際消費方式為準，見 show()）：
 //   必要：mount(root, ctx)、unmount()
 //   選用：onShow?()
+//   選用（僅島嶼插槽）：openBuild?() —— 外殼左側「建造」鈕呼叫，開啟島嶼的建造入口；
+//     沒提供（例如換成遊戲組模組）時外殼只跳提示。島嶼另會收到 ctx.hideOverlay = true，
+//     表示帳號卡、分頁列等由外殼提供，模組可自行隱藏重複的浮層（不理會也不會出錯）。
 // ⚠️ 分頁列的 label 與 icon 來自下方獨立的 TABS 常數，**不是**由模組提供 ——
 //    模組即使帶了 label/icon 也不會被讀取。舊註解曾把它們列入契約，那是錯的
 //    （2026-08-29 由跨模型互審抓出，且該錯誤已一度被抄進 docs/CONTRACTS.md）。
@@ -105,12 +108,18 @@ els.tabs.addEventListener('click', (e) => {
   show(b.dataset.tab);
 });
 
-// 左側直欄與右下按鈕：建造先回主頁（實際開啟島嶼建造在 Slice 4），其餘只擺樣子
+// 左側直欄與右下按鈕：建造回主頁並開啟島嶼的建造入口，其餘只擺樣子
 function onShellAction(e) {
   const b = e.target.closest('[data-act]');
   if (!b) return;
-  if (b.dataset.act === 'build') { show('island'); return; }
+  if (b.dataset.act === 'build') { openBuild(); return; }
   ctx.toast(SOON_MESSAGE);
+}
+function openBuild() {
+  show('island');
+  const island = FEATURES.island;
+  if (typeof island?.openBuild !== 'function') { ctx.toast('這個島嶼版本沒有提供建造功能'); return; }
+  try { island.openBuild(); } catch (e) { console.error(e); ctx.toast('建造功能暫時無法開啟'); }
 }
 els.rail.addEventListener('click', onShellAction);
 els.corner.addEventListener('click', onShellAction);
@@ -131,6 +140,8 @@ function show(id) {
   // 白名單上沒有 commitSession —— 掛進來的模組無法憑空產出金幣或經驗值。
   // 界線：純前端擋不了 DevTools 或直接改 localStorage，這道防線防的是模組越權而非惡意使用者。
   const featCtx = id === 'island' ? { ...ctx, store: islandStore } : ctx;
+  // 外殼已提供帳號卡與分頁列，告知島嶼隱藏重複的浮層（featCtx 對島嶼是新物件，不會汙染共用 ctx）
+  if (id === 'island') featCtx.hideOverlay = true;
   try { feat.mount(els.view, featCtx); } catch (e) { console.error(e); els.view.innerHTML = `<p class="sub" style="margin-top:40px">模組載入失敗：${e.message}</p>`; }
   feat.onShow?.();
 }
