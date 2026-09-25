@@ -180,3 +180,47 @@ test('規劃中卡片不宣告 aria-disabled（它仍可點，按下會顯示「
   assert(locked, '找不到規劃中卡片模板');
   assert(!/aria-disabled/.test(locked[0]), '規劃中卡片不應有 aria-disabled');
 });
+
+/* ---------- ⑤ 外殼（合體第二階段 Slice 8）的文字／底色組合 ---------- */
+// 不寫死色值：從 shell.css 讀出每個元素實際宣告的 color／background（var(--motu-*)），再解析成 motu.css 的色值。
+// 之後改 shell.css 或遊戲組換色，這裡都會自動重驗。
+const SHELL = readFileSync(join(root, 'app/styles/shell.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+// 取某選擇器（不在 @media 裡的那條）某屬性的 var(--motu-*) 值 → 實際色值
+function shellColor(sel, prop) {
+  const top = SHELL.replace(/@media[^{]*\{(?:[^{}]*\{[^}]*\})*[^}]*\}/g, '');
+  const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  for (const [, body] of top.matchAll(new RegExp(`(?:^|\\})\\s*${esc}\\s*\\{([^}]*)\\}`, 'g'))) {
+    const m = body.match(new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*var\\(--motu-([\\w-]+)\\)`));
+    if (m) return T[m[1]];
+  }
+  throw new Error(`shell.css 找不到 ${sel} 的 ${prop}`);
+}
+// [用在哪裡, 文字色（選擇器, 屬性）, 底色（選擇器, 屬性）, 是否大字]
+const SHELL_PAIRS = [
+  ['帳號卡名稱與金幣數（深藍／白卡）', ['.sh-account', 'color'], ['.sh-account::before', 'background'], false],
+  ['帳號卡 LV 膠囊', ['.sh-lv', 'color'], ['.sh-lv', 'background'], false],
+  ['直欄按鈕下方標籤', ['.sh-rail-label', 'color'], ['.sh-rail-label', 'background'], false],
+  ['分頁列未選中頁籤', ['#shell button', 'color'], ['#shell .sh-tab', 'background'], false],
+  ['分頁列選中頁籤（14px 粗體，不算大字）', ['#shell .sh-tab.is-active', 'color'], ['#shell .sh-tab.is-active', 'background'], false],
+];
+
+test('外殼每一組文字／底色都達 WCAG AA（色值從 shell.css 解析）', () => {
+  eq(SHELL_PAIRS.length, 5, '組合清單被刪減');
+  const bad = SHELL_PAIRS.map(([where, [fs, fp], [bs, bp], large]) => [where, contrastRatio(shellColor(fs, fp), shellColor(bs, bp)), large])
+    .filter(([, r, large]) => !passesAA(r, { large }))
+    .map(([where, r]) => `${where} = ${r.toFixed(2)}`);
+  eq(bad.join(' | '), '', '外殼對比不足');
+});
+
+test('外殼選中頁籤不是白字／海洋青（邊界：14px 粗體不算大字，3.3:1 過不了 4.5）', () => {
+  const bg = shellColor('#shell .sh-tab.is-active', 'background');
+  assert(bg !== T.teal, '選中頁籤底色仍是海洋青');
+  assert(!passesAA(contrastRatio(T.white, T.teal)) && passesAA(contrastRatio(T.white, bg)), '選中頁籤白字對比不足');
+});
+
+test('shellColor 解析本身有效：找不到的選擇器會丟錯，@media 裡的覆寫不會被誤當成主規則', () => {
+  let threw = false;
+  try { shellColor('.no-such-thing', 'color'); } catch { threw = true; }
+  assert(threw, '找不到選擇器時應丟錯，而不是回傳 undefined 讓比對空轉');
+  eq(shellColor('#shell .sh-tab.is-active', 'color'), T.white);
+});

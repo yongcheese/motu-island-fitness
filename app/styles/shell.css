@@ -206,8 +206,9 @@
   width: 0.375rem; height: 0.375rem; transform: translateX(-50%);
   border-radius: var(--motu-radius-pill); background: var(--motu-color-border);
 }
+/* Slice 8：選中頁籤的字是 14px 粗體，不算大字；白字／海洋青只有 3.3:1，改深青底（白字 5.3:1，與主按鈕同一組） */
 #shell .sh-tab.is-active {
-  background: var(--motu-color-primary); color: var(--motu-white); box-shadow: none;
+  background: var(--motu-color-primary-hover); color: var(--motu-white); box-shadow: none;
   clip-path: polygon(var(--sh-tab-cut) 0, calc(100% - var(--sh-tab-cut)) 0, 100% var(--sh-tab-cut), 100% 100%, 0 100%, 0 var(--sh-tab-cut));
 }
 #shell .sh-tab.is-active::before { background: var(--motu-white); }
@@ -278,3 +279,18 @@
   #shell .sh-tab:not(.is-active):hover .sh-tab-ico { transform: none; }
   #shell .sh-tab.is-active > * { animation: none; }
 }
+
+/* ============================================================
+   Slice 8：焦點外框。clip-path 會把元素自己的 outline 一起裁掉（實機：直欄按鈕、選中頁籤聚焦時完全看不到外框）。
+   ============================================================ */
+/* 浮在 3D 島嶼上的按鈕：海洋青外框疊在青綠色海面上幾乎看不見（實機 390 寬），
+   外框與元素之間補一圈白（box-shadow 填滿 outline-offset 的空隙），任何底色上都看得到。 */
+/* 直欄：外框改畫在沒有裁切的外層（按鈕＋標籤一起框） */
+#shell .sh-rail-item:has(> .sh-rail-btn:focus-visible) {
+  outline: 2px solid var(--motu-color-focus); outline-offset: 3px;
+  border-radius: var(--motu-radius-sm);
+  box-shadow: 0 0 0 3px var(--motu-white);
+}
+#shell :is(.sh-gift, .sh-wheel):focus-visible { box-shadow: var(--motu-shadow-md), 0 0 0 2px var(--motu-white); }
+/* 選中頁籤：外框往內縮進裁切範圍內；底色是深青，海洋青焦點色幾乎看不見，改白色（白／深青 5.3:1，非文字元素要求 3:1） */
+#shell .sh-tab.is-active:focus-visible { outline: 2px solid var(--motu-white); outline-offset: -6px; }

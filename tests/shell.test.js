@@ -63,7 +63,8 @@ test('shell: 左側直欄四個按鈕依序為建造、商店、背包、動作�
   const html = railHtml();
   eq(RAIL_ITEMS.map((r) => r.label).join(','), '建造,商店,背包,動作');
   const acts = [...html.matchAll(/data-act="([^"]+)" aria-label="([^"]+)"/g)].map((m) => `${m[1]}:${m[2]}`);
-  eq(acts.join(','), 'build:建造,shop:商店,bag:背包,emote:動作');
+  // Slice 8 需求變更（已在看板申報）：只擺樣子的三顆報讀名稱加註「即將推出」，建造是真的能用所以不加
+  eq(acts.join(','), 'build:建造,shop:商店（即將推出）,bag:背包（即將推出）,emote:動作（即將推出）');
 });
 
 test('shell: 右下有禮物與轉盤兩個按鈕', () => {
@@ -199,7 +200,8 @@ test('shell: 截圖造型的關鍵規則都在（斜角用 clip-path、虛線、
 test('shell: 轉盤圓盤是純裝飾（不含文字），名稱由按鈕 aria-label 提供', () => {
   const html = cornerHtml();
   assert(/<span class="sh-wheel-disc" aria-hidden="true"><\/span>/.test(html), `轉盤圓盤應為空的裝飾元素：${html}`);
-  assert(/data-act="wheel" aria-label="幸運轉盤"/.test(html), '轉盤按鈕應有報讀名稱');
+  // Slice 8 需求變更（已在看板申報）：轉盤只擺樣子，名稱加註「即將推出」
+  assert(/data-act="wheel" aria-label="幸運轉盤（即將推出）"/.test(html), '轉盤按鈕應有報讀名稱');
 });
 
 test('shell: 載入畫面沒有 emoji，改用 Lucide 圖示（邊界：去掉註解後仍掃得到 loader-logo 內容）', () => {
@@ -220,4 +222,60 @@ test('shell: 載入畫面的棕櫚樹路徑與 icons.js 的 Lucide tree-palm 逐
   const html = readFileSync(fileURLToPath(new URL('../index.html', import.meta.url)), 'utf8');
   const logo = html.match(/<div class="loader-logo">([\s\S]*?)<\/div>/)[1];
   assert(logo.includes(ICONS['tree-palm']), '載入畫面的 SVG 路徑應直接取自 ICONS["tree-palm"]');
+});
+
+// —— Slice 8：無障礙收尾 ——
+test('shell: 選中頁籤帶 aria-current="page"，且整列只出現一次', () => {
+  for (const cur of ['island', 'workout']) {
+    const html = tabbarHtml(TABS, cur);
+    eq((html.match(/aria-current="page"/g) || []).length, 1, `current=${cur} 應只有一個 aria-current`);
+    assert(new RegExp(`data-tab="${cur}"[^>]*aria-current="page"`).test(html), 'aria-current 要落在選中的那顆');
+  }
+});
+
+test('shell: 沒有選中分頁時不得出現 aria-current（邊界）', () => {
+  for (const cur of ['today', null, undefined, '']) {
+    assert(!tabbarHtml(TABS, cur).includes('aria-current'), `current=${JSON.stringify(cur)} 不應有 aria-current`);
+  }
+});
+
+test('shell: 只擺樣子的按鈕報讀名稱都含「即將推出」，能用的按鈕不含', () => {
+  const buttons = [tabbarHtml(TABS, 'island'), railHtml(), cornerHtml()].join('')
+    .match(/<button [^>]*>/g);
+  eq(buttons.length, 4 + 4 + 2, '外殼應有 10 顆按鈕');
+  const soonTabs = new Set(TABS.filter((t) => t.soon).map((t) => t.id));
+  const soonActs = new Set(['shop', 'bag', 'emote', 'gift', 'wheel']);
+  for (const b of buttons) {
+    const id = (b.match(/data-(?:tab|act)="([^"]+)"/) || [])[1];
+    const name = (b.match(/aria-label="([^"]*)"/) || [])[1] || '';
+    const soon = soonTabs.has(id) || soonActs.has(id);
+    eq(name.includes('即將推出'), soon, `${id} 的報讀名稱「${name}」與是否即將推出不符`);
+  }
+});
+
+test('shell: 即將推出的頁籤報讀名稱以看得到的文字開頭（語音操作說「追蹤」點得到）', () => {
+  const html = tabbarHtml(TABS, 'island');
+  for (const t of TABS.filter((x) => x.soon)) {
+    assert(new RegExp(`data-tab="${t.id}"[^>]*aria-label="${t.label}（即將推出）"`).test(html), `${t.id} 報讀名稱不對`);
+  }
+});
+
+test('shell: 直欄下方標籤不重複報讀（名稱已在按鈕上）', () => {
+  const labels = railHtml().match(/<span class="sh-rail-label"[^>]*>/g);
+  eq(labels.length, 4);
+  assert(labels.every((l) => l.includes('aria-hidden="true"')), '直欄標籤應 aria-hidden');
+});
+
+test('shell: 被 clip-path 裁形的按鈕另有看得到的焦點外框（邊界：clip-path 會把自己的 outline 一起裁掉）', () => {
+  const css = readFileSync(fileURLToPath(new URL('../app/styles/shell.css', import.meta.url)), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  const rule = (sel) => (css.match(new RegExp(`${sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`)) || [])[1] || '';
+  // 前提：這兩種按鈕確實用 clip-path 裁形（若之後拿掉 clip-path，這條測試要跟著重新評估）
+  assert(/clip-path/.test(rule('#shell .sh-rail-btn')) && /clip-path/.test(rule('#shell .sh-tab.is-active')), '前提改變：按鈕已不用 clip-path');
+  const rail = rule('#shell .sh-rail-item:has(> .sh-rail-btn:focus-visible)');
+  assert(/outline:\s*2px solid var\(--motu-color-focus\)/.test(rail), '直欄聚焦時外層要有焦點外框');
+  assert(/box-shadow:[^;]*var\(--motu-white\)/.test(rail), '直欄外框要有白色內圈（海面上才看得到）');
+  const tab = rule('#shell .sh-tab.is-active:focus-visible');
+  assert(/outline:\s*2px solid var\(--motu-white\)/.test(tab) && /outline-offset:\s*-\d+px/.test(tab), '選中頁籤的焦點外框要內縮到裁切範圍內');
+  assert(/box-shadow:[^;]*var\(--motu-white\)/.test(rule('#shell :is(.sh-gift, .sh-wheel):focus-visible')), '禮物、轉盤外框要有白色內圈');
 });

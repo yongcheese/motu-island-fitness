@@ -5,6 +5,7 @@
    全部是純函式：吃資料、回 HTML 字串，不碰 DOM —— 方便在 node 測試，
    也方便遊戲組原始碼到了之後整支換掉。
    Slice 3：帳號卡改吃真實 state（accountFromState）、圖示改用 Slice 2 的正式名稱。
+   Slice 8：選中頁籤標 aria-current="page"；只擺樣子的按鈕報讀名稱註明「即將推出」。
    ============================================================ */
 import { ICONS, icon } from './icons.js';
 
@@ -20,16 +21,19 @@ function glyph(name, fallback, size) {
   return `<span class="sh-ph" aria-hidden="true">${esc(fallback)}</span>`;
 }
 
-/** 左側直欄的四個按鈕（由上而下，照截圖順序） */
+/** 左側直欄的四個按鈕（由上而下，照截圖順序）；soon＝只擺樣子，按下只跳提示 */
 export const RAIL_ITEMS = [
   { id: 'build', label: '建造', icon: 'hammer' },
-  { id: 'shop', label: '商店', icon: 'shopping-bag' },
-  { id: 'bag', label: '背包', icon: 'backpack' },
-  { id: 'emote', label: '動作', icon: 'face-slightly-smiling' },
+  { id: 'shop', label: '商店', icon: 'shopping-bag', soon: true },
+  { id: 'bag', label: '背包', icon: 'backpack', soon: true },
+  { id: 'emote', label: '動作', icon: 'face-slightly-smiling', soon: true },
 ];
 
 /** 不做的按鈕（分頁、直欄、右下）按下時的統一提示文字 */
 export const SOON_MESSAGE = '即將推出';
+
+/** 報讀名稱：只擺樣子的按鈕加註「即將推出」，名稱開頭仍是看得到的文字（語音操作說「追蹤」也點得到） */
+const a11yName = (label, soon) => (soon ? `${label}（${SOON_MESSAGE}）` : label);
 
 /**
  * 把 store 的完整 state 收斂成帳號卡要的三個欄位（Slice 3）。
@@ -57,7 +61,8 @@ export function accountFromState(s) {
 export function tabbarHtml(tabs, current) {
   return tabs.map((t) => {
     const active = t.id === current;
-    return `<button type="button" class="sh-tab${active ? ' is-active' : ''}" data-tab="${esc(t.id)}"${t.soon ? ' data-soon="1"' : ''}>`
+    return `<button type="button" class="sh-tab${active ? ' is-active' : ''}" data-tab="${esc(t.id)}"${t.soon ? ' data-soon="1"' : ''}`
+      + `${active ? ' aria-current="page"' : ''}${t.soon ? ` aria-label="${esc(a11yName(t.label, true))}"` : ''}>`
       + `<span class="sh-tab-ico">${glyph(t.icon, t.label.slice(0, 1), 24)}</span>`
       + `<span class="sh-tab-label">${esc(t.label)}</span></button>`;
   }).join('');
@@ -75,11 +80,11 @@ export function accountCardHtml(state) {
     + `<span class="sh-coin-num">${esc(state.coins)}</span></div>`;
 }
 
-/** 左側直欄：四個按鈕＋下方小標籤 */
+/** 左側直欄：四個按鈕＋下方小標籤（標籤 aria-hidden：名稱已在按鈕上，避免報讀兩次） */
 export function railHtml() {
   return RAIL_ITEMS.map((r) => `<div class="sh-rail-item">`
-    + `<button type="button" class="sh-rail-btn" data-act="${r.id}" aria-label="${esc(r.label)}">${glyph(r.icon, r.label.slice(0, 1), 24)}</button>`
-    + `<span class="sh-rail-label">${esc(r.label)}</span></div>`).join('');
+    + `<button type="button" class="sh-rail-btn" data-act="${r.id}" aria-label="${esc(a11yName(r.label, r.soon))}">${glyph(r.icon, r.label.slice(0, 1), 24)}</button>`
+    + `<span class="sh-rail-label" aria-hidden="true">${esc(r.label)}</span></div>`).join('');
 }
 
 /**
@@ -87,6 +92,6 @@ export function railHtml() {
  * Slice 6：轉盤改成純 CSS 彩色圓盤（conic-gradient），圓盤本身是裝飾，名稱由按鈕的 aria-label 提供。
  */
 export function cornerHtml() {
-  return `<button type="button" class="sh-gift" data-act="gift" aria-label="禮物">${glyph('gift', '禮', 24)}</button>`
-    + `<button type="button" class="sh-wheel" data-act="wheel" aria-label="幸運轉盤"><span class="sh-wheel-disc" aria-hidden="true"></span></button>`;
+  return `<button type="button" class="sh-gift" data-act="gift" aria-label="${a11yName('禮物', true)}">${glyph('gift', '禮', 24)}</button>`
+    + `<button type="button" class="sh-wheel" data-act="wheel" aria-label="${a11yName('幸運轉盤', true)}"><span class="sh-wheel-disc" aria-hidden="true"></span></button>`;
 }
