@@ -452,27 +452,52 @@
 /* 取景檢查關卡：純視覺遮罩（pointer-events:none 點擊全穿透，退出鈕永遠可按） */
 .lv-gate {
   position: absolute; inset: 0; z-index: 4; pointer-events: none;
-  display: grid; place-items: center; text-align: center;
+  display: flex; justify-content: center; text-align: center;
+  /* Slice 12：上方讓出左上資訊卡、下方讓出數據列與控制鈕，中間的人形框自動伸縮 —— 任何螢幕都不互相壓到 */
+  padding: calc(env(safe-area-inset-top) + 24px) 16px 170px;
   background: color-mix(in srgb, var(--motu-navy-dark) 22%, transparent);   /* 輕遮罩：使用者要看得到自己 */
 }
-.lv-gate-inner { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 24px; max-width: 480px; }
-.lv-gate-t { display: inline-flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 900; color: var(--motu-color-text);
+.lv-gate-inner { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; height: 100%; width: 100%; max-width: 480px; }
+.lv-gate-t { flex: none; display: inline-flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 900; color: var(--motu-color-text);
   padding: 10px 20px; border-radius: var(--motu-radius-pill); background: var(--lv-hud-bg); box-shadow: var(--motu-shadow-md); }
 .lv-gate-frame {
-  width: min(46vw, 210px); height: min(60vh, 340px);
+  flex: 1 1 auto; width: min(46vw, 210px); min-height: 48px; max-height: 340px;
   border: 3px dashed var(--motu-white); border-radius: 110px 110px 26px 26px;
   filter: drop-shadow(0 0 2px var(--motu-navy-dark));
 }
-.lv-gate-checks { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-.lv-gate-chk {
-  padding: 6px 14px; border-radius: 99px; font-size: 13px; font-weight: 700;
-  background: var(--motu-color-surface); border: 2px solid var(--motu-color-border); color: var(--motu-color-text-muted); box-shadow: var(--motu-shadow-sm);
+@media (max-width: 620px) {
+  .lv-gate { padding: calc(env(safe-area-inset-top) + 142px) 12px 150px; }
+  .lv-gate-inner { gap: 10px; }
+  .lv-gate-t { font-size: 16px; padding: 8px 16px; }
+  .lv-gate-panel { padding: 12px 14px; gap: 10px; }
 }
-/* Slice3 P1：取景已偵測=藍，非訓練綠。合體後藍只放外框與淡底，字用深藍 */
-.lv-gate-chk.ok { color: var(--motu-color-text); border-color: var(--frame-ok); background: color-mix(in srgb, var(--frame-ok) 16%, var(--motu-white)); }
-.lv-gate-s { color: var(--motu-color-text); font-size: 13px; font-weight: 700; padding: 6px 14px; border-radius: var(--motu-radius-pill); background: var(--lv-hud-bg); }
+/* Slice 12：取景期間隱藏深度量表（見 waitForFraming） */
+.lv-wrap.is-gating .lv-gauge { display: none; }
+/* Slice 12：狀態卡 —— 上半只有狀態（不可按），虛線下才是唯一的操作 */
+.lv-gate-panel { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 12px; width: min(100%, 440px); padding: 16px 18px;
+  background: var(--lv-hud-bg); border: 1px solid var(--motu-color-border); border-radius: var(--motu-radius-lg); box-shadow: var(--motu-shadow-md); }
+/* 檢查清單：圓圈＋部位名的清單項目，不是膠囊（膠囊在這個 App 裡代表按鈕） */
+.lv-gate-checks { display: flex; gap: 6px 16px; flex-wrap: wrap; justify-content: center; list-style: none; margin: 0; padding: 0; }
+.lv-gate-chk { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; color: var(--motu-color-text-muted); }
+.lv-gate-chk::before { content: ''; display: grid; place-items: center; width: 18px; height: 18px; box-sizing: border-box; border-radius: 50%;
+  border: 2px solid var(--motu-color-border); background: var(--motu-white); font-size: 12px; font-weight: 900; line-height: 1; color: var(--motu-white);
+  transition: background-color var(--motu-duration-fast) var(--motu-ease-standard), border-color var(--motu-duration-fast) var(--motu-ease-standard); }
+/* Slice3 P1：取景已偵測=藍，非訓練綠。藍只當填色，字用深藍 */
+.lv-gate-chk.ok { color: var(--motu-color-text); }
+.lv-gate-chk.ok::before { content: '✓'; background: var(--frame-ok); border-color: var(--frame-ok); }
+.lv-gate-s { color: var(--motu-color-text); font-size: 14px; font-weight: 700; line-height: 1.5; }
+.lv-gate-s b { font-weight: 900; }
+.lv-gate-bar { height: 6px; border-radius: 3px; background: var(--motu-color-border); overflow: hidden; }
+.lv-gate-bar i { display: block; height: 100%; width: 0; background: var(--frame-ok); border-radius: inherit; }
 /* Slice3 修復 F1：逃生鈕（10 秒後現身）；.lv-gate 為 pointer-events:none，鈕須自行開啟可點 */
-.lv-gate-skip { pointer-events: auto; margin-top: 4px; }
+.lv-gate-alt { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 2px 8px; padding-top: 12px;
+  border-top: 2px dashed var(--motu-color-border); font-size: 13px; color: var(--motu-color-text-muted); font-weight: 700; }
+.lv-gate-alt[hidden] { display: none; }
+.lv-gate-alt small { flex-basis: 100%; font-size: 12px; font-weight: 600; }
+/* 次要文字鈕：底線＋深青字，一看就是「可以點的連結」但不搶主訊息；觸控區仍 ≥44px */
+.lv-gate-skip { pointer-events: auto; min-height: 44px; padding: 0 4px; background: none; border: 0; cursor: pointer;
+  font: inherit; font-size: 14px; font-weight: 800; color: var(--motu-teal-dark); text-decoration: underline; text-underline-offset: 3px; }
+.lv-gate-skip:focus-visible { outline: 2px solid var(--motu-color-focus); outline-offset: 2px; border-radius: 4px; }
 
 /* 組間休息卡：卡片本體可互動（含跳過鈕）、置中不覆蓋頂欄 */
 .lv-rest {

@@ -575,16 +575,23 @@ function waitForFraming(run) {
     };
     // 依 spec 動態填充檢查燈（R1 靜態三列僅預設殼）
     const checksWrap = gate.querySelector('.lv-gate-checks');
-    if (checksWrap) checksWrap.innerHTML = labels.map(l => `<span class="lv-gate-chk">○ ${l}</span>`).join('');
+    if (checksWrap) checksWrap.innerHTML = labels.map(l => `<li class="lv-gate-chk">${l}</li>`).join('');
     const checks = [...gate.querySelectorAll('.lv-gate-chk')];
     const skip = gate.querySelector('.lv-gate-skip');
-    if (skip) { skip.hidden = true; skip.onclick = () => { if (live !== run) return; run.skipGate = true; }; }
+    const alt = gate.querySelector('.lv-gate-alt');            // Slice 12：跳過鈕連同說明文字一起現身
+    const bar = gate.querySelector('.lv-gate-bar i');          // Slice 12：「保持 2 秒」的進度
+    if (alt) alt.hidden = true;
+    if (bar) bar.style.width = '0%';
+    if (skip) skip.onclick = () => { if (live !== run) return; run.skipGate = true; };
     gate.hidden = false;
     if (live?.hud?.next) { live.hud.next.hidden = true; live.hud.next.textContent = ''; }   // 關卡期間不顯示動作指引，避免疊字
     run.skipGate = false;
     if (run.voice) CTX.coach.say('請站進畫面中，讓我看到全身', 'high');
     let readyMs = 0, gateMs = 0, last = performance.now();
-    const done = (ok) => { try { gate.hidden = true; } catch { } resolve({ ok }); };
+    // Slice 12：取景期間深度量表沒有意義，還會在小螢幕蓋到狀態卡 → 關卡期間隱藏
+    const wrap = root?.querySelector('#lv-wrap');
+    wrap?.classList.add('is-gating');
+    const done = (ok) => { try { gate.hidden = true; wrap?.classList.remove('is-gating'); } catch { } resolve({ ok }); };
     const tick = (now) => {
       if (live !== run) return done(false);   // 檢查點 #8
       if (run.skipGate) return done(true);    // 逃生口：只由本 tick 消費（互審 #3）
@@ -614,7 +621,7 @@ function waitForFraming(run) {
         const settled = report.ok && stab.stable;
         const rows = [...st.rows, settled];
         const allOk = rows.every(Boolean);
-        checks.forEach((el, i) => { el.classList.toggle('ok', rows[i]); el.textContent = `${rows[i] ? '✓' : '○'} ${labels[i]}`; });
+        checks.forEach((el, i) => el.classList.toggle('ok', rows[i]));   // 勾選符號由 CSS 畫，文字只放部位名
         if (live.hud) {
           const miss = groups.filter((g, i) => !st.rows[i]).map(g => g.label);
           // 取景專屬 state（不沿用訓練共用的 ok/seek/warn）：frame-ok 青／frame-adjust 橘／frame-wait 灰
@@ -639,9 +646,10 @@ function waitForFraming(run) {
           }
         }
         readyMs = allOk ? readyMs + dt : 0;
+        if (bar) bar.style.width = Math.min(100, readyMs / 20) + '%';
         if (readyMs >= 2000) return done(true);
-        if (skip && skip.hidden && gateMs >= 10000) skip.hidden = false;   // 逃生鈕 10 秒現身
-      } else { readyMs = 0; }   // 暫停凍結且歸零
+        if (alt && alt.hidden && gateMs >= 10000) alt.hidden = false;   // 逃生鈕 10 秒現身
+      } else { readyMs = 0; if (bar) bar.style.width = '0%'; }   // 暫停凍結且歸零
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -688,17 +696,26 @@ function cameraErrorMsg(err) {
 /* ---------------- Live 版型元件（Slice3 R2：純模板，吃資料回字串；接線歸 R3） ---------------- */
 // 取景檢查關卡（R3 接 gateLandmarks 後由 framingReady 驅動檢查燈；R2 為 R1 靜態內容原樣）
 function gateHtml() {
+  // Slice 12：原本「提示字」「檢查項」「跳過鈕」都是同一種白色膠囊，使用者分不出哪個是狀態、哪個要按。
+  // 改成一張狀態卡：上半是狀態（檢查清單＋2 秒進度條，都不可按），分隔線下才是唯一的操作（附後果說明的次要文字鈕）。
   return `<div class="lv-gate" id="lv-gate" hidden>
         <div class="lv-gate-inner">
           <div class="lv-gate-t">${icon('eye', { size: 24 })} 站進畫面中，讓 AI 看見你</div>
           <div class="lv-gate-frame"></div>
-          <div class="lv-gate-checks">
-            <span class="lv-gate-chk ok">✓ 肩膀</span>
-            <span class="lv-gate-chk ok">✓ 髖部</span>
-            <span class="lv-gate-chk">○ 膝蓋</span>
+          <div class="lv-gate-panel" role="status">
+            <ul class="lv-gate-checks" aria-label="取景檢查">
+              <li class="lv-gate-chk ok">肩膀</li>
+              <li class="lv-gate-chk ok">髖部</li>
+              <li class="lv-gate-chk">膝蓋</li>
+            </ul>
+            <div class="lv-gate-s">全部打勾並站穩 2 秒，就會<b>自動開始</b></div>
+            <div class="lv-gate-bar" aria-hidden="true"><i></i></div>
+            <div class="lv-gate-alt" hidden>
+              <span>偵測一直過不了？</span>
+              <button class="lv-gate-skip" type="button">跳過檢查，直接開始</button>
+              <small>跳過後計次可能不準</small>
+            </div>
           </div>
-          <div class="lv-gate-s">全部亮起並保持 2 秒，訓練自動開始</div>
-          <button class="btn secondary lv-gate-skip" type="button" hidden>跳過檢查，直接開始 ›</button>
         </div>
       </div>`;
 }

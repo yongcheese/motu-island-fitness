@@ -45,3 +45,35 @@ test('Slice 11：結束鈕仍是可聚焦、≥44px 的按鈕，有 aria-label',
   assert(/<button class="lv-exit" id="lv-exit" type="button" aria-label="[^"]+"/.test(head), '結束鈕缺 type／aria-label');
   assert(/min-height:\s*44px/.test(rule('.lv-wrap .lv-exit') || ''), '結束鈕小於 44px');
 });
+
+/* ---------- Slice 12：取景關卡 ---------- */
+const gate = js.slice(js.indexOf('function gateHtml()'), js.indexOf('// 組間休息卡'));
+
+test('Slice 12：跳過鈕只在「偵測一直過不了？」說明區塊裡，且附後果說明', () => {
+  const alt = gate.slice(gate.indexOf('class="lv-gate-alt"'));
+  assert(gate.includes('class="lv-gate-alt" hidden'), '說明區塊預設要隱藏');
+  assert(alt.includes('偵測一直過不了') && alt.includes('lv-gate-skip') && alt.includes('計次可能不準'), '缺說明或後果');
+});
+
+test('Slice 12：跳過鈕是次要文字鈕（沒有 .btn 膠囊造型），觸控區 ≥44px', () => {
+  assert(!/class="[^"]*\bbtn\b[^"]*lv-gate-skip/.test(gate) && !/lv-gate-skip[^"]*\bbtn\b/.test(gate), '跳過鈕仍套 .btn');
+  const r = rule('.lv-gate-skip');
+  assert(r && r.includes('background: none') && r.includes('text-decoration: underline') && /min-height:\s*44px/.test(r), r);
+});
+
+test('Slice 12：主訊息講清楚「會自動開始」，檢查項是清單不是膠囊', () => {
+  assert(gate.includes('自動開始'), '缺自動開始說明');
+  assert(gate.includes('<ul class="lv-gate-checks"') && gate.includes('<li class="lv-gate-chk'), '檢查項不是清單');
+  const r = rule('.lv-gate-chk');
+  assert(r && !r.includes('border:') && !r.includes('box-shadow:') && !r.includes('padding:'), '檢查項仍是膠囊');
+});
+
+test('Slice 12：10 秒後現身的是整個說明區塊；保持 2 秒有進度條', () => {
+  assert(/alt\.hidden && gateMs >= 10000\) alt\.hidden = false/.test(js), '10 秒現身邏輯沒接到 .lv-gate-alt');
+  assert(/bar\.style\.width = Math\.min\(100, readyMs \/ 20\)/.test(js), '進度條沒跟 readyMs 連動');
+});
+
+test('Slice 12：取景期間隱藏深度量表，結束關卡時移除', () => {
+  assert(js.includes(`wrap?.classList.add('is-gating')`) && js.includes(`wrap?.classList.remove('is-gating')`), 'is-gating 未成對');
+  assert(css.includes('.lv-wrap.is-gating .lv-gauge { display: none; }'), '缺 CSS');
+});
