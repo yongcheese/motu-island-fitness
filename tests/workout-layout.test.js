@@ -77,3 +77,59 @@ test('Slice 12：取景期間隱藏深度量表，結束關卡時移除', () => 
   assert(js.includes(`wrap?.classList.add('is-gating')`) && js.includes(`wrap?.classList.remove('is-gating')`), 'is-gating 未成對');
   assert(css.includes('.lv-wrap.is-gating .lv-gauge { display: none; }'), '缺 CSS');
 });
+
+/* ---------- Slice 13：結算頁 ---------- */
+import { gradeInfo } from '../app/features/workout/workout.js';
+import { grade as coreGrade } from '../app/core/rewards.js';
+
+test('Slice 13：gradeInfo 說清楚「評等怎麼來、到多少升級」', () => {
+  const c = gradeInfo('C', 0, 3);
+  assert(c.name === '再加油' && c.rate === 0 && c.hint.includes('60%') && c.hint.includes('B'), JSON.stringify(c));
+  const a = gradeInfo('A', 8, 2);
+  assert(a.rate === 80 && a.hint.includes('90%') && a.hint.includes('S'), JSON.stringify(a));
+  const s = gradeInfo('S', 10, 0);
+  assert(s.hint.includes('最高'), JSON.stringify(s));
+});
+
+test('Slice 13：沒有任何動作時達標率是 null（畫面顯示 —），不是 0%', () => {
+  const g = gradeInfo('C', 0, 0);
+  assert(g.rate === null && g.hint.includes('沒有偵測到'), JSON.stringify(g));
+});
+
+test('Slice 13：顯示的達標率與評等永遠一致（對照 core/rewards.js 的 grade，0–40 下全組合）', () => {
+  const min = { C: 0, B: 60, A: 75, S: 90 }, order = ['C', 'B', 'A', 'S'];
+  for (let t = 1; t <= 40; t++) for (let v = 0; v <= t; v++) {
+    const r = v / t, g = coreGrade({ targetRate: r, validRate: r });
+    const gi = gradeInfo(g, v, t - v);
+    const next = order[order.indexOf(g) + 1];
+    assert(gi.rate >= min[g] && (!next || gi.rate < min[next]), `${v}/${t}：顯示 ${gi.rate}% 卻是 ${g}`);
+  }
+});
+
+const sum = js.slice(js.indexOf('function renderResult('), js.indexOf('/* 彩帶（Slice 13）'));
+
+test('Slice 13：評等字母一定配「評等」字樣與白話名稱；沒有動作時不打評等', () => {
+  assert(/<span class="wk-sum-grade-k">評等<\/span>\s*<b>\$\{gi\.grade\}<\/b>\s*<span class="wk-sum-grade-n">\$\{gi\.name\}<\/span>/.test(sum), '評等章結構不對');
+  assert(sum.includes('${total ? `<div class="wk-sum-grade"'), '0 下時仍會顯示評等');
+  assert(!js.includes('wk-grade-ring'), '舊的單獨字母圓環還在');
+});
+
+test('Slice 13：結算與獎勵合成一頁，不再有「領取獎勵」這一步（金幣在結束時已入帳）', () => {
+  assert(!/領取獎勵[^」]*<\/button>/.test(js) && !js.includes('id="wk-done"') && !js.includes('function renderReward'), '還有領取獎勵頁');
+  for (const k of ['wk-sum-hero', 'wk-sum-reward', 'wk-sum-notes', 'id="wk-rw-num"', 'id="wk-rw-island"', 'gameResourceCard(session)']) assert(sum.includes(k), `結算頁缺 ${k}`);
+});
+
+test('Slice 13：彩帶只在有有效次數時放，且尊重減少動態、不擋操作', () => {
+  assert(/if \(summary\.validReps > 0\) launchConfetti\(\)/.test(sum), '彩帶觸發條件不對');
+  const fn = js.slice(js.indexOf('function launchConfetti()'), js.indexOf('function launchConfetti()') + 400);
+  assert(fn.includes('if (reducedMotion()'), '彩帶沒檢查減少動態');
+  assert(/\.wk-confetti \{[^}]*pointer-events: none/.test(css), '彩帶會擋點擊');
+  assert(/prefers-reduced-motion[\s\S]*\.wk-confetti \{ display: none; \}/.test(css), 'CSS 減少動態沒關彩帶');
+});
+
+test('Slice 13 審查修正：rwClear 會移除掛在 body 的彩帶與飛行金幣（切頁、鍵盤操作都會走到）', () => {
+  const fn = js.slice(js.indexOf('function rwClear()'), js.indexOf('function rwClear()') + 500);
+  assert(fn.includes(`querySelectorAll('.wk-coin-fly, .wk-confetti')`) && fn.includes('.remove()'), fn);
+  assert(/unmount\(\) \{[^}]*rwClear\(\)/.test(js), 'unmount 沒呼叫 rwClear');
+  assert(!/#[0-9A-Fa-f]{6}/.test(js.slice(js.indexOf('function launchConfetti()'), js.indexOf('function launchConfetti()') + 2500)), '彩帶有寫死色碼');
+});

@@ -81,9 +81,9 @@ export default {
   id: 'workout', label: '訓練', icon: 'dumbbell',   // 分頁列實際讀 main.js 的 TABS，這裡只是 Lucide 名稱註記
   mount(el, ctx) { CTX = ctx; root = el; renderMenu(); },
   unmount() { stopLive(); cancelAnimationFrame(demoRaf); disposeIntroAv(); stopCardAnims(); disposeCardAv();
-    // 獎勵儀式的 timer 與飛在 body 上的金幣都要清 —— 它們掛在 document.body，
-    // 不會隨 #view.innerHTML 一起消失，切頁後會變成畫面上擦不掉的殘影。
-    rwClear(); document.querySelectorAll('.wk-coin-fly').forEach(el => el.remove());
+    // 獎勵儀式的 timer 與掛在 body 上的金幣、彩帶都要清 —— 它們不會隨 #view.innerHTML 一起消失，
+    // 切頁後會變成畫面上擦不掉的殘影。rwClear 一併處理（Slice 13）。
+    rwClear();
     CTX?.setChrome(true); },
 };
 
@@ -1332,46 +1332,214 @@ function finishLive() {
   if (wasVoice) CTX.coach.say('這組完成，做得很好！', 'high');
 }
 
+/* ---------------- 結算（Slice 13：一頁看懂） ----------------
+   以前是兩頁：六格數字平鋪的結算頁 →「領取獎勵 ›」→ 獎勵頁。問題：
+   ① 六格一樣大，看不出重點；② 中間一個大「C」沒有任何說明；③「領取獎勵」暗示金幣還沒拿到，
+      但 store 早在 finishLive 就入帳了。
+   現在一頁由上而下回答三個問題：做得怎麼樣（有效次數＋達標率＋評等說明）→ 拿到什麼（金幣／經驗／島嶼進度）
+   → 下次怎麼更好（沒算到的原因）。版型語言沿用遊戲組商店頁：青色方形圖示標頭、白卡、虛線分隔、金幣膠囊。 */
+const GRADE_INFO = {
+  S: { name: '完美', min: 90 },
+  A: { name: '很棒', min: 75 },
+  B: { name: '不錯', min: 60 },
+  C: { name: '再加油', min: 0 },
+};
+const GRADE_ORDER = ['C', 'B', 'A', 'S'];
+/** 評等的白話說明（純函式）。評等只由達標率決定（見 core/rewards.js grade 與 store.commitSession），
+ *  所以直接講「達標率多少 → 哪一級、到多少可以升級」。 */
+export function gradeInfo(grade, validReps, invalidReps) {
+  const g = GRADE_INFO[grade] ? grade : 'C';
+  const total = (validReps || 0) + (invalidReps || 0);
+  // 用無條件捨去：評等門檻是「≥」，四捨五入會出現「顯示 75% 卻是 B」。
+  // 先乘 100 再除：v/t*100 會有浮點誤差（0.29*100 = 28.999…），捨去後少 1%
+  const rate = total ? Math.floor(validReps * 100 / total) : null;
+  const next = GRADE_ORDER[GRADE_ORDER.indexOf(g) + 1];
+  let hint;
+  if (rate == null) hint = '這次沒有偵測到完整的動作';
+  else if (!next) hint = '最高評等！每一下幾乎都做到位';
+  else hint = `達標率到 ${GRADE_INFO[next].min}% 就是 ${next} 級`;
+  return { grade: g, name: GRADE_INFO[g].name, rate, hint };
+}
+
+/** 達標率圓環（SVG）。rate 為 null 時畫空環、中間顯示「—」。 */
+function rateRing(rate) {
+  const R = 52, C = 2 * Math.PI * R;
+  const k = rate == null ? 0 : Math.max(0, Math.min(100, rate)) / 100;
+  return `<div class="wk-sum-ring" role="img" aria-label="達標率 ${rate == null ? '無資料' : rate + '%'}">
+      <svg viewBox="0 0 120 120" aria-hidden="true">
+        <circle cx="60" cy="60" r="${R}" class="bg"/>
+        <circle cx="60" cy="60" r="${R}" class="fg" style="stroke-dasharray:${C.toFixed(1)};stroke-dashoffset:${(C * (1 - k)).toFixed(1)}"/>
+      </svg>
+      <div class="wk-sum-ring-v"><b>${rate == null ? '—' : rate + '<small>%</small>'}</b><span>達標率</span></div>
+    </div>`;
+}
+
 function renderResult(ex, summary, session) {
   CTX.setChrome(true);
+  rwClear();
+  const s = CTX.store.getState();
+  const gi = gradeInfo(session.grade, summary.validReps, summary.invalidReps);
   const total = summary.validReps + summary.invalidReps;
-  const tr = total ? Math.round(summary.validReps / total * 100) : 0;
-  const faults = Object.entries(session.faults || {}).sort((a, b) => b[1] - a[1]).slice(0, 3);
-  // advisory：不影響有效次數，但值得提醒的姿勢問題。與「常見問題」分開呈現 ——
+  const faults = Object.entries(session.faults || {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  // advisory：不影響有效次數，但值得提醒的姿勢問題。與「沒算到的原因」分開呈現 ——
   // 混在一起會讓使用者以為這些是被扣次數的原因。
-  const advisories = Object.entries(summary.advisoryCounts || {}).sort((a, b) => b[1] - a[1]);
-  // 評級色改由 Motu 色票對應，只用在外框與淡底；字母本身一律深藍（金／藍放在白底上對比不足）
-  const gColor = { S: 'var(--motu-gold)', A: 'var(--motu-teal)', B: 'var(--motu-color-info)', C: 'var(--motu-navy-soft)' }[session.grade];
+  const advisories = Object.entries(summary.advisoryCounts || {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  const xp = CTX.store.derived.xpProgress();
+  const ratio = Math.max(0, Math.min(1, xp.ratio || 0));   // clamp 防異常值破版
+  const xpGain = session.xpGain ?? session.validReps * 5;   // ?? 僅為舊存檔的 history 相容
+  const empty = session.coinsEarned === 0;
+  // 這次訓練「之前」的金幣：store 已 commit，所以要往回推才知道進度條該從哪裡長起來。
+  const prevCoins = Math.max(0, s.wallet.coins - session.coinsEarned);
+  const goal = nextGoal(s);
+  const cost = goal.kind === 'save' ? goal.item.cost : 0;
+  const pctOf = (c) => (cost > 0 ? Math.max(0, Math.min(100, Math.round(c / cost * 100))) : 100);
+  const row = ([f, n]) => `<li><span>${faultName(f)}</span><span class="wk-sum-n">${n} 次</span></li>`;
+
   root.innerHTML = `
-    <div class="fade-in wk-result">
-      <div class="wk-grade" style="--gc:${gColor}">
-        <div class="wk-grade-ring">${session.grade}</div>
-        <div class="wk-grade-t">訓練完成！</div>
-        <div class="wk-grade-s">${ex.name} · ${fmtTime(session.durationSec)}</div>
-      </div>
-      <div class="wk-res-grid stagger">
-        ${resCell('coins', '獲得金幣', '+' + session.coinsEarned, 'gold')}
-        ${resCell('circle-check', '有效次數', summary.validReps)}
-        ${resCell('triangle-alert', '無效次數', summary.invalidReps)}
-        ${resCell('target', '達標率', tr + '%')}
-        ${resCell('clipboard-list', '主要問題', topFaultLabel(session.faults))}
-        ${resCell('timer', '時長', fmtTime(session.durationSec))}
-      </div>
-      ${faults.length ? `<div class="wk-faults card">
-        <div class="wk-judge-t">常見問題</div>
-        ${faults.map(([f, n]) => `<div class="wk-fault-row"><span>${faultName(f)}</span><span class="pill">${n} 次</span></div>`).join('')}
-      </div>` : `<div class="wk-faults card"><div class="wk-judge-t">${icon('award')} 動作品質很棒，沒有明顯錯誤！</div></div>`}
-      ${advisories.length ? `<div class="wk-faults card wk-advis">
-        <div class="wk-judge-t">${icon('lightbulb')} 可以更好（不影響有效次數）</div>
-        ${advisories.map(([f, n]) => `<div class="wk-fault-row"><span>${faultName(f)}</span><span class="pill">${n} 次</span></div>`).join('')}
-      </div>` : ''}
+    <div class="fade-in wk-sum stagger">
+      <header class="card wk-sum-head">
+        <span class="wk-sum-badge">${icon(total ? 'party-popper' : 'biceps-flexed', { size: 28 })}</span>
+        <div class="wk-sum-title">
+          <h1>${total ? '訓練完成！' : '這次沒有完成動作'}</h1>
+          <p>${ex.name} · ${fmtTime(session.durationSec)}</p>
+        </div>
+        ${total ? `<div class="wk-sum-grade" data-g="${gi.grade}" title="評等由達標率決定">
+          <span class="wk-sum-grade-k">評等</span>
+          <b>${gi.grade}</b>
+          <span class="wk-sum-grade-n">${gi.name}</span>
+        </div>` : ''}
+      </header>
+
+      <section class="card wk-sum-hero" aria-label="這次的表現">
+        ${rateRing(gi.rate)}
+        <div class="wk-sum-main">
+          <div class="wk-sum-big"><b id="wk-sum-valid">${summary.validReps}</b> 下有效</div>
+          <div class="wk-sum-sub">共做 ${total} 下 · ${summary.invalidReps} 下沒算到</div>
+          <p class="wk-sum-hint">${icon('target', { size: 16 })} ${gi.hint}</p>
+        </div>
+      </section>
+
+      <section class="card wk-sum-reward" aria-label="獲得獎勵">
+        <div class="wk-sum-sec-t">這次拿到</div>
+        <div class="wk-sum-gains">
+          <div class="wk-sum-gain coin${empty ? ' zero' : ''}">
+            <span class="ico">${icon('coins', { size: 24, label: '金幣' })}</span>
+            <div><b class="wk-rw-coins">+<span id="wk-rw-num">0</span></b><span>金幣${session.coinBoostApplied ? '（雙倍卡）' : ''}</span></div>
+          </div>
+          <div class="wk-sum-gain xp">
+            <span class="ico">${icon('star', { size: 24 })}</span>
+            <div><b>+${xpGain}</b><span>經驗 · Lv.${s.wallet.level}</span></div>
+          </div>
+        </div>
+        <div class="wk-sum-xpbar" role="img" aria-label="升級進度 ${Math.round(ratio * 100)}%"><i style="width:${Math.round(ratio * 100)}%"></i></div>
+        <div class="wk-sum-xp-s">再 ${Math.max(0, xp.need - xp.cur)} XP 升到 Lv.${s.wallet.level + 1}</div>
+        ${gameResourceCard(session)}
+        <div class="wk-rw-island" id="wk-rw-island">
+          <div>${empty ? `${icon('house', { size: 16 })} 已建 <b>${s.island.placed.length}</b> 棟 · 只有有效動作才換得到金幣` : rewardIslandLine(s)}</div>
+          ${!empty && cost > 0 ? `
+          <div class="wk-rw-goalbar" role="img" aria-label="距下一個目標的存款進度">
+            <i id="wk-rw-goalfill" style="width:${pctOf(prevCoins)}%"></i>
+          </div>` : ''}
+        </div>
+      </section>
+
+      <section class="card wk-sum-notes" aria-label="下次怎麼更好">
+        ${faults.length ? `
+        <div class="wk-sum-sec-t">${icon('triangle-alert', { size: 16 })} 沒算到的原因</div>
+        <ul class="wk-sum-list">${faults.map(row).join('')}</ul>` : total ? `
+        <div class="wk-sum-sec-t good">${icon('award', { size: 16 })} 每一下都算數，沒有被判無效的動作</div>` : `
+        <div class="wk-sum-sec-t">${icon('lightbulb', { size: 16 })} 下次請全身入鏡，完整做完一下才會開始計次</div>`}
+        ${advisories.length ? `
+        <div class="wk-sum-sec-t advis">${icon('lightbulb', { size: 16 })} 可以更好（不影響次數）</div>
+        <ul class="wk-sum-list">${advisories.map(row).join('')}</ul>` : ''}
+      </section>
+
       <div class="wk-cta">
-        <button class="btn secondary" id="wk-again" style="flex:1">再一次</button>
-        <button class="btn" id="wk-done" style="flex:1">領取獎勵 ›</button>
+        <button class="btn secondary" id="wk-again" style="flex:1">${icon('repeat', { size: 18 })} 再一次</button>
+        ${empty
+          ? `<button class="btn" id="wk-rw-done" style="flex:1">完成</button>`
+          : `<button class="btn" id="wk-rw-go" style="flex:1">${icon('tree-palm', { size: 18 })} 去蓋房子</button>`}
       </div>
+      ${empty ? '' : `<button class="wk-sum-link" id="wk-rw-done" type="button">回到動作清單</button>`}
     </div>`;
-  root.querySelector('#wk-again').onclick = () => renderIntro(ex);
-  root.querySelector('#wk-done').onclick = () => renderReward(ex, session);
+  root.querySelector('#wk-again').onclick = () => { rwClear(); renderIntro(ex); };
+  const go = root.querySelector('#wk-rw-go'); if (go) go.onclick = () => { rwClear(); CTX.navigate('island'); };
+  root.querySelector('#wk-rw-done').onclick = () => { rwClear(); renderMenu(); };
+
+  // ── 演出：彩帶 → 金幣滾動 → 飛向島嶼目標 → 進度推進 ──
+  // 純表現層：store 早在 finishLive 就 commit 完了，演出只是把「已經發生的事」畫出來。
+  const numEl = root.querySelector('#wk-rw-num');
+  const islEl = root.querySelector('#wk-rw-island');
+  const fillEl = root.querySelector('#wk-rw-goalfill');
+  const settle = () => {          // 終態：任何時候被跳過都是走到這裡，畫面與 store 一致
+    rwClear();
+    if (numEl) numEl.textContent = String(session.coinsEarned);
+    if (fillEl) fillEl.style.width = pctOf(s.wallet.coins) + '%';
+    document.querySelectorAll('.wk-coin-fly, .wk-confetti').forEach(el => el.remove());
+  };
+  if (summary.validReps > 0) launchConfetti();
+  if (empty) return;
+  if (reducedMotion()) { settle(); return; }
+  rwAfter(350, () => countUp(numEl, session.coinsEarned, 900));
+  rwAfter(1100, () => flyCoins(root.querySelector('.wk-sum-gain.coin'), islEl, session.coinsEarned, () => {
+    if (fillEl) { fillEl.style.width = pctOf(s.wallet.coins) + '%'; }
+    if (islEl) { islEl.classList.add('hit'); rwAfter(600, () => islEl.classList.remove('hit')); }
+  }));
+  // 跳過：整頁任一處按下就直接給終態。演出是禮物不是關卡，不該擋著人操作。
+  root.querySelector('.wk-sum')?.addEventListener('pointerdown', settle, { once: true });
+}
+
+/* 彩帶（Slice 13）：一次性的 canvas 粒子，約 2.6 秒後自行移除。
+   顏色取 Motu 色票（青、金、珊瑚、薄荷、深藍）；尊重減少動態效果（直接不放）；
+   pointer-events:none，不擋任何操作。不引入套件。 */
+export const CONFETTI_VARS = ['--motu-teal', '--motu-gold', '--motu-coral', '--motu-mint', '--motu-teal-light', '--motu-navy-soft'];
+function launchConfetti() {
+  if (reducedMotion() || typeof document === 'undefined') return;
+  document.querySelectorAll('.wk-confetti').forEach(el => el.remove());
+  const cv = document.createElement('canvas');
+  cv.className = 'wk-confetti';
+  cv.setAttribute('aria-hidden', 'true');
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const W = window.innerWidth, H = window.innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  document.body.appendChild(cv);
+  const g = cv.getContext('2d'); if (!g) { cv.remove(); return; }
+  g.scale(dpr, dpr);
+  const css = getComputedStyle(document.documentElement);
+  const colors = CONFETTI_VARS.map(v => css.getPropertyValue(v).trim()).filter(Boolean);
+  if (!colors.length) { cv.remove(); return; }   // 讀不到 Motu 色票就不放（不自創色值）
+  // 兩門「禮炮」從左右下角往中間上方噴，比從天而降更有「恭喜」的感覺
+  const N = W < 620 ? 90 : 150;
+  const parts = Array.from({ length: N }, (_, i) => {
+    const left = i % 2 === 0;
+    const ang = (left ? -60 : -120) * Math.PI / 180 + (Math.random() - 0.5) * 0.7;
+    const sp = (Math.max(H, W * 0.6) * 0.018) * (0.7 + Math.random() * 0.6);   // 寬螢幕噴遠一點，彩帶才會飛到畫面中間
+    return {
+      x: left ? -10 : W + 10, y: H * 0.72,
+      vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
+      w: 6 + Math.random() * 6, h: 3 + Math.random() * 4,
+      r: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.3,
+      c: colors[i % colors.length], delay: Math.random() * 180,
+    };
+  });
+  const t0 = performance.now(), LIFE = 2600;
+  const step = (now) => {
+    const t = now - t0;
+    g.clearRect(0, 0, W, H);
+    const fade = t > LIFE - 600 ? Math.max(0, (LIFE - t) / 600) : 1;
+    for (const p of parts) {
+      if (t < p.delay) continue;
+      p.vy += H * 0.00042; p.vx *= 0.992; p.vy *= 0.992;   // 重力＋空氣阻力
+      p.x += p.vx; p.y += p.vy; p.r += p.vr;
+      g.save(); g.globalAlpha = fade; g.translate(p.x, p.y); g.rotate(p.r);
+      g.fillStyle = p.c; g.fillRect(-p.w / 2, -p.h / 2, p.w, p.h * Math.abs(Math.cos(p.r * 2)) + 1);
+      g.restore();
+    }
+    if (t < LIFE && cv.isConnected) rwTimers.push(requestAnimationFrame(step));
+    else cv.remove();
+  };
+  rwTimers.push(requestAnimationFrame(step));
+  rwAfter(LIFE + 200, () => cv.remove());   // 保險：分頁在背景時 rAF 不跑，也要清掉
 }
 
 /* 第二幕的「遊戲資源」卡：碎片與抽獎券。
@@ -1414,7 +1582,13 @@ function rewardIslandLine(s) {
    純表現層：store 早在 finishLive 就 commit 完了，這裡一枚金幣都不會多給。
    演出只是把「已經發生的事」畫出來，所以中途離開、跳過、關動畫都不影響帳。 */
 let rwTimers = [];                       // setTimeout / rAF 控制代碼，unmount 與跳過時一併清掉
-function rwClear() { for (const t of rwTimers) { clearTimeout(t); cancelAnimationFrame(t); } rwTimers = []; }
+function rwClear() {
+  for (const t of rwTimers) { clearTimeout(t); cancelAnimationFrame(t); }
+  rwTimers = [];
+  // 掛在 body 上的演出元素（飛行金幣、彩帶）一併清掉：計時器一取消它們就不會自己消失了，
+  // 切頁、鍵盤按按鈕（不會先觸發 pointerdown → settle）都會走到這裡（Slice 13 審查修正）
+  if (typeof document !== 'undefined') document.querySelectorAll('.wk-coin-fly, .wk-confetti').forEach(el => el.remove());
+}
 const rwAfter = (ms, fn) => { rwTimers.push(setTimeout(fn, ms)); };
 // 尊重系統的「減少動態效果」：直接give終態，不做任何位移或滾動。
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
@@ -1462,83 +1636,6 @@ function flyCoins(fromEl, toEl, n, onLand) {
   }
 }
 
-function renderReward(ex, session) {
-  CTX.setChrome(true);
-  const s = CTX.store.getState();
-  const xp = CTX.store.derived.xpProgress();
-  const ratio = Math.max(0, Math.min(1, xp.ratio || 0));   // clamp 防異常值破版
-  const xpGain = session.xpGain ?? session.validReps * 5;   // Slice 2 起由 commitSession 直接回傳；?? 僅為舊存檔的 history 相容
-  const empty = session.coinsEarned === 0;
-  rwClear();
-  // 這次訓練「之前」的金幣：store 已 commit，所以要往回推才知道進度條該從哪裡長起來。
-  const prevCoins = Math.max(0, s.wallet.coins - session.coinsEarned);
-  const goal = nextGoal(s);
-  const cost = goal.kind === 'save' ? goal.item.cost : 0;
-  const pctOf = (c) => (cost > 0 ? Math.max(0, Math.min(100, Math.round(c / cost * 100))) : 100);
-  root.innerHTML = `
-    <div class="fade-in wk-rw stagger">
-      <div class="card motu-reward wk-rw-card">
-        <div class="wk-rw-isl"><span class="wk-ic-disc">${icon(empty ? 'biceps-flexed' : 'tree-palm', { size: 24 })}</span></div>
-        ${empty ? `
-        <div class="wk-rw-title">這次沒有獲得金幣</div>
-        <p class="wk-rw-s">只有有效動作才換得到金幣，再試一次！</p>` : `
-        <div class="wk-rw-title">獎勵入袋！</div>
-        <div class="wk-rw-coins">+<span id="wk-rw-num">0</span><span class="ico">${icon('coins', { size: 24, label: '金幣' })}</span></div>
-        <p class="wk-rw-s">金幣已存入錢包 · 去島上蓋新建築吧</p>`}
-      </div>
-      <div class="card wk-rw-xp">
-        <div class="wk-rw-xp-head"><span class="pill">${icon('star', { size: 16 })} Lv.${s.wallet.level}</span><span class="wk-rw-xpgain">+${xpGain} XP</span></div>
-        <div class="wk-rw-bar"><i style="width:${Math.round(ratio * 100)}%"></i></div>
-        <div class="wk-rw-xp-s">再 ${Math.max(0, xp.need - xp.cur)} XP 升級</div>
-      </div>
-      ${gameResourceCard(session)}
-      <div class="card wk-rw-island" id="wk-rw-island">
-        ${empty ? `${icon('house', { size: 16 })} 我的島嶼 · 已建 <b>${s.island.placed.length}</b> 棟建築` : rewardIslandLine(s)}
-        ${!empty && cost > 0 ? `
-        <div class="wk-rw-goalbar" role="img" aria-label="距下一個目標的存款進度">
-          <i id="wk-rw-goalfill" style="width:${pctOf(prevCoins)}%"></i>
-        </div>` : ''}
-      </div>
-      <div class="wk-cta">
-        ${empty
-          ? `<button class="btn" id="wk-rw-retry" style="flex:1">再一次</button>`
-          : `<button class="btn" id="wk-rw-go" style="flex:1">${icon('tree-palm')} 去蓋房子</button>`}
-        <button class="btn secondary" id="wk-rw-done" style="flex:1">完成</button>
-      </div>
-    </div>`;
-  const go = root.querySelector('#wk-rw-go'); if (go) go.onclick = () => { rwClear(); CTX.navigate('island'); };
-  const rt = root.querySelector('#wk-rw-retry'); if (rt) rt.onclick = () => { rwClear(); renderIntro(ex); };
-  root.querySelector('#wk-rw-done').onclick = () => { rwClear(); renderMenu(); };
-
-  // ── 儀式編排 ────────────────────────────────────────────
-  const numEl = root.querySelector('#wk-rw-num');
-  const islEl = root.querySelector('#wk-rw-island');
-  const fillEl = root.querySelector('#wk-rw-goalfill');
-  const settle = () => {          // 終態：任何時候被跳過都是走到這裡，畫面與 store 一致
-    rwClear();
-    if (numEl) numEl.textContent = String(session.coinsEarned);
-    if (fillEl) fillEl.style.width = pctOf(s.wallet.coins) + '%';
-    document.querySelectorAll('.wk-coin-fly').forEach(el => el.remove());
-  };
-  if (empty) return;
-  if (reducedMotion()) { settle(); return; }
-
-  countUp(numEl, session.coinsEarned, 900);
-  rwAfter(700, () => flyCoins(root.querySelector('.wk-rw-coins'), islEl, session.coinsEarned, () => {
-    if (fillEl) { fillEl.style.width = pctOf(s.wallet.coins) + '%'; }
-    if (islEl) { islEl.classList.add('hit'); rwAfter(600, () => islEl.classList.remove('hit')); }
-  }));
-  // 跳過：整頁任一處按下就直接給終態。演出是禮物不是關卡，不該擋著人操作。
-  root.querySelector('.wk-rw')?.addEventListener('pointerdown', settle, { once: true });
-}
-/** 本次最常見的錯誤（結算格用）。全部做對時回「無」——這是好消息，不該留白。 */
-function topFaultLabel(faults) {
-  const list = Object.entries(faults || {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
-  if (!list.length) return `無 ${icon('sparkles', { size: 16 })}`;
-  const [key, n] = list[0];
-  return `${faultName(key)} ×${n}`;
-}
-function resCell(ic, k, v, cls = '') { return `<div class="wk-res card ${cls}"><div class="rv">${v}</div><div class="rk">${icon(ic, { size: 16 })} ${k}</div></div>`; }
 // 一下被判無效時要說的話：優先用該動作 spec 已寫好的修正口令（每個動作講法不同，
 // 例如深蹲的 half_rep 該說「再往下蹲」、伏地挺身該說「胸口往下壓」），沒有才退回通用句。
 const REJECT_FALLBACK = {
