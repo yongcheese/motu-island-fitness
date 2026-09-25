@@ -321,11 +321,16 @@
   background: var(--lv-hud-bg); border: 1px solid var(--motu-color-border); box-shadow: var(--motu-shadow-md); overflow: visible; }
 .lv-gauge-track i { position: absolute; left: 1px; right: 1px; bottom: 1px; height: 0%;
   border-radius: 8px; background: var(--green); transition: height calc(var(--motu-duration-fast) / 2) linear;   /* 判定回饋：75ms，要跟得上動作 */
-  box-shadow: 0 0 12px color-mix(in srgb, var(--green) 55%, transparent); }
+  box-shadow: var(--lv-gauge-edge); }
+/* 合體第二階段 Slice 9：軌道換成白底後，黃（1.44:1）、取景藍（2.23:1）填色對白底太淡，光暈在白底上也只會糊開。
+   不加深填色（黃要加深到與紅同亮度才過 3:1，色弱會黃紅不分），改用深藍描邊界定「填到哪裡」（深藍對白 10:1）。 */
+.lv-gauge-track { --lv-gauge-edge: 0 0 0 2px var(--motu-navy); }
+/* 0%（或還沒收到第一幀）時高度為 0，描邊會縮成一顆深藍點 → 不畫 */
+.lv-gauge-track i:is(.empty, :not([style])) { box-shadow: none; }
 /* 合體 Slice 4：量表填色是判定回饋（與骨架同語意），刻意不換成 Motu 色票 —— 金與珊瑚色相太近，黃／紅會分不出來 */
-.lv-gauge-track i[data-c="yellow"] { background: #ffd23f; box-shadow: 0 0 12px rgba(255,210,63,.5); }
-.lv-gauge-track i[data-c="red"]    { background: #ff5a5a; box-shadow: 0 0 12px rgba(255,90,90,.5); }
-.lv-gauge-track i[data-c="frame"]  { background: var(--frame-ok); box-shadow: 0 0 12px color-mix(in srgb, var(--frame-ok) 55%, transparent); }   /* Slice3 補修：準備態取景藍 */
+.lv-gauge-track i[data-c="yellow"] { background: #ffd23f; }
+.lv-gauge-track i[data-c="red"]    { background: #ff5a5a; }
+.lv-gauge-track i[data-c="frame"]  { background: var(--frame-ok); }   /* Slice3 補修：準備態取景藍 */
 /* 達標線：白底量表上改深藍線；標籤改白底膠囊（原本靠白字＋黑陰影，放在亮影像上看不見） */
 .lv-gauge-track b { position: absolute; left: -5px; right: -5px; height: 3px; border-radius: 2px;
   background: var(--motu-color-text); box-shadow: 0 0 0 1px var(--motu-white); }
@@ -371,10 +376,11 @@
 .wk-rec:focus-visible { outline: 2px solid var(--motu-color-focus); outline-offset: 2px; }
 .wk-rec-hero {
   flex-shrink: 0; width: 84px; border-radius: var(--motu-radius-lg);
-  display: grid; place-items: center;
+  display: grid; place-items: center; position: relative; overflow: hidden;
   background: radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--accent, var(--motu-teal)) 26%, transparent), transparent 75%), var(--motu-mint-pale);
   border: 1px solid var(--motu-color-border);
 }
+.wk-rec-hero .wk-rec-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }   /* Slice 9：3D 人物，置中裁切由 JS 處理 */
 .wk-rec-body { flex: 1; min-width: 0; }
 .wk-rec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 /* 今日推薦 chip：金色只當淡底與圖示，字維持深藍 */

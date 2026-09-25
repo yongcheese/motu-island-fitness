@@ -20,12 +20,12 @@
 - **UI 骨架 Slice：有（Slice 1）**。外殼是新的產品形狀，先給使用者看版面再接細節。三件套依 L 檔各自獨立：骨架＝Slice 1、視覺美學＝Slice 6、微互動＝Slice 7。
 
 ## 本次的不變量（任何 Slice 都不得破壞）
-1. 判定引擎（`app/core/`）、資料流（`app/state/store.js`）、訓練流程與第一階段的訓練頁樣式不動。
+1. 判定引擎（`app/core/`）、資料流（`app/state/store.js`）、訓練流程與第一階段的訓練頁樣式不動。**例外（2026-09-25 使用者核准，見 Slice 9）**：推薦卡縮圖改 3D 人物、深度量表填色加描邊；判定邏輯、顏色語意（綠／黃／紅／取景藍）不變。
 2. 島嶼插槽機制不動：`main.js` 的 `ISLAND_MODULES`／`resolveIsland`、島嶼只拿受限 store（`island-facade`）。相關測試保留。
 3. 主頁沿用 `island` 這個分頁 id；`ctx.navigate('island')`、`ctx.navigate('workout')` 的既有呼叫端不必改。
 4. `motu.css` 逐字區段不得修改；色值、字型、圓角、陰影、動效一律用 `--motu-*`，不自創色值。
 5. 今日（`app/features/today/`）與健康（`app/features/tracking/`）、設定（`app/features/settings/`）模組檔案**保留不刪**，只是不再從分頁列進入。
-6. 測試數只增不減（362 起算）；不新增 skip/only；既有斷言只有在「需求變更」時才可改寫，且必須在看板申報（目前：`tests/island-registry.test.js` 的五分頁斷言〔Slice 1〕；`tests/shell.test.js` 缺圖示測試的範例從 `heart` 換成 `no-such-icon`，斷言不變〔Slice 2，因 heart 已收錄使原前提失效〕）。
+6. 測試數只增不減（362 起算）；不新增 skip/only；既有斷言只有在「需求變更」時才可改寫，且必須在看板申報（目前：`tests/island-registry.test.js` 的五分頁斷言〔Slice 1〕；`tests/shell.test.js` 缺圖示測試的範例從 `heart` 換成 `no-such-icon`，斷言不變〔Slice 2，因 heart 已收錄使原前提失效〕；`tests/shell.test.js` 直欄報讀名稱斷言改為 `shop:商店（即將推出）…`、轉盤斷言改為 `aria-label="幸運轉盤（即將推出）"`〔Slice 8，需求要求只擺樣子的按鈕報讀名稱註明「即將推出」〕）。
 7. 外殼集中在 `main.js`、`index.html`、新的 `app/ui/shell.js`、新的 `app/styles/shell.css`；島嶼頁只做「隱藏浮層＋接建造鈕」的最小改動。遊戲組原始碼到了要能整個換掉。
 
 ## 設計鐵律速查（本專案版，覆蓋 make-plan 預設）
@@ -51,8 +51,8 @@
 > 下游的 run-slice 與 slice-builder 一律沿用本區塊，不得重新調用 ui-ux-pro-max。
 
 ## 進度總覽
-- 總 Slice 數：8
-- 已完成：7 / 8
+- 總 Slice 數：9（2026-09-25 追加 Slice 9，使用者看 Slice 8 截圖後提出）
+- 已完成：8 / 9（Slice 8 待使用者確認截圖）
 - 平行組：無（Slice 1、3–8 都會碰 `main.js` 或 `shell.css`；Slice 2 雖只碰圖示模組，但 Slice 1 之後才知道確切需要哪些圖示，保守序列執行）
 
 ---
@@ -236,12 +236,50 @@
 - **設計要點**：對比組合清單寫成資料，之後換色會自動再驗。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [ ] 外殼每一組文字／底色都達 WCAG AA（一般 4.5、大字 3），測試涵蓋
-  - [ ] 電腦與手機版外殼按鈕都 ≥44px、Tab 可走遍且有焦點外框
-  - [ ] 截圖存到指定資料夾，檔名標明畫面與尺寸
-  - [ ] 使用者看過截圖並確認可放進企劃書
+  - [x] 外殼每一組文字／底色都達 WCAG AA（一般 4.5、大字 3），測試涵蓋
+  - [x] 電腦與手機版外殼按鈕都 ≥44px、Tab 可走遍且有焦點外框（實測最小：電腦 84×72、手機 60×52）
+  - [x] 截圖存到指定資料夾，檔名標明畫面與尺寸（`01_主頁_電腦版_1920.png`…`05_健身分頁_手機版_390.png`，2 倍解析度，未注入樣式、未隱藏捲軸）
+  - [ ] 使用者看過截圖並確認可放進企劃書　⏳ 等使用者確認（2026-09-25 已交付）
 - **測試策略**：`tests/contrast.test.js` 追加外殼組合；`tests/shell.test.js` — 分頁列模板含 `aria-current="page"` 且只出現一次（邊界：沒有選中分頁時不得出現）、不做的按鈕都有含「即將推出」的 `aria-label`。
 - **完成定義**：`npm test` 全綠＋截圖交付＋使用者確認＋收尾批次審查（Final Validation）
 - **對外介面**：
-- **依賴**：Slice 1–7
+  - `app/ui/shell.js`：`RAIL_ITEMS` 的商店／背包／動作多了 `soon: true`（新增欄位，既有欄位不變）；`tabbarHtml()` 選中頁籤多 `aria-current="page"`、soon 頁籤多 `aria-label="<名稱>（即將推出）"`；`railHtml()` soon 按鈕報讀名稱加註「（即將推出）」，下方標籤 `aria-hidden="true"`；`cornerHtml()` 禮物／轉盤報讀名稱加註「（即將推出）」。函式簽名不變。
+  - `shell.css`：選中頁籤底色改 `--motu-color-primary-hover`（深青，白字 5.15:1）；新增焦點外框規則（`.sh-rail-item:has(> .sh-rail-btn:focus-visible)`、`.sh-tab.is-active:focus-visible`、禮物／轉盤白色內圈）。
+- **施工備註**：測試 400 → 409（contrast 3 個：外殼 5 組對比〔色值從 shell.css 解析〕、選中頁籤不得是白字／海洋青、解析器防空轉；shell 6 個：aria-current 只出現一次、無選中時不出現〔邊界〕、即將推出標籤與按鈕是否可用一一對應、報讀名稱以可見文字開頭、直欄標籤 aria-hidden、clip-path 按鈕的替代焦點外框）。突變檢查 4 項全被抓到。實機 1920／1440／390，console 0 error／0 warning。
+  - **實機發現並修正**：直欄按鈕與選中頁籤用 clip-path 裁形，聚焦時自己的 outline 被一起裁掉、完全看不到（`.playwright-mcp/s8_focus_*.png`）；另外手機版海洋青外框疊在青綠色海面上幾乎看不見 → 浮在島嶼上的按鈕改白色內圈＋海洋青外框。
+- **與計畫文字的落差**：Tab 順序計畫寫「帳號卡 → 直欄 → 內容 → 右下 → 分頁列」，但 DOM 裡 `#view` 在整個 `#shell` 之前，要完全照做得動 `index.html`（不在本 Slice 改動檔案）。實測主頁 `#view` 內沒有 Tab 可達元素、帳號卡也沒有可聚焦元素，實際順序「直欄 → 右下 → 分頁列」與要求等價，故未改。**已知缺口**：島嶼建造抽屜打開時，抽屜內按鈕會排在直欄之前。
+- **交接／已知缺口**：手機健身頁的「快速開始」浮動鈕會蓋到動作卡一角（第一階段既有行為，非本 Slice 範圍）；favicon 仍是 emoji（Slice 6 已記）。
+- **Circuit Breaker**：1 次（slice-reviewer 第 1 輪 BLOCK：測試註解寫「已在看板申報」但看板漏記，補申報後通過）。
+- **審查紀錄**：slice-reviewer 第 1 輪 BLOCK（不變量 6 申報漏記）→ 第 2 輪 PASS（2026-09-25）
+- **依賴**：Slice 1–7；Slice 9（健身分頁截圖需在 Slice 9 後重截，2026-09-25 追加）
+- **平行組**：獨立
+
+### [x] Slice 9 — 訓練頁兩處視覺修正：推薦卡改 3D 人物、深度量表填色看得清楚
+- **來源**：2026-09-25 使用者看 Slice 8 截圖與實際試用後提出，選擇「先修再重截」。屬需求追加，不變量 1 已申報例外。
+- **目標**：①「今日推薦」卡左側縮圖和下方動作卡一樣是 3D 人物循環示範（現在是 Lucide 往下箭頭，看起來像下載鍵）；②深度量表的填色在白底軌道上清楚可見。
+- **範圍內**：
+  - 推薦卡 hero 改放 canvas，**沿用動作卡共用的離屏 3D renderer**；推薦卡比例不同，一律從 renderer 目前的畫面置中裁切（cover）貼上，**不為它重設 renderer 尺寸**（原設計不掛 3D 就是為了避免每幀重設尺寸）。
+  - 深度量表填色：保留原本四色（判定回饋語意，與骨架一致），光暈改為深藍描邊。
+- **範圍外**：判定邏輯、`display-colors.js` 的顏色語意與調色盤；深度量表跟隨設定頁顏色顯示模式（既有缺口，另記）；金幣圖示方向與數字顏色（待遊戲組原始碼）；動作卡本身。
+- **改動檔案**：`app/features/workout/workout.js`（修改）、`app/features/workout/workout.css`（修改）、`tests/workout-visual.test.js`（新增）
+- **設計要點**：
+  - 為什麼不把黃、藍加深：黃要加深到 `#B88A00` 才有 3:1，此時與紅 `#ff5a5a` 亮度幾乎相同（1.03:1），色弱使用者黃紅分不出來。改用描邊界定填到哪裡（深藍對白 10:1），填色維持鮮明。
+  - 只用 `--motu-*`；描邊不改尺寸，不影響量表位置與達標線。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [x] 推薦卡縮圖是對應動作的 3D 人物循環動畫，電腦與手機都不變形（置中裁切）（`.playwright-mcp/s9_rec_1920.png`、`s9_rec_390.png`）
+  - [x] 共用 renderer 不因推薦卡而每幀重設尺寸（實機：離屏 canvas 寬度設定 1.5 秒與 3.5 秒皆 3 次，不隨時間增加；1920／390）
+  - [x] 深度量表四種填色都有深藍描邊、無光暈；判定顏色語意與 `gaugeColor()` 不變（`.playwright-mcp/s9_gauge_all.png`；0% 時無描邊）
+  - [x] 進入／離開訓練清單時推薦卡動畫會停止（沿用卡片動畫世代計數）
+- **測試策略**：`tests/workout-visual.test.js` — 置中裁切數學（寬圖貼窄框、窄圖貼寬框、同比例、尺寸為 0 的邊界）；推薦卡模板含 canvas 且不再含 `wk-ic-disc`；量表 CSS 四色都有深藍描邊、無 `0 0 12px` 光暈（邊界：`data-c` 選擇器與預設綠都要涵蓋）。
+- **完成定義**：`npm test` 全綠＋實機截圖（推薦卡電腦／手機、量表四色）＋slice-reviewer（L 檔）
+- **對外介面**：
+  - `app/features/workout/workout.js` 新增 export：`recHeroHtml(id)`（推薦卡縮圖模板，回 `<div class="wk-rec-hero"><canvas class="wk-rec-canvas" data-ex data-crop="1">`）、`coverCrop(srcW, srcH, dstW, dstH)`（置中裁切的 drawImage 來源矩形，任一邊 ≤0 回 null）。
+  - `startCardAnims()` 同時驅動 `canvas.wk-rec-canvas[data-ex]`（排在動作卡之後，不改 renderer 尺寸）。
+  - 深度量表：`#lv-gfill` 在 0% 時帶 class `empty`；CSS 變數 `--lv-gauge-edge`（定義在 `.lv-gauge-track`）。
+- **施工備註**：測試 409 → 421（新增 `tests/workout-visual.test.js` 12 個）。突變檢查 4 項全被抓到（黃色加回光暈、紅色蓋掉描邊、拿掉 empty 標記、推薦卡也去重設 renderer 尺寸）。深度量表因沒有攝影機，進入即時畫面後以程式設定 `#lv-gfill` 的高度與 `data-c`（與判定程式寫入的值相同，未注入樣式）截圖驗證。
+- **Circuit Breaker**：1 次（`recCardHtml` 會讀執行期 store，node 測試裡為 null → 拆出純函式 `recHeroHtml` 再測）。
+- **已知缺口**：深度量表不跟隨設定頁「顏色顯示模式」（高對比、單色模式下仍是三色），既有行為，本 Slice 未處理；手機推薦卡比例很窄，人物左緣會被裁到一點。
+- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-25）
+- **依賴**：無（與 Slice 1–7 不相交）；Slice 8 的健身分頁截圖要在本 Slice 完成後重截
 - **平行組**：獨立

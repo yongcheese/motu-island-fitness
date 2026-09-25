@@ -208,15 +208,19 @@ const TAGLINE = {
   situp: '雕塑腹部核心', crunch: '集中訓練上腹', glutebridge: '啟動臀部與後鏈', sidelunge: '強化側向穩定',
 };
 
-/* Slice2 R1 今日推薦大卡：純模板函式。金幣估算與 cardHtml 同式（真值以結算為準）；
-   hero 用圖示＋分類色光暈、不掛 3D canvas（避免共用離屏 renderer 每幀重設尺寸）。 */
+/* Slice2 R1 今日推薦大卡：純模板函式。金幣估算與 cardHtml 同式（真值以結算為準）。
+   合體第二階段 Slice 9：hero 改放 3D 人物 canvas（原本是圖示，深蹲的往下箭頭看起來像下載鍵）。
+   推薦卡比例與動作卡不同，startCardAnims 會從共用 renderer 的畫面置中裁切貼上，不為它重設 renderer 尺寸。 */
+export function recHeroHtml(id) {
+  return `<div class="wk-rec-hero"><canvas class="wk-rec-canvas" data-ex="${id}" data-crop="1" aria-hidden="true"></canvas></div>`;
+}
 function recCardHtml(e) {
   if (!e) return '';
   const d = e.meta?.difficulty || e.difficulty || 1;
   return `
     <div class="wk-rec card" data-rec-id="${e.id}" role="button" tabindex="0"
       aria-label="今日推薦：${e.name}" style="--accent:${ACCENT[e.group] || 'var(--green)'}">
-      <div class="wk-rec-hero"><span class="wk-ic-disc">${exIcon(e.id, 24)}</span></div>
+      ${recHeroHtml(e.id)}
       <div class="wk-rec-body">
         <div class="wk-rec-head">
           <span class="pill wk-rec-badge">${icon('sun', { size: 16 })} 今日推薦</span>
@@ -374,17 +378,31 @@ function animDemo(id, el) {
   demoRaf = requestAnimationFrame(loop);
 }
 
-/* 訓練清單卡片：每張用 Q 版人偶循環示範該動作。用世代計數停掉舊動畫。 */
+/**
+ * 置中裁切（object-fit: cover）：從 srcW×srcH 的畫面取出與 dstW×dstH 同比例、最大的置中區塊。
+ * 回傳 drawImage 的來源矩形 [sx, sy, sw, sh]；任一邊為 0 時回傳 null（畫面還沒排版好，這一幀不畫）。
+ */
+export function coverCrop(srcW, srcH, dstW, dstH) {
+  if (!(srcW > 0 && srcH > 0 && dstW > 0 && dstH > 0)) return null;
+  const scale = Math.min(srcW / dstW, srcH / dstH);
+  const sw = dstW * scale, sh = dstH * scale;
+  return [(srcW - sw) / 2, (srcH - sh) / 2, sw, sh];
+}
+
+/* 訓練清單卡片：每張用 Q 版人偶循環示範該動作。用世代計數停掉舊動畫。
+   Slice 9：推薦卡（data-crop）也走同一個迴圈，但不參與 renderer 尺寸 —— 沿用動作卡的尺寸，畫完置中裁切。 */
 let cardGen = 0;
 function stopCardAnims() { cardGen++; }
 function startCardAnims() {
   const gen = ++cardGen;
-  const items = [...root.querySelectorAll('canvas.wk2-canvas[data-ex]')].map((cv) => {
+  // 推薦卡排在最後：它不改 renderer 尺寸，要等動作卡先把尺寸定下來
+  const canvases = [...root.querySelectorAll('canvas.wk2-canvas[data-ex]'), ...root.querySelectorAll('canvas.wk-rec-canvas[data-ex]')];
+  const items = canvases.map((cv) => {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const rect = cv.getBoundingClientRect();
     cv.width = Math.max(180, Math.round((rect.width || 240) * dpr));
     cv.height = Math.max(120, Math.round((rect.height || 132) * dpr));
-    return { cv, ctx: cv.getContext('2d'), id: cv.dataset.ex, t0: performance.now() + Math.random() * 900 };
+    return { cv, ctx: cv.getContext('2d'), id: cv.dataset.ex, crop: cv.dataset.crop === '1', t0: performance.now() + Math.random() * 900 };
   });
   if (!items.length) return;
   // 所有卡片共用一個離屏 3D renderer（blit 到各卡 2D canvas）：一個 GL context 服務全部卡片
@@ -393,12 +411,15 @@ function startCardAnims() {
   const loop = (now) => {
     if (gen !== cardGen) return;               // 已被新一輪取代 → 自我終止
     for (const it of items) {
-      if (it.cv.width !== curW || it.cv.height !== curH) { curW = it.cv.width; curH = it.cv.height; cardAv.setSize(curW, curH); }
+      // 推薦卡只有在清單裡完全沒有動作卡時（例如篩選後為空）才決定 renderer 尺寸
+      if ((!it.crop || !curW) && (it.cv.width !== curW || it.cv.height !== curH)) { curW = it.cv.width; curH = it.cv.height; cardAv.setSize(curW, curH); }
       const { d, side } = demoMotion(it.id, now, it.t0);   // 物理節奏：離心慢/停頓/向心快
       cardAv.setView(EX_VIEW[it.id]);
       cardAv.render(pose3d(it.id, d, side));
       it.ctx.clearRect(0, 0, it.cv.width, it.cv.height);
-      it.ctx.drawImage(cardAv.canvas, 0, 0, it.cv.width, it.cv.height);
+      if (!it.crop) { it.ctx.drawImage(cardAv.canvas, 0, 0, it.cv.width, it.cv.height); continue; }
+      const src = coverCrop(cardAv.canvas.width, cardAv.canvas.height, it.cv.width, it.cv.height);   // 以 renderer 實際像素為準
+      if (src) it.ctx.drawImage(cardAv.canvas, ...src, 0, 0, it.cv.width, it.cv.height);
     }
     requestAnimationFrame(loop);
   };
@@ -1107,7 +1128,9 @@ function handleResult(res, now, lm) {
     const st = (res.visible !== false && !framingPose(res)) ? STAGE_OF[res.phase] : undefined;
     hud.stages.forEach((el, i) => el.classList.toggle('on', i === st));
     // 3) 深度量表：訊號即時填充 + 四段色（藍準備 → 黃進行中 → 綠達標 → 紅錯誤）
-    hud.gfill.style.height = Math.round(Math.max(0, Math.min(1, res.signal)) * 100) + '%';
+    const gpct = Math.round(Math.max(0, Math.min(1, res.signal)) * 100);
+    hud.gfill.style.height = gpct + '%';
+    hud.gfill.classList.toggle('empty', gpct === 0);   // Slice 9：0% 時描邊會縮成一顆深藍點，交給 CSS 拿掉
     hud.gfill.dataset.c = gaugeColor(res, live.ex);
     // 3b) 即時動作指引：告訴使用者「現在該做什麼」（Bug2(b)）
     if (hud.next) {
