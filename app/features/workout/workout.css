@@ -160,11 +160,19 @@
 /* contain：完整顯示相機畫面（全身入鏡，不裁切）；兩側/上下可能留黑邊 */
 #lv-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; transform: scaleX(-1); background: var(--motu-navy-dark); }
 #lv-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-.lv-top { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 10px; padding: calc(env(safe-area-inset-top) + 12px) 16px 12px; z-index: 7; }   /* Slice3 R1: 3→7 頂欄(含退出鈕)永遠最上層（申報式，視覺零變化） */
+.lv-top { position: absolute; top: 0; left: 0; display: flex; align-items: flex-start; padding: calc(env(safe-area-inset-top) + 12px) 16px 12px; z-index: 7; max-width: calc(100% - 72px); }   /* Slice3 R1: 頂欄(含退出鈕)永遠最上層；Slice 11：右側讓出深度量表／縮放列 */
+/* Slice 11：左上資訊卡 —— 一張白卡、三層資訊，取代原本五六顆散落的膠囊 */
+.lv-head { display: flex; flex-direction: column; gap: 10px; padding: 10px 14px 12px 10px; min-width: 250px;
+  background: var(--lv-hud-bg); border: 1px solid var(--motu-color-border); border-radius: var(--motu-radius-lg); box-shadow: var(--motu-shadow-md); }
+.lv-head-row { display: flex; align-items: center; gap: 12px; }
+.lv-head-name { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.lv-head-body { display: flex; flex-direction: column; gap: 10px; padding: 10px 0 0 4px; border-top: 2px dashed var(--motu-color-border); }
 /* lumina.css 在本檔之後載入、且有同權重的 .lv-metric／.lv-btn／.lv-exit／.lv-coach／.lv-pause 規則 → 這幾個一律加 .lv-wrap 前綴 */
-.lv-wrap .lv-exit { background: var(--lv-hud-bg); border: 1px solid var(--motu-color-border); color: var(--motu-color-text); border-radius: var(--motu-radius-pill); min-height: 44px; padding: 8px 16px; font-weight: 800; font-size: 14px; box-shadow: var(--motu-shadow-md); }
-.lv-title { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; padding: 7px 14px; border-radius: var(--motu-radius-pill); background: var(--lv-hud-bg); color: var(--motu-color-text); font-weight: 900; box-shadow: var(--motu-shadow-md); }
-.lv-mode { font-size: 12px; font-weight: 800; color: var(--motu-color-text); padding: 6px 12px; border-radius: var(--motu-radius-pill); background: var(--lv-hud-bg); box-shadow: var(--motu-shadow-md); }
+.lv-wrap .lv-exit { flex: none; background: var(--motu-white); border: 1px solid var(--motu-color-border); color: var(--motu-color-text); border-radius: var(--motu-radius-pill); min-height: 44px; padding: 8px 14px; font-weight: 800; font-size: 14px; box-shadow: var(--motu-shadow-sm); cursor: pointer; }
+.lv-wrap .lv-exit:active { transform: scale(.98); }
+.lv-wrap .lv-exit:focus-visible { outline: 2px solid var(--motu-color-focus); outline-offset: 2px; }
+.lv-title { font-size: 18px; font-weight: 900; line-height: 1.2; color: var(--motu-color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lv-mode { font-size: 12px; font-weight: 700; color: var(--motu-color-text-muted); white-space: nowrap; }
 .lv-mode:empty { display: none; }
 /* 視野縮放滑桿（右上，玻璃膠囊） */
 .lv-zoom { position: absolute; top: calc(env(safe-area-inset-top) + 60px); right: 16px; z-index: 5;
@@ -288,30 +296,29 @@
 /* 簡介頁 3D 展示窗 */
 .wk-demo3d { position: relative; width: 100%; height: 100%; min-height: 240px; }
 
-/* 追蹤狀態 + 動作週期燈（左上，狀態列下方） */
-.lv-hudtop { position: absolute; top: calc(env(safe-area-inset-top) + 58px); left: 16px;
-  display: flex; flex-direction: column; gap: 8px; z-index: 5; align-items: flex-start; }
-/* 追蹤膠囊：狀態色（綠／黃／藍／橘）改放外框與圖示，字一律深藍或深青（對比 ≥4.5） */
-.lv-track { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: var(--motu-radius-pill); font-size: 13px; font-weight: 800;
-  background: var(--lv-hud-bg); color: var(--motu-color-text); border: 2px solid var(--motu-color-border); box-shadow: var(--motu-shadow-md); letter-spacing: .02em; }
-/* 小字在最暗影像上：白 92% 疊深底時深青只有 4.44 → 字用深藍，深青只給圖示與外框 */
-.lv-track[data-s="ok"]   { border-color: var(--motu-teal); }
-.lv-track[data-s="warn"] { border-color: var(--motu-gold); }
+/* 追蹤狀態（資訊卡內的一行文字，不再是另一顆膠囊）：狀態色只放在圖示前的小圓點與圖示，字一律深藍（對比 ≥4.5） */
+.lv-track { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 800; color: var(--motu-color-text); letter-spacing: .02em; }
+.lv-track::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--motu-color-border); flex: none; }
+.lv-track[data-s="ok"]::before   { background: var(--motu-teal); }
+.lv-track[data-s="warn"]::before { background: var(--motu-gold); }
 .lv-wrap .lv-track[data-s="warn"] .icon { color: var(--motu-gold-text); }
 .lv-track[data-s="seek"] { color: var(--motu-color-text-muted); }
 /* Slice3 校準 P1：取景階段專屬（藍/橘/灰，與訓練 ok/seek/warn 分離，不改訓練綠語意） */
-.lv-track[data-s="frame-ok"]     { border-color: var(--frame-ok); }
+.lv-track[data-s="frame-ok"]::before     { background: var(--frame-ok); }
 .lv-wrap .lv-track[data-s="frame-ok"] .icon { color: var(--frame-ok); }
-.lv-track[data-s="frame-adjust"] { border-color: var(--frame-adjust); }
+.lv-track[data-s="frame-adjust"]::before { background: var(--frame-adjust); }
 .lv-wrap .lv-track[data-s="frame-adjust"] .icon { color: var(--frame-adjust); }
 .lv-track[data-s="frame-wait"]   { color: var(--motu-color-text-muted); }
 .lv-wrap .lv-track:is([data-s="seek"], [data-s="frame-wait"]) .icon { color: currentColor; }
-.lv-stages { display: flex; gap: 5px; }
-.lv-stages span { padding: 5px 10px; border-radius: 8px; font-size: 12px; font-weight: 700;
-  color: var(--motu-color-text-muted); background: var(--lv-hud-bg); border: 1px solid var(--motu-color-border); box-shadow: var(--motu-shadow-sm);
-  transition: color var(--motu-duration-fast) var(--motu-ease-standard), background-color var(--motu-duration-fast) var(--motu-ease-standard), border-color var(--motu-duration-fast) var(--motu-ease-standard), box-shadow var(--motu-duration-fast) var(--motu-ease-standard), transform var(--motu-duration-fast) var(--motu-ease-standard); }
-.lv-stages span.on { color: var(--motu-white); background: var(--motu-teal-dark); border-color: var(--motu-teal-dark);
-  box-shadow: var(--motu-shadow-primary); transform: translateY(-1px); }
+/* 動作週期步驟條：四個階段用細線串起來，是「現在走到哪」的指示器 —— 沒有外框、沒有陰影，不像按鈕 */
+.lv-stages { display: flex; align-items: center; gap: 0; }
+.lv-stages i { flex: 1 1 10px; min-width: 8px; height: 2px; margin: 0 4px; background: var(--motu-color-border); border-radius: 1px; }
+.lv-stages span { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--motu-color-text-muted); white-space: nowrap;
+  transition: color var(--motu-duration-fast) var(--motu-ease-standard); }
+.lv-stages span::before { content: ''; width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; border: 2px solid var(--motu-color-border); background: var(--motu-white);
+  transition: background-color var(--motu-duration-fast) var(--motu-ease-standard), border-color var(--motu-duration-fast) var(--motu-ease-standard), transform var(--motu-duration-fast) var(--motu-ease-standard); }
+.lv-stages span.on { color: var(--motu-color-text); font-weight: 900; }
+.lv-stages span.on::before { background: var(--motu-teal); border-color: var(--motu-teal-dark); transform: scale(1.3); }
 
 /* 深度量表（右側直條 + 達標線） */
 .lv-gauge { position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
@@ -358,8 +365,11 @@
 }
 
 @media (max-width: 620px) {
-  .lv-hudtop { top: calc(env(safe-area-inset-top) + 54px); left: 10px; }
-  .lv-stages span { padding: 4px 7px; font-size: 11px; }
+  .lv-top { padding: calc(env(safe-area-inset-top) + 10px) 10px 10px; max-width: calc(100% - 60px); }
+  .lv-head { min-width: 0; padding: 8px 12px 10px 8px; gap: 8px; }
+  .lv-head-body { gap: 8px; padding-top: 8px; }
+  .lv-title { font-size: 16px; }
+  .lv-stages span { font-size: 11px; gap: 4px; }
   .lv-gauge { right: 10px; }
 }
 

@@ -721,20 +721,25 @@ function liveShell(ex) {
       <video id="lv-video" playsinline muted></video>
       <canvas id="lv-canvas"></canvas>
       <div class="lv-top">
-        <button class="lv-exit" id="lv-exit">‹ 結束</button>
-        <span class="lv-title">${exIcon(ex.id)} ${ex.name}</span>
-        <span class="lv-mode" id="lv-modebadge"></span>
+        <!-- Slice 11：左上角收成一張資訊卡（原本結束鈕、動作名、追蹤狀態、四個階段燈各自一顆膠囊，擠在一起又全像按鈕）
+             第一列＝唯一可按的「結束」＋動作名／模式；虛線下＝系統狀態；最下＝動作週期步驟條（指示器，不可按） -->
+        <div class="lv-head">
+          <div class="lv-head-row">
+            <button class="lv-exit" id="lv-exit" type="button" aria-label="結束訓練">‹ 結束</button>
+            <div class="lv-head-name"><span class="lv-title">${ex.name}</span><span class="lv-mode" id="lv-modebadge"></span></div>
+          </div>
+          <div class="lv-head-body">
+            <span class="lv-track" id="lv-track" data-s="seek">${trackHtml('search', '尋找人體…')}</span>
+            <div class="lv-stages" id="lv-stages" role="img" aria-label="動作週期：起始、進行、達標、回復，完整走完才計次">
+              <span>起始</span><i aria-hidden="true"></i><span>進行</span><i aria-hidden="true"></i><span>達標</span><i aria-hidden="true"></i><span>回復</span>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="lv-zoom" id="lv-zoom" hidden>
         <span class="lv-zoom-ic" title="拉到最左＝最廣（全身入鏡）">${icon('search', { size: 16 })}</span>
         <input type="range" id="lv-zoom-range" aria-label="視野縮放（最左＝最廣，全身入鏡）" />
         <span class="lv-zoom-lbl">廣</span>
-      </div>
-      <div class="lv-hudtop">
-        <span class="lv-track" id="lv-track" data-s="seek">${trackHtml('search', '尋找人體…')}</span>
-        <div class="lv-stages" id="lv-stages" title="動作週期：完整走完才計次">
-          <span>起始</span><span>進行</span><span>達標</span><span>回復</span>
-        </div>
       </div>
       <div class="lv-gauge">
         <div class="lv-gauge-track"><i id="lv-gfill"></i><b id="lv-gtarget"></b></div>
