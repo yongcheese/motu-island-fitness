@@ -25,7 +25,7 @@
 3. 主頁沿用 `island` 這個分頁 id；`ctx.navigate('island')`、`ctx.navigate('workout')` 的既有呼叫端不必改。
 4. `motu.css` 逐字區段不得修改；色值、字型、圓角、陰影、動效一律用 `--motu-*`，不自創色值。
 5. 今日（`app/features/today/`）與健康（`app/features/tracking/`）、設定（`app/features/settings/`）模組檔案**保留不刪**，只是不再從分頁列進入。
-6. 測試數只增不減（362 起算）；不新增 skip/only；既有斷言只有在「需求變更」時才可改寫，且必須在看板申報（目前只有 `tests/island-registry.test.js` 的五分頁斷言一處）。
+6. 測試數只增不減（362 起算）；不新增 skip/only；既有斷言只有在「需求變更」時才可改寫，且必須在看板申報（目前：`tests/island-registry.test.js` 的五分頁斷言〔Slice 1〕；`tests/shell.test.js` 缺圖示測試的範例從 `heart` 換成 `no-such-icon`，斷言不變〔Slice 2，因 heart 已收錄使原前提失效〕）。
 7. 外殼集中在 `main.js`、`index.html`、新的 `app/ui/shell.js`、新的 `app/styles/shell.css`；島嶼頁只做「隱藏浮層＋接建造鈕」的最小改動。遊戲組原始碼到了要能整個換掉。
 
 ## 設計鐵律速查（本專案版，覆蓋 make-plan 預設）
@@ -52,7 +52,7 @@
 
 ## 進度總覽
 - 總 Slice 數：8
-- 已完成：1 / 8
+- 已完成：2 / 8
 - 平行組：無（Slice 1、3–8 都會碰 `main.js` 或 `shell.css`；Slice 2 雖只碰圖示模組，但 Slice 1 之後才知道確切需要哪些圖示，保守序列執行）
 
 ---
@@ -73,7 +73,7 @@
   - [x] 分頁列只有四個按鈕，依序主頁、健身、追蹤、設定；開機停在主頁並顯示我方島嶼
   - [x] 按「健身」進入訓練頁，完整流程可走到領取獎勵；進入全螢幕訓練時整個外殼隱藏、結束後恢復
   - [x] 電腦版（1440 寬）不再出現舊的左側欄；手機版（390 寬）可正常使用
-  - [ ] 使用者看過骨架畫面並確認版面方向正確（⏸ 待使用者確認後才進 Slice 2）
+  - [x] 使用者看過骨架畫面並確認版面方向正確（2026-09-25 使用者下達 `/run-slice 2` 繼續；「健身頁只留分頁列」未另行回覆，維持現況）
 - **測試策略**：`tests/shell.test.js` — `tabbarHtml` 輸出四個頁籤且順序正確、`current` 對應的頁籤帶選中標記（邊界：`current` 不在清單內時沒有任何頁籤被選中）；`tests/island-registry.test.js` 改寫後仍鎖定島嶼註冊表與受限 store。
 - **完成定義**：`npm test` 全綠（數量 ≥362）＋瀏覽器實機 console 0 error＋電腦／手機各一張截圖＋slice-reviewer＋**停下來請使用者開 `python3 serve.py 8080` 親眼確認版面**
 - **對外介面**：
@@ -85,7 +85,7 @@
 - **依賴**：無
 - **平行組**：獨立
 
-### [ ] Slice 2 — 補齊外殼需要的 Lucide 圖示
+### [x] Slice 2 — 補齊外殼需要的 Lucide 圖示
 - **目標**：外殼每個按鈕都有和遊戲端相同語意的線條圖示，不再用文字或 emoji 暫代。
 - **範圍內**：`app/ui/icons.js` 追加外殼用圖示（預估：`heart`（追蹤）、`settings`（設定）、`hammer`（建造）、`shopping-bag`（商店）、`backpack`（背包）、`smile`（動作）、`gift`（禮物）、`waves`（頭像）；實際清單以 Slice 1 的暫代處為準）。SVG 路徑必須與 Lucide 官方 icon-nodes 逐字相同（ISC 授權）。
 - **範圍外**：把圖示放進外殼（Slice 3）；轉盤的彩色圓盤（Slice 6 用 CSS 畫）。
@@ -93,11 +93,15 @@
 - **設計要點**：stroke 2、`currentColor`、尺寸用既有 `ICON_SIZES`。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [ ] 新增的每個圖示都能由 `icon(name)` 輸出合法 SVG
-  - [ ] 路徑與官方來源逐字相符（沿用第一階段 Slice 2 的比對方式）
+  - [x] 新增的每個圖示都能由 `icon(name)` 輸出合法 SVG
+  - [x] 路徑與官方來源逐字相符（沿用第一階段 Slice 2 的比對方式）
 - **測試策略**：`tests/icons.test.js` 追加 — 新名稱都存在於 `ICONS`、輸出含 `<svg` 且 `aria-hidden`；邊界：不存在的名稱仍依既有行為處理（不得靜默輸出空字串以外的東西）。
 - **完成定義**：`npm test` 全綠＋slice-reviewer
 - **對外介面**：
+  - `app/ui/icons.js` 的 `ICONS` 新增 8 個（lucide-static v1.47.0 官方名稱）：`backpack`、`face-slightly-smiling`、`gift`、`hammer`、`heart`、`settings`、`shopping-bag`、`waves-horizontal`。`icon()` 介面不變。
+  - ⚠️ **給 Slice 3**：v1.47.0 沒有 `smile`、`waves`，`app/ui/shell.js` 仍寫這兩個舊名稱（`RAIL_ITEMS` 的 emote、`accountCardHtml` 的頭像），所以「動作」鈕與頭像還是暫代字；Slice 3 改 shell.js 時要換成 `face-slightly-smiling`、`waves-horizontal`。其餘外殼圖示已因 `glyph()` 自動換成線條圖示（實機確認）。
+- **施工備註**：比對來源 `https://cdn.jsdelivr.net/npm/lucide-static@1.47.0/icon-nodes.json`；ICONS 全部 56 個與官方逐字相符（主線與 slice-reviewer 各自獨立比對）。Circuit Breaker 1 次：Slice 1 的 `tests/shell.test.js` 以 heart 當缺圖示例子，補上 heart 後紅燈，換成 `no-such-icon`（已在不變量 6 申報）。
+- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-25）
 - **依賴**：Slice 1
 - **平行組**：獨立
 

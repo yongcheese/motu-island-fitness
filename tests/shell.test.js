@@ -42,10 +42,11 @@ test('shell: 已有的 Lucide 圖示輸出 SVG，缺的圖示用暫代字且不�
   const html = tabbarHtml(TABS, 'island');
   const [home] = html.split('</button>');
   assert(home.includes('<svg'), '主頁（house）應輸出 Lucide SVG');
-  // heart 尚未收錄（Slice 2 補）→ 暫代字，而不是 icon() 的空白佔位
-  const tracking = html.split('</button>')[2];
-  assert(!tracking.includes('<svg'), '缺圖示時不應輸出空白 SVG');
-  assert(tracking.includes('class="sh-ph"'), '缺圖示時應放暫代字');
+  // 缺圖示 → 暫代字，而不是 icon() 的空白佔位。
+  // （Slice 2 補齊 heart 後，這裡改用一個確定不存在的名稱當例子；判斷條件不變）
+  const missing = tabbarHtml([{ id: 'x', label: '追蹤', icon: 'no-such-icon' }], null);
+  assert(!missing.includes('<svg'), '缺圖示時不應輸出空白 SVG');
+  assert(missing.includes('class="sh-ph"'), '缺圖示時應放暫代字');
 });
 
 test('shell: 帳號卡顯示名稱、等級、金幣，並跳脫 HTML', () => {

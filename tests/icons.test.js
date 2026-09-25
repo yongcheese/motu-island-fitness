@@ -111,3 +111,35 @@ test('未知名稱但有 label：仍保留 aria-label，意思不會消失', () 
   countWarn(() => { s = icon('no-such-icon', { label: '金幣' }); });
   assert(s.includes('aria-label="金幣"') && s.includes('role="img"'));
 });
+
+/* ---------- 合體第二階段 Slice 2：外殼用圖示 ---------- */
+// 分頁列（house、dumbbell、heart、settings）、帳號卡（waves-horizontal、coins）、
+// 左側直欄（hammer、shopping-bag、backpack、face-slightly-smiling）、右下（gift）
+const SHELL_ICONS = ['house', 'dumbbell', 'heart', 'settings', 'waves-horizontal', 'coins',
+  'hammer', 'shopping-bag', 'backpack', 'face-slightly-smiling', 'gift'];
+
+test('外殼用圖示都已收錄，輸出非空的合法 SVG 且預設 aria-hidden、不發警告', () => {
+  for (const name of SHELL_ICONS) {
+    assert(Object.prototype.hasOwnProperty.call(ICONS, name), `ICONS 缺 ${name}`);
+    let s;
+    eq(countWarn(() => { s = icon(name, { size: 24 }); }), 0, `${name} 不應觸發缺圖示警告`);
+    assert(s.startsWith('<svg') && s.endsWith('</svg>'), name);
+    assert(s.includes('aria-hidden="true"'), `${name} 應為裝飾性圖示`);
+    assert(s.replace(/^<svg[^>]*>|<\/svg>$/g, '').length > 0, `${name} 內容不得為空`);
+  }
+});
+
+test('ICONS 依名稱字母序排列（方便人工與官方來源逐條比對）', () => {
+  const keys = Object.keys(ICONS);
+  const unsorted = keys.filter((k, i) => i > 0 && keys[i - 1] >= k);
+  eq(unsorted.join(','), '', '這些名稱沒有排在正確位置');
+});
+
+test('邊界：本版本不存在的舊名稱（smile、waves）仍走未知名稱路徑，不得偷偷加別名', () => {
+  for (const old of ['smile', 'waves']) {
+    assert(!Object.prototype.hasOwnProperty.call(ICONS, old), `${old} 不是 v1.47.0 的官方名稱，不應收錄`);
+    let s;
+    eq(countWarn(() => { s = icon(old); }), 1, `${old} 應 warn 一次`);
+    eq(s.replace(/^<svg[^>]*>|<\/svg>$/g, ''), '', `${old} 只能輸出空白佔位`);
+  }
+});
