@@ -153,3 +153,71 @@ test('shell: 底部留白 ≥ 分頁列高度＋安全區；電腦版另計懸�
   assert(dv, '電腦版區塊應重新定義留白');
   assert(dv[1].includes('var(--motu-space-4)'), `電腦版分頁列離底 space-4，留白要算進去：${dv[1]}`);
 });
+
+// —— Slice 6：照截圖細修造型 ——
+// 自創色值偵測器：與 tests/motu-skin.test.js ④ 同一套規則（hex、色彩函式、具名色）
+function hardcodedColors(css) {
+  const s = css.replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/url\([^)]*\)/g, '')          // 路徑不是顏色
+    .replace(/var\(--[\w-]+\)/g, 'VAR');   // --motu-white 這類名稱不算
+  const hex = s.match(/#[0-9a-fA-F]{3,8}\b/g) || [];
+  const fn = s.match(/\b(rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/g) || [];
+  const named = s.match(/:[^;{}]*\b(white|black|red|blue|green|gray|grey|orange|yellow|purple|pink)\b/g) || [];
+  return [...hex, ...fn, ...named];
+}
+
+test('shell: shell.css 不出現 --motu-* 以外的色值', () => {
+  const css = readFileSync(fileURLToPath(new URL('../app/styles/shell.css', import.meta.url)), 'utf8');
+  eq(hardcodedColors(css).join(' | '), '', '發現自創色值');
+  const vars = [...css.matchAll(/var\((--[\w-]+)/g)].map((m) => m[1]);
+  const foreign = [...new Set(vars.filter((v) => !/^--(motu|sh)-/.test(v)))];
+  eq(foreign.join(','), '', '只能引用 --motu-* 或外殼自己的 --sh-* 變數');
+});
+
+test('色值偵測本身有效：塞寫死色會被抓到，註解與 var() 名稱不會（防止測試空轉）', () => {
+  const probe = '/* #123456 註解不算 */ .a { color: #FFF; background: conic-gradient(rgba(0,0,0,.5) 0 90deg, var(--motu-white) 0); border-color: white; }';
+  const found = hardcodedColors(probe);
+  eq(found.length, 3, `應抓到 #FFF、rgba(、white 三處，實得：${found.join(' | ')}`);
+  eq(hardcodedColors('.a { color: var(--motu-white); }').length, 0, 'var(--motu-white) 不應被誤判');
+});
+
+test('shell: 截圖造型的關鍵規則都在（斜角用 clip-path、虛線、豎線、轉盤圓盤）', () => {
+  const css = readFileSync(fileURLToPath(new URL('../app/styles/shell.css', import.meta.url)), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  const block = (sel) => [...css.matchAll(new RegExp(`${sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`, 'g'))].map((m) => m[1]).join(';');
+  assert(/clip-path:\s*polygon/.test(block('.sh-account::before')), '帳號卡右上斜角應用 clip-path');
+  assert(/dashed/.test(block('.sh-res')), '帳號卡金幣列上方應為虛線分隔');
+  assert(/clip-path:\s*polygon/.test(block('#shell .sh-rail-btn')), '直欄按鈕右側尖角應用 clip-path');
+  assert(/background:\s*var\(--motu-navy\)/.test(block('.sh-rail::before')), '直欄應有深藍豎線');
+  assert(/dashed/.test(block('.sh-tabs::before')), '分頁列頂緣應為虛線');
+  assert(/clip-path:\s*polygon/.test(block('#shell .sh-tab.is-active')), '選中頁籤上緣應收斜角');
+  assert(/conic-gradient/.test(block('.sh-wheel-disc')), '轉盤應為 CSS conic-gradient 圓盤');
+  assert(/var\(--motu-gold\)/.test(block('#shell .sh-gift::after')), '禮物鈕應有金色小點');
+  assert(!/url\(/.test(css), '造型不得用圖片');
+});
+
+test('shell: 轉盤圓盤是純裝飾（不含文字），名稱由按鈕 aria-label 提供', () => {
+  const html = cornerHtml();
+  assert(/<span class="sh-wheel-disc" aria-hidden="true"><\/span>/.test(html), `轉盤圓盤應為空的裝飾元素：${html}`);
+  assert(/data-act="wheel" aria-label="幸運轉盤"/.test(html), '轉盤按鈕應有報讀名稱');
+});
+
+test('shell: 載入畫面沒有 emoji，改用 Lucide 圖示（邊界：去掉註解後仍掃得到 loader-logo 內容）', () => {
+  const html = readFileSync(fileURLToPath(new URL('../index.html', import.meta.url)), 'utf8')
+    .replace(/<!--[\s\S]*?-->/g, '');
+  const logo = html.match(/<div class="loader-logo">([\s\S]*?)<\/div>/);
+  assert(logo, '去掉註解後仍應找得到 loader-logo');
+  assert(logo[1].trim().length > 0, 'loader-logo 不應是空的');
+  const found = emojiIn(logo[1]);
+  assert(!found, `載入畫面不得含 emoji，實得：${found?.join(' ')}`);
+  assert(/<svg[^>]*aria-hidden="true"/.test(logo[1]), '載入畫面應為裝飾性 SVG 圖示');
+  const loader = html.match(/<div id="loader">([\s\S]*?)<\/div>\s*<div id="app">/);
+  assert(loader && !emojiIn(loader[1]), '整個載入畫面都不得含 emoji');
+});
+
+test('shell: 載入畫面的棕櫚樹路徑與 icons.js 的 Lucide tree-palm 逐字相同', async () => {
+  const { ICONS } = await import('../app/ui/icons.js');
+  const html = readFileSync(fileURLToPath(new URL('../index.html', import.meta.url)), 'utf8');
+  const logo = html.match(/<div class="loader-logo">([\s\S]*?)<\/div>/)[1];
+  assert(logo.includes(ICONS['tree-palm']), '載入畫面的 SVG 路徑應直接取自 ICONS["tree-palm"]');
+});

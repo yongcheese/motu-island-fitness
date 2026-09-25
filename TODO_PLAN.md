@@ -52,7 +52,7 @@
 
 ## 進度總覽
 - 總 Slice 數：8
-- 已完成：5 / 8
+- 已完成：6 / 8
 - 平行組：無（Slice 1、3–8 都會碰 `main.js` 或 `shell.css`；Slice 2 雖只碰圖示模組，但 Slice 1 之後才知道確切需要哪些圖示，保守序列執行）
 
 ---
@@ -177,7 +177,7 @@
 - **依賴**：Slice 3
 - **平行組**：獨立
 
-### [ ] Slice 6 — 照遊戲端截圖細修外殼造型
+### [x] Slice 6 — 照遊戲端截圖細修外殼造型
 - **目標**：主頁外殼和 `image.png` 並排時看起來是同一個產品。
 - **範圍內**：`shell.css` —— 分頁列頁籤造型（選中頁籤海洋青底、上緣斜角、上方小圓點、面板頂緣虛線）；帳號卡（右上斜角、LV 膠囊、虛線分隔、金幣列）；左側直欄（深藍豎線、按鈕右側尖角、小標籤膠囊）；右下禮物大圓鈕（金色小點）與轉盤（CSS conic-gradient 用 Motu 色票畫彩色圓盤）；載入畫面的 🏝️ 改 Lucide。
 - **範圍外**：動效（Slice 7）；對比與無障礙收尾（Slice 8）。
@@ -185,12 +185,20 @@
 - **設計要點**：只用 `--motu-*`；斜角用 `clip-path` 或偽元素，不用圖片；不自創色值。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [ ] 電腦版 1920 寬截圖與 `image.png` 並排，外殼的位置、造型、選中態一致（神似即可）
-  - [ ] `shell.css` 不出現 `--motu-*` 以外的色值
-  - [ ] `index.html` 載入畫面沒有 emoji
+  - [x] 電腦版 1920 寬截圖與 `image.png` 並排，外殼的位置、造型、選中態一致（神似即可）（`.playwright-mcp/s6_after_1920.png`、`s6_after_390.png`；改前 `s6_before_1920.png`）
+  - [x] `shell.css` 不出現 `--motu-*` 以外的色值
+  - [x] `index.html` 載入畫面沒有 emoji
 - **測試策略**：`tests/shell.test.js` 追加 — `shell.css` 自創色值掃描（沿用 `motu-skin.test.js` 的偵測器，含防空轉 probe）；載入畫面無 emoji（邊界：去掉註解後仍掃得到 `<div class="loader-logo">` 內容）。
 - **完成定義**：`npm test` 全綠＋電腦／手機截圖＋slice-reviewer
 - **對外介面**：
+  - **`--sh-tab-h` 由 84px 改為 96px**（容納頁籤小圓點與頂緣虛線）。Slice 4 的島嶼抽屜抬高、Slice 5 的 `--sh-view-pad-b` 都是變數引用，已自動跟上（實機：1440 抽屜底緣＝分頁列頂緣 788；健身頁留白 136px）。
+  - `app/ui/shell.js` 的 `cornerHtml()`：轉盤內容改為空的裝飾 `<span class="sh-wheel-disc" aria-hidden="true"></span>`（不再有「轉盤」文字），報讀名稱仍由按鈕 `aria-label="幸運轉盤"` 提供。其餘 export 不變。
+  - CSS 內部尺寸變數（僅 shell.css 內用）：`--sh-cut`（帳號卡斜角）、`--sh-tip`（直欄尖角）、`--sh-tab-cut`（選中頁籤斜角）。
+  - 造型手法（給 Slice 7 動效）：帳號卡底色在 `.sh-account::before`、直欄按鈕與選中頁籤用 `clip-path`，陰影改在外層 `filter: drop-shadow(--motu-shadow-*)`（`.sh-account`、`.sh-rail-item`）。Slice 7 若要做 hover 陰影，要改外層的 filter，不是按鈕的 box-shadow。
+- **施工備註**：測試 390 → 396（`tests/shell.test.js` 新增 6 個：自創色值掃描＋防空轉 probe、造型關鍵規則、轉盤為純裝飾、載入畫面無 emoji〔去註解邊界〕、棕櫚樹路徑與 `ICONS['tree-palm']` 逐字相同）。實機 1920／1440／390 截圖，console 0 error／0 warning。
+- **與計畫文字的落差**：計畫寫禮物「右上角金色小點」，但 `image.png` 的金點在**左上**；驗收以截圖並排為準，照截圖放左上（CSS 註解已註明）。
+- **交接／已知缺口**：`index.html` 的 favicon 仍是 🏝️ emoji（不在本 Slice「載入畫面」範圍，未改）；截圖中帳號卡右側的下拉箭頭、轉盤左上的金幣小膠囊未做（需求未列）。
+- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-25）
 - **依賴**：Slice 3、Slice 4
 - **平行組**：獨立
 

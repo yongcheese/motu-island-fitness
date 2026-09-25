@@ -82,8 +82,11 @@ export function railHtml() {
     + `<span class="sh-rail-label">${esc(r.label)}</span></div>`).join('');
 }
 
-/** 右下：禮物大圓鈕、幸運轉盤圓鈕 */
+/**
+ * 右下：禮物大圓鈕、幸運轉盤圓鈕。
+ * Slice 6：轉盤改成純 CSS 彩色圓盤（conic-gradient），圓盤本身是裝飾，名稱由按鈕的 aria-label 提供。
+ */
 export function cornerHtml() {
   return `<button type="button" class="sh-gift" data-act="gift" aria-label="禮物">${glyph('gift', '禮', 24)}</button>`
-    + `<button type="button" class="sh-wheel" data-act="wheel" aria-label="幸運轉盤"><span class="sh-wheel-disc">轉盤</span></button>`;
+    + `<button type="button" class="sh-wheel" data-act="wheel" aria-label="幸運轉盤"><span class="sh-wheel-disc" aria-hidden="true"></span></button>`;
 }

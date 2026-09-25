@@ -1,12 +1,13 @@
 /* ============================================================
    外殼版面（合體第二階段）
    照遊戲端主頁截圖：左上帳號卡、左側直欄、右下禮物與轉盤、底部分頁列。
-   Slice 1 只做基礎版面（位置、白卡、Motu token）；造型細修（斜角、虛線、豎線、
-   小圓點）在 Slice 6、動效在 Slice 7。色值一律 --motu-*，不自創。
+   Slice 1 做基礎版面（位置、白卡、Motu token）；Slice 6 照截圖細修造型（斜角、虛線、
+   豎線、小圓點、轉盤）；動效在 Slice 7。色值一律 --motu-*，不自創。
    ============================================================ */
 
 :root {
-  --sh-tab-h: 84px;
+  /* Slice 6：84 → 96px，容納頁籤上方小圓點與頂緣虛線（照截圖） */
+  --sh-tab-h: 96px;
   /* 既有的訓練頁浮動鈕與 toast 用 --tabbar-h 避開分頁列，改指向新分頁列高度 */
   --tabbar-h: var(--sh-tab-h);
 }
@@ -42,17 +43,31 @@
 /* 圖示還沒補齊時的暫代字（Slice 2 補 Lucide 後就不會出現） */
 .sh-ph { font-weight: 900; font-size: 1rem; line-height: 1; }
 
-/* —— 左上帳號卡 —— */
+/* 載入畫面：Lucide 棕櫚樹取代 emoji（Slice 6） */
+.loader-logo { color: var(--motu-color-primary); line-height: 0; }
+
+/* ============================================================
+   Slice 6：照 image.png 細修造型
+   斜角一律用 clip-path（不用圖片）；clip-path 會把同元素的 box-shadow 一起裁掉，
+   所以被裁的底色放在 ::before，陰影改用外層的 filter: drop-shadow(--motu-shadow-*)。
+   ============================================================ */
+
+/* —— 左上帳號卡：右上角收斜角、虛線分隔 —— */
 .sh-account {
+  --sh-cut: 1.25rem;
   position: absolute; top: var(--motu-space-4); left: var(--motu-space-4);
-  width: 18rem;
+  width: 18rem; isolation: isolate;
   display: grid; grid-template-columns: auto 1fr; align-items: center;
   gap: var(--motu-space-2) var(--motu-space-3);
   padding: var(--motu-space-3) var(--motu-space-4);
-  background: var(--motu-color-surface);
-  border-radius: var(--motu-radius-lg);
-  box-shadow: var(--motu-shadow-md);
   color: var(--motu-color-text);
+  filter: drop-shadow(var(--motu-shadow-md));
+}
+.sh-account::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: var(--motu-color-surface);
+  border-radius: var(--motu-radius-xl);
+  clip-path: polygon(0 0, calc(100% - var(--sh-cut)) 0, 100% var(--sh-cut), 100% 100%, 0 100%);
 }
 .sh-avatar {
   width: 3.5rem; height: 3.5rem; border-radius: var(--motu-radius-pill);
@@ -60,87 +75,163 @@
   background: var(--motu-color-primary); color: var(--motu-white);
   box-shadow: var(--motu-shadow-porthole);
 }
+.sh-avatar .icon { width: 1.75rem; height: 1.75rem; }
 .sh-name { font-weight: 800; font-size: 1.125rem; line-height: 1.2; }
 .sh-lv {
   display: inline-block; margin-top: var(--motu-space-1);
   padding: 0 var(--motu-space-2);
-  border: 1px solid var(--motu-color-border); border-radius: var(--motu-radius-pill);
-  font-size: 0.75rem; font-weight: 800; color: var(--motu-teal-dark);
+  background: var(--motu-mint-pale);
+  border: 1px solid var(--motu-mint); border-radius: var(--motu-radius-pill);
+  font-family: var(--motu-font-mono); font-size: 0.75rem; font-weight: 800;
+  letter-spacing: var(--motu-tracking-label); color: var(--motu-teal-dark);
 }
 .sh-res {
   grid-column: 1 / -1;
   display: flex; align-items: center; justify-content: center; gap: var(--motu-space-1);
   padding-top: var(--motu-space-2);
-  border-top: 1px solid var(--motu-color-border);
-  font-weight: 800;
+  border-top: 2px dashed var(--motu-color-border);
+  font-family: var(--motu-font-mono); font-weight: 800;
 }
 .sh-coin-ico { color: var(--motu-gold); display: inline-flex; }
 
-/* —— 左側直欄 —— */
+/* —— 左側直欄：深藍豎線串起四個按鈕，按鈕右側是箭頭形尖角 —— */
 .sh-rail {
-  position: absolute; left: var(--motu-space-6); top: 12.5rem;
+  position: absolute; left: var(--motu-space-6); top: 11rem;
   display: flex; flex-direction: column; align-items: center; gap: var(--motu-space-4);
+  isolation: isolate;
 }
-.sh-rail-item { display: flex; flex-direction: column; align-items: center; gap: var(--motu-space-1); }
+/* 豎線從帳號卡下緣一路串到最後一個標籤 */
+.sh-rail::before {
+  content: ''; position: absolute; z-index: -1;
+  left: 50%; top: calc(-1 * var(--motu-space-6)); bottom: calc(-1 * var(--motu-space-2));
+  width: 0.375rem; transform: translateX(-50%);
+  background: var(--motu-navy); border-radius: var(--motu-radius-pill);
+}
+.sh-rail-item {
+  display: flex; flex-direction: column; align-items: center; gap: 0;
+  filter: drop-shadow(var(--motu-shadow-sm));
+}
 #shell .sh-rail-btn {
-  width: 4rem; height: 4rem; display: grid; place-items: center;
+  --sh-tip: 1.25rem;
+  width: 5.25rem; height: 4.5rem; display: grid; place-items: center;
+  padding: 0 var(--sh-tip) 0 0;
   background: var(--motu-color-surface);
-  border-radius: var(--motu-radius-md);
-  box-shadow: var(--motu-shadow-sm);
+  border-radius: 0;
+  clip-path: polygon(0 0, calc(100% - var(--sh-tip)) 0, 100% 50%, calc(100% - var(--sh-tip)) 100%, 0 100%);
 }
+.sh-rail-btn .icon { width: 2.25rem; height: 2.25rem; stroke-width: 1.75; }
+/* 標籤膠囊在按鈕下方、壓在豎線上（位移只為了對齊按鈕本體，不含尖角） */
 .sh-rail-label {
+  margin-top: var(--motu-space-1);
+  transform: translateX(calc(-1 * var(--motu-space-2)));
   padding: 0 var(--motu-space-2);
   background: var(--motu-color-surface);
   border: 1px solid var(--motu-color-border); border-radius: var(--motu-radius-pill);
-  font-size: 0.75rem; font-weight: 700; color: var(--motu-color-text);
+  font-size: 0.75rem; font-weight: 700; line-height: 1.5; color: var(--motu-color-text);
 }
 
-/* —— 右下：禮物、轉盤 —— */
+/* —— 右下：禮物大圓鈕（金色小點）、幸運轉盤 —— */
 .sh-corner {
   position: absolute; right: var(--motu-space-6); bottom: var(--motu-space-6);
   display: flex; flex-direction: column; align-items: center; gap: var(--motu-space-4);
 }
 #shell .sh-gift {
-  width: 5.25rem; height: 5.25rem; border-radius: var(--motu-radius-pill);
+  position: relative;
+  width: 6rem; height: 6rem; border-radius: var(--motu-radius-pill);
   display: grid; place-items: center;
   background: var(--motu-color-surface); box-shadow: var(--motu-shadow-md);
 }
+.sh-gift .icon { width: 2.5rem; height: 2.5rem; }
+/* 截圖裡的金點在左上方（有可領取的禮物時的提示點） */
+#shell .sh-gift::after {
+  content: ''; position: absolute; top: 0.25rem; left: 0.25rem;
+  width: 1.125rem; height: 1.125rem; border-radius: var(--motu-radius-pill);
+  background: var(--motu-gold); box-shadow: 0 0 0 3px var(--motu-white);
+}
 #shell .sh-wheel {
-  width: 4.5rem; height: 4.5rem; border-radius: var(--motu-radius-pill);
-  display: grid; place-items: center; padding: 0;
+  width: 6rem; height: 6rem; border-radius: var(--motu-radius-pill);
+  display: grid; place-items: center; padding: var(--motu-space-2);
   background: var(--motu-color-surface); box-shadow: var(--motu-shadow-md);
 }
-.sh-wheel-disc { font-size: 0.75rem; font-weight: 800; }
+/* 用 Motu 色票畫的彩色圓盤，中心海洋青軸心、上方深藍指針 */
+.sh-wheel-disc {
+  position: relative; display: block; width: 100%; height: 100%;
+  border-radius: var(--motu-radius-pill);
+  background: conic-gradient(
+    var(--motu-mint) 0 60deg, var(--motu-sand) 0 120deg, var(--motu-rarity-epic-field-core) 0 180deg,
+    var(--motu-mint-pale) 0 240deg, var(--motu-teal-light) 0 300deg, var(--motu-rarity-rare-field-core) 0 360deg);
+  box-shadow: inset 0 0 0 2px var(--motu-white);
+}
+.sh-wheel-disc::after {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 1.25rem; height: 1.25rem; transform: translate(-50%, -50%);
+  border-radius: var(--motu-radius-pill);
+  background: var(--motu-teal); box-shadow: 0 0 0 3px var(--motu-white);
+}
+.sh-wheel-disc::before {
+  content: ''; position: absolute; left: 50%; top: calc(-1 * var(--motu-space-2));
+  width: 0.625rem; height: 0.875rem; transform: translateX(-50%); z-index: 1;
+  background: var(--motu-navy);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
 
-/* —— 底部分頁列 —— */
+/* —— 底部分頁列：頂緣虛線、每個頁籤上方小圓點、選中頁籤海洋青底＋上緣斜角 —— */
 .sh-tabs {
   position: absolute; left: 0; right: 0; bottom: 0;
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--motu-space-2);
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--motu-space-3);
   height: calc(var(--sh-tab-h) + env(safe-area-inset-bottom));
-  padding: var(--motu-space-2) var(--motu-space-2) calc(var(--motu-space-2) + env(safe-area-inset-bottom));
+  padding: var(--motu-space-4) var(--motu-space-3) calc(var(--motu-space-2) + env(safe-area-inset-bottom));
   background: var(--motu-color-surface);
   border-radius: var(--motu-radius-lg) var(--motu-radius-lg) 0 0;
   box-shadow: var(--motu-shadow-lg);
 }
+.sh-tabs::before {
+  content: ''; position: absolute; top: var(--motu-space-1);
+  left: var(--motu-space-2); right: var(--motu-space-2);
+  border-top: 2px dashed var(--motu-color-border);
+}
 #shell .sh-tab {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--motu-space-1);
+  --sh-tab-cut: 0.75rem;
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.125rem;
+  padding-top: var(--motu-space-2);
   background: var(--motu-color-surface);
-  border-radius: var(--motu-radius-md);
+  border-radius: 0;
+  box-shadow: inset 0 1px 0 var(--motu-color-border), inset 1px 0 0 var(--motu-color-border), inset -1px 0 0 var(--motu-color-border);
   font-size: 0.875rem; font-weight: 800;
 }
-#shell .sh-tab.is-active { background: var(--motu-color-primary); color: var(--motu-white); }
-.sh-tab-ico { display: inline-flex; }
+/* 小圓點：未選中是暖灰，選中是白色 */
+#shell .sh-tab::before {
+  content: ''; position: absolute; top: var(--motu-space-2); left: 50%;
+  width: 0.375rem; height: 0.375rem; transform: translateX(-50%);
+  border-radius: var(--motu-radius-pill); background: var(--motu-color-border);
+}
+#shell .sh-tab.is-active {
+  background: var(--motu-color-primary); color: var(--motu-white); box-shadow: none;
+  clip-path: polygon(var(--sh-tab-cut) 0, calc(100% - var(--sh-tab-cut)) 0, 100% var(--sh-tab-cut), 100% 100%, 0 100%, 0 var(--sh-tab-cut));
+}
+#shell .sh-tab.is-active::before { background: var(--motu-white); }
+.sh-tab-ico { display: inline-flex; margin-top: var(--motu-space-2); }
+.sh-tab-ico .icon { width: 1.625rem; height: 1.625rem; }
 
 /* 手機：直欄、帳號卡、右下按鈕縮小，右下按鈕抬到分頁列上方 */
 @media (max-width: 959px) {
-  .sh-account { top: var(--motu-space-3); left: var(--motu-space-3); width: 14rem; padding: var(--motu-space-2) var(--motu-space-3); }
+  .sh-account { top: var(--motu-space-3); left: var(--motu-space-3); width: 14rem; padding: var(--motu-space-2) var(--motu-space-3); --sh-cut: 1rem; }
   .sh-avatar { width: 2.75rem; height: 2.75rem; }
+  .sh-avatar .icon { width: 1.5rem; height: 1.5rem; }
   .sh-name { font-size: 1rem; }
-  .sh-rail { left: var(--motu-space-3); top: 9.5rem; gap: var(--motu-space-3); }
-  #shell .sh-rail-btn { width: 3rem; height: 3rem; }
+  .sh-rail { left: var(--motu-space-3); top: 8.5rem; gap: var(--motu-space-3); }
+  .sh-rail::before { top: calc(-1 * var(--motu-space-4)); width: 0.25rem; }
+  #shell .sh-rail-btn { width: 3.75rem; height: 3.25rem; --sh-tip: 0.875rem; }
+  .sh-rail-btn .icon { width: 1.5rem; height: 1.5rem; }
+  .sh-rail-label { margin-top: 0.125rem; transform: translateX(calc(-1 * var(--motu-space-1))); font-size: var(--motu-text-xs); }
   .sh-corner { right: var(--motu-space-3); bottom: calc(var(--sh-tab-h) + env(safe-area-inset-bottom) + var(--motu-space-3)); gap: var(--motu-space-3); }
-  #shell .sh-gift { width: 3.5rem; height: 3.5rem; }
-  #shell .sh-wheel { width: 3rem; height: 3rem; }
+  #shell .sh-gift { width: 3.75rem; height: 3.75rem; }
+  .sh-gift .icon { width: 1.625rem; height: 1.625rem; }
+  #shell .sh-gift::after { top: 0; left: 0; width: 0.875rem; height: 0.875rem; }
+  #shell .sh-wheel { width: 3.75rem; height: 3.75rem; padding: var(--motu-space-1); }
+  .sh-wheel-disc::after { width: 0.875rem; height: 0.875rem; }
+  .sh-tabs { gap: var(--motu-space-2); padding-left: var(--motu-space-2); padding-right: var(--motu-space-2); }
 }
 
 /* 電腦：分頁列置中懸浮於底部 */
@@ -148,7 +239,7 @@
   .sh-tabs {
     left: 50%; right: auto; bottom: var(--motu-space-4);
     width: 30rem; transform: translateX(-50%);
-    border-radius: var(--motu-radius-lg);
+    border-radius: var(--motu-radius-md);
   }
   /* 懸浮分頁列離底 space-4，留白要多算這一段 */
   :root { --sh-view-pad-b: calc(var(--sh-tab-h) + var(--motu-space-4) + env(safe-area-inset-bottom) + var(--motu-space-6)); }
