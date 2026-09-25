@@ -1,0 +1,149 @@
+/* ============================================================
+   外殼版面（合體第二階段）
+   照遊戲端主頁截圖：左上帳號卡、左側直欄、右下禮物與轉盤、底部分頁列。
+   Slice 1 只做基礎版面（位置、白卡、Motu token）；造型細修（斜角、虛線、豎線、
+   小圓點）在 Slice 6、動效在 Slice 7。色值一律 --motu-*，不自創。
+   ============================================================ */
+
+:root {
+  --sh-tab-h: 84px;
+  /* 既有的訓練頁浮動鈕與 toast 用 --tabbar-h 避開分頁列，改指向新分頁列高度 */
+  --tabbar-h: var(--sh-tab-h);
+}
+
+/* —— App 容器：拿掉舊的置中欄與 ≥960px 左側欄 grid，#view 滿版 ——
+   維持 flex 欄讓 #view 沿用 app.css 的 flex:1 撐滿（島嶼的 #view.isl-host 會設 position:relative，
+   若改用絕對定位撐高會被它蓋掉而變成 0 高） */
+#app {
+  position: fixed; inset: 0;
+  display: flex; flex-direction: column;
+  width: auto; height: auto; max-width: none; margin: 0;
+}
+
+/* —— 外殼容器：蓋在 #view 上，本身不吃點擊，只有裡面的元件吃 —— */
+#shell { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
+#shell > * { pointer-events: auto; }
+#shell.hidden { display: none; }
+/* 帳號卡、直欄、右下按鈕只在主頁出現；其他分頁只留底部分頁列 */
+#shell[data-page="page"] > :not(.sh-tabs) { display: none; }
+
+#shell button {
+  font-family: inherit; border: 0; cursor: pointer;
+  color: var(--motu-color-text);
+}
+#shell button:focus-visible { outline: 2px solid var(--motu-color-focus); outline-offset: 2px; }
+
+/* 圖示還沒補齊時的暫代字（Slice 2 補 Lucide 後就不會出現） */
+.sh-ph { font-weight: 900; font-size: 1rem; line-height: 1; }
+
+/* —— 左上帳號卡 —— */
+.sh-account {
+  position: absolute; top: var(--motu-space-4); left: var(--motu-space-4);
+  width: 18rem;
+  display: grid; grid-template-columns: auto 1fr; align-items: center;
+  gap: var(--motu-space-2) var(--motu-space-3);
+  padding: var(--motu-space-3) var(--motu-space-4);
+  background: var(--motu-color-surface);
+  border-radius: var(--motu-radius-lg);
+  box-shadow: var(--motu-shadow-md);
+  color: var(--motu-color-text);
+}
+.sh-avatar {
+  width: 3.5rem; height: 3.5rem; border-radius: var(--motu-radius-pill);
+  display: grid; place-items: center;
+  background: var(--motu-color-primary); color: var(--motu-white);
+  box-shadow: var(--motu-shadow-porthole);
+}
+.sh-name { font-weight: 800; font-size: 1.125rem; line-height: 1.2; }
+.sh-lv {
+  display: inline-block; margin-top: var(--motu-space-1);
+  padding: 0 var(--motu-space-2);
+  border: 1px solid var(--motu-color-border); border-radius: var(--motu-radius-pill);
+  font-size: 0.75rem; font-weight: 800; color: var(--motu-teal-dark);
+}
+.sh-res {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; justify-content: center; gap: var(--motu-space-1);
+  padding-top: var(--motu-space-2);
+  border-top: 1px solid var(--motu-color-border);
+  font-weight: 800;
+}
+.sh-coin-ico { color: var(--motu-gold); display: inline-flex; }
+
+/* —— 左側直欄 —— */
+.sh-rail {
+  position: absolute; left: var(--motu-space-6); top: 12.5rem;
+  display: flex; flex-direction: column; align-items: center; gap: var(--motu-space-4);
+}
+.sh-rail-item { display: flex; flex-direction: column; align-items: center; gap: var(--motu-space-1); }
+#shell .sh-rail-btn {
+  width: 4rem; height: 4rem; display: grid; place-items: center;
+  background: var(--motu-color-surface);
+  border-radius: var(--motu-radius-md);
+  box-shadow: var(--motu-shadow-sm);
+}
+.sh-rail-label {
+  padding: 0 var(--motu-space-2);
+  background: var(--motu-color-surface);
+  border: 1px solid var(--motu-color-border); border-radius: var(--motu-radius-pill);
+  font-size: 0.75rem; font-weight: 700; color: var(--motu-color-text);
+}
+
+/* —— 右下：禮物、轉盤 —— */
+.sh-corner {
+  position: absolute; right: var(--motu-space-6); bottom: var(--motu-space-6);
+  display: flex; flex-direction: column; align-items: center; gap: var(--motu-space-4);
+}
+#shell .sh-gift {
+  width: 5.25rem; height: 5.25rem; border-radius: var(--motu-radius-pill);
+  display: grid; place-items: center;
+  background: var(--motu-color-surface); box-shadow: var(--motu-shadow-md);
+}
+#shell .sh-wheel {
+  width: 4.5rem; height: 4.5rem; border-radius: var(--motu-radius-pill);
+  display: grid; place-items: center; padding: 0;
+  background: var(--motu-color-surface); box-shadow: var(--motu-shadow-md);
+}
+.sh-wheel-disc { font-size: 0.75rem; font-weight: 800; }
+
+/* —— 底部分頁列 —— */
+.sh-tabs {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--motu-space-2);
+  height: calc(var(--sh-tab-h) + env(safe-area-inset-bottom));
+  padding: var(--motu-space-2) var(--motu-space-2) calc(var(--motu-space-2) + env(safe-area-inset-bottom));
+  background: var(--motu-color-surface);
+  border-radius: var(--motu-radius-lg) var(--motu-radius-lg) 0 0;
+  box-shadow: var(--motu-shadow-lg);
+}
+#shell .sh-tab {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--motu-space-1);
+  background: var(--motu-color-surface);
+  border-radius: var(--motu-radius-md);
+  font-size: 0.875rem; font-weight: 800;
+}
+#shell .sh-tab.is-active { background: var(--motu-color-primary); color: var(--motu-white); }
+.sh-tab-ico { display: inline-flex; }
+
+/* 手機：直欄、帳號卡、右下按鈕縮小，右下按鈕抬到分頁列上方 */
+@media (max-width: 959px) {
+  .sh-account { top: var(--motu-space-3); left: var(--motu-space-3); width: 14rem; padding: var(--motu-space-2) var(--motu-space-3); }
+  .sh-avatar { width: 2.75rem; height: 2.75rem; }
+  .sh-name { font-size: 1rem; }
+  .sh-rail { left: var(--motu-space-3); top: 9.5rem; gap: var(--motu-space-3); }
+  #shell .sh-rail-btn { width: 3rem; height: 3rem; }
+  .sh-corner { right: var(--motu-space-3); bottom: calc(var(--sh-tab-h) + env(safe-area-inset-bottom) + var(--motu-space-3)); gap: var(--motu-space-3); }
+  #shell .sh-gift { width: 3.5rem; height: 3.5rem; }
+  #shell .sh-wheel { width: 3rem; height: 3rem; }
+}
+
+/* 電腦：分頁列置中懸浮於底部 */
+@media (min-width: 960px) {
+  .sh-tabs {
+    left: 50%; right: auto; bottom: var(--motu-space-4);
+    width: 30rem; transform: translateX(-50%);
+    border-radius: var(--motu-radius-lg);
+  }
+  /* 舊版 ≥960px 的 toast 放在視窗底部 32px，會蓋到懸浮分頁列 */
+  .toast { bottom: calc(var(--sh-tab-h) + var(--motu-space-8)); }
+}

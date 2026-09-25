@@ -1,4 +1,4 @@
-// App shell：頂部狀態列、底部 Tab 導覽、掛載各 feature 模組。
+// App shell：遊戲端樣式外殼（帳號卡、左側直欄、右下按鈕、底部分頁列）、掛載各 feature 模組。
 import { store } from './state/store.js';
 import { createCoach } from './core/coach.js';
 import { setPalette } from './ui/feedback.js';
@@ -9,6 +9,7 @@ import { resolveIsland } from './features/island/registry.js';
 import tracking from './features/tracking/tracking.js';
 import settings from './features/settings/settings.js';
 import { createIslandFacade } from './state/island-facade.js';
+import { tabbarHtml, accountCardHtml, railHtml, cornerHtml } from './ui/shell.js';
 
 const coach = createCoach({ enabled: store.getState().prefs.voice });
 
@@ -40,18 +41,24 @@ if (!islandPick.ok) console.error('[island]', islandPick.message);
 const FEATURES = { today, island: islandPick.module, workout, tracking, settings };
 // 島嶼插槽的受限 store 介面（見 state/island-facade.js 的完整說明與界線）
 const islandStore = createIslandFacade(store);
+// 合體第二階段：分頁列照遊戲端改成四個。今日、健康（tracking）模組保留但不在分頁列；
+// 「追蹤」「設定」只擺樣子（soon），合體後由遊戲組提供。icon 是 Lucide 名稱（app/ui/icons.js）。
 const TABS = [
-  { id: 'today', label: '今日', icon: '☀️' },
-  { id: 'island', label: '島嶼', icon: '🏝️' },
-  { id: 'workout', label: '訓練', icon: '🏋️' },
-  { id: 'tracking', label: '健康', icon: '📊' },
-  { id: 'settings', label: '設定', icon: '⚙️' },
+  { id: 'island', label: '主頁', icon: 'house' },
+  { id: 'workout', label: '健身', icon: 'dumbbell' },
+  { id: 'tracking', label: '追蹤', icon: 'heart', soon: true },
+  { id: 'settings', label: '設定', icon: 'settings', soon: true },
 ];
+// Slice 1 骨架先寫死；Slice 3 改接 store 的暱稱、等級、金幣
+const MOCK_ACCOUNT = { name: '島主', level: 1, coins: 0 };
 
 const els = {
-  topbar: document.getElementById('topbar'),
   view: document.getElementById('view'),
-  tabbar: document.getElementById('tabbar'),
+  shell: document.getElementById('shell'),
+  account: document.getElementById('sh-account'),
+  rail: document.getElementById('sh-rail'),
+  corner: document.getElementById('sh-corner'),
+  tabs: document.getElementById('sh-tabs'),
   toast: document.getElementById('toast'),
   loader: document.getElementById('loader'),
 };
@@ -66,49 +73,38 @@ const ctx = {
     els.toast.textContent = msg; els.toast.classList.add('show');
     clearTimeout(toastTimer); toastTimer = setTimeout(() => els.toast.classList.remove('show'), 2200);
   },
-  // 由 workout 呼叫，要求全螢幕沉浸（隱藏 topbar / tabbar）
+  // 由 workout 呼叫，要求全螢幕沉浸（整個外殼一次隱藏）
   setChrome: (visible) => {
-    els.topbar.classList.toggle('hidden', !visible);
-    els.tabbar.classList.toggle('hidden', !visible);
+    els.shell.classList.toggle('hidden', !visible);
     els.view.classList.toggle('full', !visible);
   },
 };
 
-function renderTopbar() {
-  const s = store.getState();
-  const xp = store.derived.xpProgress();
-  els.topbar.innerHTML = `
-    <div class="tb-avatar">${s.profile.avatar}</div>
-    <div class="tb-id">
-      <div class="tb-name">${escapeHtml(s.profile.nickname)}</div>
-      <div class="tb-lvl">Lv.${s.wallet.level}
-        <span class="tb-xpbar"><i style="width:${Math.round(xp.ratio * 100)}%"></i></span>
-      </div>
-    </div>
-    <div class="tb-coins"><span class="ico">🪙</span>${s.wallet.coins}</div>`;
+function renderShell() {
+  els.account.innerHTML = accountCardHtml(MOCK_ACCOUNT);
+  els.rail.innerHTML = railHtml();
+  els.corner.innerHTML = cornerHtml();
 }
 
 function renderTabbar() {
-  els.tabbar.innerHTML = '';
-  // 桌機側邊欄品牌（手機由 CSS 隱藏）
-  const brand = document.createElement('div');
-  brand.className = 'tb-brand';
-  brand.innerHTML = `<span class="logo">🏝️</span><span>Island Fitness<small>AI 健身 × 島嶼建設</small></span>`;
-  els.tabbar.appendChild(brand);
-  for (const t of TABS) {
-    const b = document.createElement('button');
-    b.className = 'tab' + (current === t.id ? ' active' : '');
-    b.innerHTML = `<span class="ti">${t.icon}</span><span>${t.label}</span>`;
-    b.onclick = () => show(t.id);
-    els.tabbar.appendChild(b);
-  }
+  els.tabs.innerHTML = tabbarHtml(TABS, current);
 }
+
+els.tabs.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-tab]');
+  if (!b) return;
+  // Slice 1：不做的分頁先只記錄；Slice 3 改成跳「即將推出」提示
+  if (b.dataset.soon) { console.info('[shell] 即將推出：', b.dataset.tab); return; }
+  show(b.dataset.tab);
+});
 
 function show(id) {
   if (current === id) return;
   const prev = current ? FEATURES[current] : null;
   if (prev?.unmount) try { prev.unmount(); } catch (e) { console.error(e); }
   current = id;
+  // 主頁（島嶼）才顯示帳號卡、直欄、右下按鈕；其他分頁只留底部分頁列
+  els.shell.dataset.page = id === 'island' ? 'home' : 'page';
   els.view.innerHTML = '';
   els.view.scrollTop = 0;
   ctx.setChrome(true); // 預設顯示外框，feature 可自行關閉
@@ -122,8 +118,6 @@ function show(id) {
   feat.onShow?.();
 }
 
-function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
-
 // 顏色顯示模式（設定頁）：語意鍵不變，只換畫出來的顏色，判定邏輯完全不受影響。
 // 放在 main 而非 workout：設定頁一切換就要生效，不必等下次進訓練頁重新掛載。
 let appliedColorMode = null;
@@ -133,15 +127,14 @@ function syncPalette(s) {
   setPalette(appliedColorMode);
 }
 
-// 狀態變更 → 更新頂部 + 同步調色盤
-store.subscribe((s) => { syncPalette(s); renderTopbar(); });
+// 狀態變更 → 同步調色盤
+store.subscribe((s) => { syncPalette(s); });
 
 // 啟動
 function boot() {
   syncPalette(store.getState());   // 開機即套用，不必等第一次狀態變更
-  renderTopbar();
-  renderTabbar();
-  show('today');   // Slice 1：首屏＝今日層（僅首次載入預設；之後由使用者切換）
+  renderShell();
+  show('island');   // 合體第二階段：開機進主頁（遊戲端樣式外殼＋島嶼）
   setTimeout(() => els.loader.classList.add('done'), 500);
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

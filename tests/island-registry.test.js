@@ -61,19 +61,29 @@ test('registry: 註冊表中值為 falsy 的項目視為未載入', () => {
   eq(r.ok, false);
 });
 
-test('registry: main.js 的五個分頁 id 完整且島嶼可切換', async () => {
+// 合體第二階段 Slice 1（申報的需求變更，REQUIREMENT 5.4／5.9）：
+//   原「五個分頁 id」斷言改為遊戲端的四個分頁；今日、健康模組保留但不在分頁列。
+test('registry: main.js 的分頁列為主頁、健身、追蹤、設定四個，且島嶼可切換', async () => {
   const { readFileSync } = await import('node:fs');
   const { fileURLToPath } = await import('node:url');
   const src = readFileSync(fileURLToPath(new URL('../app/main.js', import.meta.url)), 'utf8');
 
-  for (const id of ['today', 'island', 'workout', 'tracking', 'settings']) {
-    assert(src.includes(`id: '${id}'`), `TABS 應含分頁 ${id}`);
-  }
-  // 島嶼走註冊表，其餘四個維持直接引用 —— 本 Slice 的範圍外條款
+  const block = src.match(/const TABS = \[([\s\S]*?)\];/);
+  assert(block, 'main.js 應有 TABS 常數');
+  const rows = block[1].split('\n').filter((l) => l.includes('id:'));
+  eq(rows.map((l) => l.match(/id: '(\w+)'/)[1]).join(','), 'island,workout,tracking,settings',
+    '分頁列應依序為 island（主頁）、workout（健身）、tracking（追蹤）、settings（設定）');
+  // 只有主頁與健身可用；追蹤、設定只擺樣子
+  const soon = rows.filter((l) => /soon: true/.test(l)).map((l) => l.match(/id: '(\w+)'/)[1]);
+  eq(soon.join(','), 'tracking,settings', '追蹤與設定應標記為不可用');
+  assert(!/id: 'today'/.test(block[1]), '今日不應再出現在分頁列');
+
+  // 島嶼走註冊表，其餘模組維持直接引用（今日、健康、設定模組檔案保留不刪）
   assert(src.includes('island: islandPick.module'), '島嶼應取自註冊表解析結果');
   for (const other of ['today,', 'workout,', 'tracking,', 'settings ']) {
-    assert(src.includes(other), `其餘分頁 ${other.trim()} 應維持直接引用，不受本次改動影響`);
+    assert(src.includes(other), `其餘模組 ${other.trim()} 應維持直接引用，不受本次改動影響`);
   }
   assert(src.includes("const ISLAND_SOURCE = 'builtin'"), '切換點應為單一常數');
   assert(src.includes('island-game'), '應留有遊戲端模組的接入說明');
+  assert(src.includes("show('island')"), '開機應預設進主頁（island）');
 });

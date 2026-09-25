@@ -1,231 +1,213 @@
-# TODO_PLAN — Island Fitness AI｜合體第一階段：健身畫面換成遊戲組樣式
+# TODO_PLAN — Island Fitness AI｜合體第二階段（前段）：主頁外殼改成遊戲組樣式，健身搬進「健身」分頁
 <!-- cross-model-review: skip（2026-09-24 使用者裁示：本專案不送 Codex 審） -->
 
-> 產生時間：2026-09-23
-> 需求來源：對話需求（2026-09-23 定案，合體第一階段）。前一份看板已原封封存為 `TODO_PLAN_合體前.md`（其 Slice 9、10 待第二階段討論整合時再評估）。
-> 技術棧：純前端 ES Modules（無框架、無打包、無 TypeScript）；MediaPipe Pose；Chart.js 4.4.1；three.js r161
-> 測試指令：`npm test`（`node tests/run.js`，基線 **313/313 綠**，不得下降）
+> 產生時間：2026-09-25
+> 需求來源：`REQUIREMENT.md`（含第 5 節規格審查拍板 10 條、第 6 節驗收標準）
+> 前一份看板：第一階段換皮 6/6 已結案，封存為 `TODO_PLAN_合體第一階段.md`（最後存檔點 `1d7a6ba`）
+> 技術棧：純前端 ES Modules（無框架、無打包、無 TypeScript）；three.js r161；遊戲組 Motu 樣式（`app/styles/motu.css` 逐字擷取＋`motu-skin.css`）
+> 測試指令：`npm test`（`node tests/run.js`，基線 **362/362 綠**，不得下降）
 > 執行方式：`python3 serve.py 8080` → `http://localhost:8080`
-> 目的：10/01 企劃書需要健身畫面的正式截圖。
-> 分工（2026-09-24 會議定案）：**我們做健身（訓練頁）換皮；健康頁由遊戲組照「健康頁設計 V2」的功能、用他們的樣式製作**，本看板不含健康頁。
+> 參考畫面：`文件/遊戲組系統UI畫面/image.png`（遊戲端主頁）
 
 ## 需求檔位
 - **檔位**：L
-- **判定理由**：加分清單命中 3 條 →
-  ①改動的介面有多個消費端：色彩 token 定義在全域的 `lumina.css`／`app.css`，五個分頁都讀同一組變數；
-  ②引入新的外部資產：Lucide 圖示（ISC 授權，SVG 路徑放進本機），以及 Inter 800/900 字重（OFL）；
-  ③橫跨 3 個以上關注點：token、圖示、訓練頁、相機 HUD、動效、無障礙。
-  未命中：不碰持久化或登入；耦合關係已用 grep 查過（CSS 未分層、寫死色的分布已知）。
-- **本檔位規格**：Slice 數 6 ｜ slice-reviewer 逐 Slice ｜ 完整 build **N/A（本專案沒有 build）**，改用 `npm test` 全綠＋瀏覽器實機沒有 console error ｜ context 隔離：半自動模式每 2–3 個 Slice 換一次對話
-- **UI 骨架 Slice：N/A**：這次只換樣式，版面、流程、功能全部凍結，沒有新的產品形狀需要先確認。
-  三件套裡的「視覺美學」由 Slice 3–4 分畫面承擔，「微互動」獨立為 Slice 5。
+- **判定理由**：從 S 起算，加分清單命中 3 條 →
+  ①改動的介面有多個消費端：`ctx.setChrome`（訓練頁呼叫）、`ctx.navigate('island')`（訓練、今日、健康三處呼叫）、分頁表 `TABS`（兩支既有測試鎖定）；
+  ②brownfield 且耦合未完全掌握：島嶼頁 559 行自帶一整套浮層，「建造」鈕要接進它的編輯／商店流程，內部狀態（`S.editing`、`openSheet`）尚未細讀；
+  ③橫跨 3 個以上關注點：外殼結構、分頁狀態、島嶼整合、健身頁版面、RWD 兩套斷點、無障礙。
+  未命中：不碰持久化／登入；不引入新套件（Lucide 圖示以本機 SVG 字串追加）。
+- **本檔位規格**：Slice 數 8 ｜ slice-reviewer 逐 Slice ｜ 完整 build **N/A（本專案沒有 build）**，改用 `npm test` 全綠＋瀏覽器實機 console 0 error ｜ context 隔離：半自動模式每 2–3 個 Slice 換一次對話
+- **UI 骨架 Slice：有（Slice 1）**。外殼是新的產品形狀，先給使用者看版面再接細節。三件套依 L 檔各自獨立：骨架＝Slice 1、視覺美學＝Slice 6、微互動＝Slice 7。
 
 ## 本次的不變量（任何 Slice 都不得破壞）
-1. **只換樣式**。功能、版面結構、流程、文案語意、判定引擎（`app/core/`）、資料流（`store.js`）一律不動。
-2. **判定回饋的顏色語意不動**。相機畫面上的骨架三色（藍＝準備／綠／黃／紅）和三套配色（三色、色盲友善高對比、單色）屬於判定回饋，不算樣式；`ui/display-colors.js` 的 `PALETTES` 數值保持原樣。
-   （2026-09-24 使用者確認：骨架顏色保持我們的。）
-3. **不整包載入遊戲組的 CSS**。只取檔尾的 `@layer motu-contract`，前段 Tailwind 編譯輸出含全域 reset，會打壞版面。
-4. **不改遊戲組定案的色票與字型數值**。可以決定「哪個顏色用在哪裡」，不可以改色值。
-5. 測試數不得低於 313；不得新增 skip/only；不得弱化既有斷言。
-6. 範圍外頁面（今日、島嶼、健康、設定）與外殼（頂部列、分頁列）**不做美化**，只保證換成淺色 token 後還能正常使用、文字不會消失。合體後這些都歸遊戲組。
+1. 判定引擎（`app/core/`）、資料流（`app/state/store.js`）、訓練流程與第一階段的訓練頁樣式不動。
+2. 島嶼插槽機制不動：`main.js` 的 `ISLAND_MODULES`／`resolveIsland`、島嶼只拿受限 store（`island-facade`）。相關測試保留。
+3. 主頁沿用 `island` 這個分頁 id；`ctx.navigate('island')`、`ctx.navigate('workout')` 的既有呼叫端不必改。
+4. `motu.css` 逐字區段不得修改；色值、字型、圓角、陰影、動效一律用 `--motu-*`，不自創色值。
+5. 今日（`app/features/today/`）與健康（`app/features/tracking/`）、設定（`app/features/settings/`）模組檔案**保留不刪**，只是不再從分頁列進入。
+6. 測試數只增不減（362 起算）；不新增 skip/only；既有斷言只有在「需求變更」時才可改寫，且必須在看板申報（目前只有 `tests/island-registry.test.js` 的五分頁斷言一處）。
+7. 外殼集中在 `main.js`、`index.html`、新的 `app/ui/shell.js`、新的 `app/styles/shell.css`；島嶼頁只做「隱藏浮層＋接建造鈕」的最小改動。遊戲組原始碼到了要能整個換掉。
 
 ## 設計鐵律速查（本專案版，覆蓋 make-plan 預設）
-- 視覺系統＝遊戲組 **Motu**（奶油紙質底 `#F8F6F1`、白卡、暖灰線 `#E1DED4`、深藍文字 `#264653`、海洋青主行動 `#2A9D8F`、金／珊瑚只用於獎勵與危險）。
-  make-plan 預設的 neutral/zinc 灰階與單一強調色**不適用**：UI Authority 第 1 順位是需求，需求明定「凡屬樣式一律照遊戲組」。
-- 圓角照 `--motu-radius-*`（卡片 `--motu-radius-xl` 1.5rem／面板 `--motu-radius-panel` 2rem／按鈕 pill）；陰影照 `--motu-shadow-*`，帶深藍色調，不用黑色重陰影。
-- 圖示一律 **Lucide 線條**（stroke 2、`currentColor`），尺寸用 token；不混用 emoji。本專案沒有 React，所以不用 `lucide-react`，改用本機 SVG 字串（見 Slice 2）。
-- 動效用 `--motu-duration-*`／`--motu-ease-*`；尊重 `prefers-reduced-motion`。
-- 免費優先：Lucide（ISC）與 Inter（OFL）都免費開源，都放在本機 `vendor/`，不走 CDN。
-- 深色模式：Motu 只有淺色（`color-scheme: light`），本次不做深色版。
+- 視覺系統＝遊戲組 **Motu**（奶油紙質底 `#F8F6F1`、白卡、暖灰線 `#E1DED4`、深藍文字 `#264653`、海洋青主行動 `#2A9D8F`、金只用於獎勵）。make-plan 預設的 neutral/zinc 灰階**不適用**（需求明定照遊戲組）。
+- 外殼元件照 `image.png`：
+  - **底部分頁列**：白底圓角面板、頂緣虛線、四個等寬頁籤（上方小圓點＋線條圖示＋文字），選中頁籤是海洋青底白字、上緣收斜角的「頁籤」造型；電腦版置中懸浮於畫面底部。
+  - **左上帳號卡**：白卡、右上角收斜角、海洋青圓形頭像（Lucide 圖示）、名稱、LV 膠囊、下方虛線分隔、金幣數（金色圖示＋深藍數字）。
+  - **左側直欄**：深藍細豎線串起四個白色按鈕（右側箭頭形尖角）、按鈕下方小標籤膠囊。
+  - **右下**：白色大圓形禮物鈕（右上角金色小點）、幸運轉盤圓鈕。
+- 圖示一律 Lucide 線條（本機 SVG 字串，`app/ui/icons.js`），不混用 emoji；沒有 React，不用 `lucide-react`。
+- 文字只用深藍／深藍淡／深青（第一階段對比規則）；海洋青、金只當填色與圖示。
+- 動效用 `--motu-duration-*`／`--motu-ease-*`，按壓 `scale(.98)`，尊重 `prefers-reduced-motion`（沿用第一階段規則與測試）。
+- Motu 只有淺色，不做深色模式。
+- 外觀原則：神似即可、不追求逐像素；尺寸以 Motu token 取近似值。
 
-## 設計顧問輸入（ui-ux-pro-max，全專案只查這一次，2026-09-23）
-- **採納**
-  - `no-emoji-icons`／`icon-style-consistent`：emoji 全部換成同一套 SVG 線條圖示，stroke 粗細一致。
-  - `color-contrast`（實測 WCAG 對比，白底／奶油底）：
-    深藍 `#264653` 10.1／9.3 ✅；深藍淡 `#4A6169` 6.6／6.1 ✅；**深青 `#1F7A70` 5.2／4.8 ✅**；
-    **海洋青 `#2A9D8F` 3.3／3.1 ❌（小字不合格）**；金 `#E8AA3E` 2.0 ❌；金字 `#C98A24` 2.9 ❌；珊瑚 `#E8836A` 2.7 ❌；資訊藍 `#4FB9E8` 2.2 ❌。
-    → **規則：所有文字只用深藍、深藍淡、深青。海洋青、金、珊瑚只用在填色、圖示、進度條、≥24px 粗體大數字（3:1 的大字標準）。**
-    白字放在海洋青按鈕上只有 3.3:1，只能用於 ≥18.66px 粗體（大字標準）；小字按鈕改用深青底。
-  - `color-not-only`：金幣／碎片等獎勵不能只靠金色表達，一律同時放圖示與文字。
-  - 相機畫面上的 HUD（`ux: contrast-readability`）：淺色 HUD 疊在不可控的影像上，底色用白 92% 不透明＋`--motu-shadow-md`，文字一律深藍；不用半透明玻璃（遊戲組規範也寫了「避免厚重玻璃與黑色遮罩」）。
-  - `touch-target-size`：可點元素 ≥44px；`focus-states`：`focus-visible` 外框用 `--motu-color-focus`。
-  - `duration-timing`：微互動用 150–300ms，直接對應 `--motu-duration-fast/base/slow`。
-- **駁回**
-  - `--design-system` 自動配色與字型推薦：**不執行**（理由：色票與字型已由遊戲組定案，需求明定不可改）。
-  - ui-ux-pro-max 預設圖示庫 Phosphor：駁回（理由：遊戲端用 Lucide，同一產品必須同一套圖示）。
-  - 深色模式成對撰寫：駁回（理由：Motu 只有淺色，遊戲端也沒有深色版）。
+## 設計顧問輸入（ui-ux-pro-max）
+- **沿用第一階段查詢結果**（2026-09-23，見 `TODO_PLAN_合體第一階段.md` 同名區塊），本次不重新查詢。理由：設計系統是專案層級決策，且本次外殼的造型由需求直接指定為遊戲端截圖（UI Authority 第 1 順位），重新查詢只會產生不一致的建議。
+- **沿用的採納項**：`no-emoji-icons`／`icon-style-consistent`；`color-contrast`（文字只用深藍 10.1、深藍淡 6.6、深青 5.2；白字放海洋青只限 ≥18.66px 粗體）；`color-not-only`（金幣一律圖示＋數字）；`touch-target-size` ≥44px；`focus-states` 用 `--motu-color-focus`；`duration-timing` 150–300ms。
+- **本次補充（依需求與既有規範推導，非新查詢）**：
+  - 導覽列語意：分頁用 `<nav aria-label="主要分頁">`＋`aria-current="page"`；只擺樣子的按鈕保留可聚焦、`aria-label` 註明「即將推出」。
+  - 懸浮在 3D 場景上的外殼：白底不透明（Motu 規範：避免厚重玻璃與黑色遮罩），確保疊在任何島嶼畫面上都讀得清楚。
+- **駁回**：`--design-system` 自動配色與字型推薦（色票與字型已由遊戲組定案）；Phosphor 圖示庫（同一產品必須同一套 Lucide）；深色模式成對撰寫（Motu 只有淺色）。
 > 下游的 run-slice 與 slice-builder 一律沿用本區塊，不得重新調用 ui-ux-pro-max。
 
 ## 進度總覽
-- 總 Slice 數：6
-- 已完成：6 / 6
-- 平行組：無（Slice 1 碰共用的 `index.html` 與全域 token；Slice 3–6 都會碰 `workout.css` 或 `motu-skin.css`，全部序列執行）
+- 總 Slice 數：8
+- 已完成：1 / 8
+- 平行組：無（Slice 1、3–8 都會碰 `main.js` 或 `shell.css`；Slice 2 雖只碰圖示模組，但 Slice 1 之後才知道確切需要哪些圖示，保守序列執行）
 
 ---
 
-### [x] Slice 1 — 導入遊戲組樣式基礎並把全域色彩對應到 Motu
-- **目標**：整個 App 換成 Motu 的淺色底、字型與元件基礎，後續每個畫面只需要處理寫死的顏色。
+### [x] Slice 1 — 刻出新外殼的骨架並切換成四個分頁
+- **目標**：打開 App 就看到遊戲端主頁的形狀 —— 底部「主頁、健身、追蹤、設定」四個分頁、左上帳號卡、左側四鈕直欄、右下禮物與轉盤鈕，中間是我方島嶼；按「健身」進入訓練頁。
 - **範圍內**：
-  - 新增 `app/styles/motu.css`：從遊戲組檔案**原封不動**取出 `@layer motu-contract` 區段（約 562 行），檔頭註明來源檔名、擷取日期、原檔 sha256（`0f43c7b3…` 是編譯後 CSS 的雜湊，另計本段雜湊），以及「不得修改色值」。
-  - 新增 `app/styles/motu-skin.css`：把 `lumina.css` 的語意變數（`--bg-0/1/2`、`--surface`、`--stroke`、`--text`、`--muted`、`--faint`、`--green`、`--teal`、`--coral`、`--gold`、`--red`、`--grad-*`、`--radius*`、`--shadow`、`--glow-primary`、`--font-*`）重新對應到 `--motu-*`；body 背景改成奶油底；`.card`／`.btn`／`.pill`／`.section-title` 的外觀改走 Motu。
-  - `index.html`：在 `lumina.css` 之後載入 `motu.css`、`motu-skin.css`（最後載入才能蓋過前面）；`theme-color` 改成奶油色。
-  - 下載 Inter 800、900 woff2 放進 `vendor/fonts/`（OFL），並補上 `@font-face`。
-- **範圍外**：各畫面寫死的顏色（Slice 3–4）、圖示（Slice 2）、動效（Slice 5）、今日／島嶼／健康／設定頁的美化。
-- **改動檔案**：`app/styles/motu.css`（新增）、`app/styles/motu-skin.css`（新增）、`index.html`（修改）、`vendor/fonts/inter-800.woff2`、`vendor/fonts/inter-900.woff2`（新增）、`tests/motu-skin.test.js`（新增）
-- **設計要點**：Motu 的 layer 規則會被我方未分層的 CSS 蓋過，所以外觀要在 `motu-skin.css`（未分層、最後載入）裡改，不能只靠 `.motu-*` class。
+  - `index.html`：外殼容器改成新結構（`#shell` 包住帳號卡、左側直欄、右下按鈕、分頁列），移除舊頂部列的載入點。
+  - 新增 `app/ui/shell.js`：**純模板函式**（吃資料回字串，不碰 DOM），至少 `tabbarHtml(tabs, current)`、`accountCardHtml(state)`、`railHtml()`、`cornerHtml()`；資料在本 Slice 可寫死（名稱、等級、金幣用 mock）。
+  - `main.js`：`TABS` 改成四個（`island` 主頁、`workout` 健身、`tracking` 追蹤、`settings` 設定），追蹤與設定標記為不可用（本 Slice 按了先無反應或 `console.info` 即可）；開機預設進 `island`；舊頂部列不再渲染；`setChrome(false)` 改為隱藏整個 `#shell`。
+  - 新增 `app/styles/shell.css`（最後載入）：基礎版面 —— 電腦版分頁列置中懸浮底部、帳號卡左上、直欄左側、右下按鈕；手機版分頁列貼底；拿掉 ≥960px 的舊左側欄版面。主頁時 `#view` 滿版給島嶼、其他分頁時 `#view` 是捲動頁面。
+  - `tests/island-registry.test.js`：**申報的需求變更** —— 「五個分頁 id」斷言改為新的四個分頁（`today` 不在分頁列），島嶼註冊表相關斷言保留。
+- **範圍外**：任何 hover／active／進場動畫；照截圖細修造型（斜角、虛線、豎線、小圓點）；Lucide 新圖示（缺的先用文字或既有圖示暫代）；帳號卡接真實 store；不做按鈕的「即將推出」提示；島嶼浮層處理；健身頁底部留白；無障礙細項。以上分別留給 Slice 2–8。
+- **改動檔案**：`index.html`（修改）、`app/main.js`（修改）、`app/ui/shell.js`（新增）、`app/styles/shell.css`（新增）、`tests/island-registry.test.js`（修改：申報）、`tests/shell.test.js`（新增）
+- **設計要點**：Motu 基礎版（白卡、`--motu-radius-*`、`--motu-shadow-*`、深藍字）；外殼元素全部放進 `#shell`，方便全螢幕時一次隱藏。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [x] `motu.css` 與遊戲組原檔的 `motu-contract` 區段逐字相同（測試比對雜湊）
-  - [x] `motu.css` 不含 Tailwind preflight（沒有 `@layer base`、沒有 `*, ::before` 全域重設）、不含 `url(`
-  - [x] `motu-skin.css` 重新定義了 `lumina.css` 裡**每一個**顏色／圓角／陰影變數（測試逐一比對，漏一個就失敗）
-  - [x] 五個分頁都能打開、沒有 console error；範圍外頁面的文字都看得見（實機截圖確認）
-- **測試策略**：`tests/motu-skin.test.js` — 讀檔解析 CSS：①雜湊與原檔一致；②沒有 preflight 與 url；③lumina 變數全數被覆寫（邊界：`--grad-*` 這類漸層變數也要涵蓋）；④`motu-skin.css` 不得出現 `--motu-*` 以外的新色值（防止順手自創顏色）。
-- **完成定義**：`npm test` 全綠（≥314）＋瀏覽器實機五頁無 console error＋截圖＋slice-reviewer
+  - [x] 分頁列只有四個按鈕，依序主頁、健身、追蹤、設定；開機停在主頁並顯示我方島嶼
+  - [x] 按「健身」進入訓練頁，完整流程可走到領取獎勵；進入全螢幕訓練時整個外殼隱藏、結束後恢復
+  - [x] 電腦版（1440 寬）不再出現舊的左側欄；手機版（390 寬）可正常使用
+  - [ ] 使用者看過骨架畫面並確認版面方向正確（⏸ 待使用者確認後才進 Slice 2）
+- **測試策略**：`tests/shell.test.js` — `tabbarHtml` 輸出四個頁籤且順序正確、`current` 對應的頁籤帶選中標記（邊界：`current` 不在清單內時沒有任何頁籤被選中）；`tests/island-registry.test.js` 改寫後仍鎖定島嶼註冊表與受限 store。
+- **完成定義**：`npm test` 全綠（數量 ≥362）＋瀏覽器實機 console 0 error＋電腦／手機各一張截圖＋slice-reviewer＋**停下來請使用者開 `python3 serve.py 8080` 親眼確認版面**
 - **對外介面**：
-  - 檔案：`app/styles/motu.css`（遊戲組 `@layer motu-contract` 逐字擷取，提供全部 `--motu-*` token 與 `.motu-*` class；本段 sha256 `443e237c…`）、`app/styles/motu-skin.css`（未分層、`index.html` 最後載入）
-  - lumina 語意變數全數改指向 Motu：`--text`→`--motu-color-text`、`--muted`/`--faint`→`--motu-color-text-muted`、`--surface`→白、`--surface-2`/`--bg-2`→沙色、`--stroke`→暖灰線、`--green`→success(海洋青)、`--teal`→primary、`--yellow`→warning(金)、`--red`→danger(珊瑚)、`--frame-ok`→`--motu-color-info`(藍)、`--frame-adjust`→`--motu-fx-campfire-accent`(橘)、`--grad-*`→同色平塗 `linear-gradient`、`--radius`→xl、`--radius-sm`→lg、`--shadow`→`--motu-shadow-sm`、`--glow-primary`→`--motu-shadow-primary`、`--font-body`/`--font-display`→Inter＋中文系統字、`--glass-blur`→0px
-  - 元件外觀：`.card` 白卡；`.btn` pill＋深青底白字（小字對比）；`.btn.secondary` 白底深藍字；`.pill` 奶油 chip；`.section-title` Motu label
-  - 外殼／範圍外可讀性修補（只修文字消失，不美化）：`.topbar` `.tabbar` `.tab` `.tb-coins` `.toast` `.isl-hint` `.isl-goal` `.isl-sheet` `.isl-place-bar` `.isl-right` `.isl-sheet-x` `.isl-zi` `.trk-rec-grade`
-  - 字型：Inter 800/900 `@font-face`（`vendor/fonts/inter-800.woff2`、`inter-900.woff2`）
-  - 給下游：後續 Slice 改樣式請寫在 `motu-skin.css` 或各畫面 CSS，**不得改 `motu.css`**（雜湊測試會擋）；`motu-skin.css` 不得出現 `--motu-*` 以外的色值（測試會擋）
-  - 已知留給後續：訓練頁金色「最多 N」(`.wk2-coin`/`.wk-rec-coin`) 對比 1.9–2.05 → Slice 3；範圍外頁面金／珊瑚文字 2.05–2.7 → Slice 6
-- **審查紀錄**：slice-reviewer 第 1 輪 BLOCK（`.isl-right` 深底上的縮放百分比看不見）→ 修正後複審 PASS（2026-09-24）
+  - `app/ui/shell.js`：`tabbarHtml(tabs, current)`（tabs 元素 `{ id, label, icon?, soon? }`；選中頁籤 class `is-active`；不可用頁籤帶 `data-soon="1"`；每顆 `data-tab="<id>"`）、`accountCardHtml({ name, level, coins })`（全部跳脫）、`railHtml()`、`cornerHtml()`、`RAIL_ITEMS`（build／shop／bag／emote）。按鈕以 `data-act`（build、shop、bag、emote、gift、wheel）辨識。缺的 Lucide 圖示由內部 `glyph()` 以單字暫代，Slice 2 補進 `ICONS` 後自動換成圖示，不必改模板。
+  - DOM：`#shell`（`.hidden` 全隱藏；`data-page="home"|"page"`，非主頁只留分頁列）內含 `#sh-account`、`#sh-rail`、`#sh-corner`、`nav#sh-tabs`。舊 `#topbar`、`#tabbar` 已移除。
+  - `main.js`：`TABS` 四項（tracking、settings 帶 `soon: true`）；`MOCK_ACCOUNT`（Slice 3 換真實 store）；分頁點擊委派在 `#sh-tabs`，soon 分頁目前只 `console.info`。
+  - CSS：`--sh-tab-h: 84px`，並把 `--tabbar-h` 指向它（訓練頁浮動鈕與 toast 自動避開）。
+- **施工備註**：`shell.css` 沒有「最後載入」，而是排在 `motu-skin.css` 之前 —— `tests/motu-skin.test.js` 鎖定 motu-skin 必須最後；外殼全用 `sh-*` 新 class，不受 motu-skin 舊規則影響。`#app` 維持 flex 欄（島嶼的 `#view.isl-host{position:relative}` 會蓋掉絕對定位導致 0 高）。本 Slice 實測健身頁最後的按鈕未被分頁列擋住（1440、390），底部留白仍照計畫在 Slice 5 正式處理。
 - **依賴**：無
 - **平行組**：獨立
 
-### [x] Slice 2 — 建立 Lucide 圖示模組
-- **目標**：程式碼可以用一行 `icon('coins')` 產生遊戲端同款線條圖示，取代 emoji。
-- **範圍內**：
-  - 新增 `app/ui/icons.js`：放入 Slice 3–4 需要的 Lucide 圖示 SVG 路徑（先盤點 `workout.js` 裡當圖示用的 emoji，約 40 種，一種對一個 Lucide 名稱），檔頭寫 ISC 授權與 Lucide 版本。
-  - `icon(name, { size, label })` 回傳 SVG 字串：`stroke="currentColor"`、`stroke-width="2"`、`fill="none"`；沒有 label 時加 `aria-hidden="true"`，有 label 時加 `role="img"` 與 `aria-label`；名稱不存在時回傳同尺寸的空白佔位並 `console.warn`，不拋錯。
-  - emoji → Lucide 對照表寫在檔內註解，給 Slice 3–4 查。
-- **範圍外**：把畫面上的 emoji 換掉（Slice 3–4）。
-- **改動檔案**：`app/ui/icons.js`（新增）、`tests/icons.test.js`（新增）
-- **設計要點**：尺寸只允許 token（16／18／20／24），不接受任意值。
-- **UI Slice?**：NO（純函式）
+### [ ] Slice 2 — 補齊外殼需要的 Lucide 圖示
+- **目標**：外殼每個按鈕都有和遊戲端相同語意的線條圖示，不再用文字或 emoji 暫代。
+- **範圍內**：`app/ui/icons.js` 追加外殼用圖示（預估：`heart`（追蹤）、`settings`（設定）、`hammer`（建造）、`shopping-bag`（商店）、`backpack`（背包）、`smile`（動作）、`gift`（禮物）、`waves`（頭像）；實際清單以 Slice 1 的暫代處為準）。SVG 路徑必須與 Lucide 官方 icon-nodes 逐字相同（ISC 授權）。
+- **範圍外**：把圖示放進外殼（Slice 3）；轉盤的彩色圓盤（Slice 6 用 CSS 畫）。
+- **改動檔案**：`app/ui/icons.js`（修改）、`tests/icons.test.js`（修改：追加）
+- **設計要點**：stroke 2、`currentColor`、尺寸用既有 `ICON_SIZES`。
+- **UI Slice?**：YES
 - **驗收標準**：
-  - [x] 對照表涵蓋 `workout.js` 裡所有當圖示用的 emoji（測試掃描原始碼比對）
-  - [x] 未知名稱不拋錯、回傳佔位
-  - [x] 無 label 必有 `aria-hidden`，有 label 必有 `aria-label`
-  - [x] 每個圖示都是 24×24 viewBox、stroke 2
-- **測試策略**：`tests/icons.test.js` — 正常輸出、size 非 token 值時退回 18（邊界）、未知名稱、aria 屬性、對照表涵蓋率。
+  - [ ] 新增的每個圖示都能由 `icon(name)` 輸出合法 SVG
+  - [ ] 路徑與官方來源逐字相符（沿用第一階段 Slice 2 的比對方式）
+- **測試策略**：`tests/icons.test.js` 追加 — 新名稱都存在於 `ICONS`、輸出含 `<svg` 且 `aria-hidden`；邊界：不存在的名稱仍依既有行為處理（不得靜默輸出空字串以外的東西）。
 - **完成定義**：`npm test` 全綠＋slice-reviewer
 - **對外介面**：
-  - 模組 `app/ui/icons.js`（Lucide v1.47.0，ISC，48 個圖示）：
-    - `icon(name, { size?, label? }) → string`：SVG 字串，`class="icon"`、24×24 viewBox、stroke 2、`currentColor`；`size` 只收 `16/18/20/24`，其他退回 18；無 label → `aria-hidden="true"`，有 label → `role="img"`＋`aria-label`（已跳脫）；未知名稱 → 同尺寸空白 SVG＋`console.warn`，不拋錯
-    - `iconForEmoji(emoji) → string | null`：忽略 U+FE0F
-    - `EMOJI_ICON`：emoji（不含 FE0F）→ Lucide 名稱，涵蓋 workout.js 註解以外全部 48 種 emoji，每項附用途註解
-    - `ICONS`：名稱 → SVG 形狀字串；`ICON_SIZES = [16, 18, 20, 24]`
-  - 給下游：新增圖示請從同版本 lucide-static `icon-nodes.json` 取形狀，不要手畫；`tests/icons.test.js` 會掃描 workout.js，Slice 3–4 若新增 emoji 會失敗（本來就不該新增）
-  - 需使用者留意：幾個動作的圖示是語意近似選擇（深蹲→`arrow-down-to-line`、仰臥起坐→`chevrons-up`、捲腹→`shrink`、動作品質很棒 👏→`award`），Lucide 沒有對應的人體動作圖示
-- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-24；獨立比對 48 個形狀與官方 icon-nodes.json 逐字相符）
-- **依賴**：無
+- **依賴**：Slice 1
 - **平行組**：獨立
 
-### [x] Slice 3 — 訓練頁非相機畫面換成 Motu 樣式
-- **目標**：動作清單、動作說明、暖身、倒數、結算、領取獎勵六個畫面，截圖出來和遊戲端是同一個產品。
-- **範圍內**：`workout.css` 中這六個畫面相關選擇器的寫死色換成 token；`workout.js` 對應 render 函式（`renderMenu`、`renderIntro`、`runWarmup`、`runCountdown`、`renderResult`、`renderReward`、`gameResourceCard`）的 emoji 換成 `icon()`；獎勵卡改用 `.motu-reward` 的視覺語言（金色只當底色／圖示，數字用深藍）。
-- **範圍外**：相機即時判定畫面與組間休息（Slice 4）；任何文案語意、流程、按鈕行為。
-- **改動檔案**：`app/features/workout/workout.css`（修改）、`app/features/workout/workout.js`（修改）、`tests/game-resource-card.test.js`（修改：追加斷言）
-- **設計要點**：遵守對比規則（文字只用深藍／深藍淡／深青）；評級環 S/A/B/C 的色彩改由 Motu 色票對應，仍保留字母。
+### [ ] Slice 3 — 外殼接上真實狀態與按鈕行為
+- **目標**：帳號卡顯示真實的暱稱、等級、金幣並即時更新；分頁列標示目前所在；不做的按鈕按下跳「即將推出」。
+- **範圍內**：
+  - `shell.js` 的模板改吃真實 state（暱稱經跳脫、等級、金幣）；**不顯示第二種資源**。
+  - `main.js`：store 變動時重畫帳號卡；分頁列選中態跟著 `current`；追蹤、設定、商店、背包、動作、禮物、轉盤按下呼叫 `ctx.toast('即將推出')`；外殼改用 Slice 2 的圖示。
+  - 左側「建造」本 Slice 先切到主頁（若不在主頁），實際開啟島嶼建造留給 Slice 4。
+- **範圍外**：島嶼浮層與建造接線（Slice 4）；造型細修（Slice 6）；動效（Slice 7）。
+- **改動檔案**：`app/ui/shell.js`（修改）、`app/main.js`（修改）、`tests/shell.test.js`（修改）
+- **設計要點**：金幣用金色圖示＋深藍數字（`color-not-only`）；暱稱一律跳脫。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [x] 六個畫面沒有任何 emoji 圖示（語音稿與說明文字內容不動）
-  - [x] 六個畫面沒有深色玻璃殘留（實機截圖）
-  - [x] 文字對比全部 ≥4.5:1（大數字 ≥3:1）
-  - [x] 流程從清單走到領取獎勵，功能與原本相同
-- **測試策略**：`tests/game-resource-card.test.js` 追加：輸出含 `<svg`、不含 emoji（先失敗→再通過）；邊界：碎片與抽獎券皆為 0 時仍不渲染。
-- **完成定義**：`npm test` 全綠＋實機截圖六張＋slice-reviewer
+  - [ ] 完成一次訓練領取獎勵後回到主頁，帳號卡的金幣與等級已更新
+  - [ ] 七個不做的按鈕按下只跳提示、不報錯；追蹤與設定不會切換頁面
+  - [ ] 外殼沒有任何 emoji
+- **測試策略**：`tests/shell.test.js` — `accountCardHtml` 顯示 state 的暱稱／等級／金幣、暱稱含 `<script>` 時被跳脫（邊界）、金幣為 0 時仍顯示 0；不可用分頁的清單固定為 `tracking`、`settings`；外殼模板輸出不含 emoji。
+- **完成定義**：`npm test` 全綠＋實機 console 0 error＋slice-reviewer
 - **對外介面**：
-  - `workout.js` 內部函式簽名變更（未 export，只影響本檔）：`exIcon(id, size?) → SVG 字串`（原回傳 emoji）、`stat(icon名稱, 標籤, 值)`、`resCell(icon名稱, 標籤, 值, cls?)`
-  - `gameResourceCard(session)`（已 export）：輸出改含 Lucide SVG（puzzle／ticket，`aria-hidden`），簽名與「全 0 回傳空字串」行為不變
-  - `ACCENT` 分類色改為 Motu token：lower→`--motu-teal`、cardio→`--motu-color-info`、upper→`--motu-coral`、core→`--motu-gold`、glute→`--motu-fragment-4`
-  - 評級環 `--gc`：S→`--motu-gold`、A→`--motu-teal`、B→`--motu-color-info`、C→`--motu-navy-soft`；字母一律深藍
-  - 新增 CSS class（`workout.css`）：`.icon`（全域對齊規則，目前只有訓練頁用）、`.wk-ic-disc`（56px porthole 圖示圓盤）、`.wk-sub`、`.lv-warmup`、`.wk-rw-gap`；`.wk-rw-card` 加掛 `.motu-reward`
-  - `.lv-loading`／`.lv-prestart`／`.lv-count` 已改白卡深藍字（`.lv-loading` 同時被相機載入畫面使用，Slice 4 不必再處理底色，只剩 emoji）
-  - 給 Slice 4：`workout.js` 殘留 emoji 全部在相機 HUD（lv-track／lv-coach／lv-gate／lv-btn／TRACK_LABEL／GOOD_TIPS／相機載入與 offerDemo）；icons.test 的涵蓋率掃描仍會通過
-  - 需使用者留意：①獎勵畫面「下一個目標」不再顯示島嶼建築的 emoji（資料在 island/goals.js，範圍外），只留名稱 ②兩處純文字（toast「此動作開發中」、暖身字幕）直接刪掉 emoji ③動作卡 3D 人偶腳下的深色圓台是 `ui/avatar3d.js` 的場景物件，不在本 Slice 檔案範圍，未處理
-- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-24；重跑 headless QA：七畫面 emoji=0、對比不合格=0、深色底=0、流程回清單 OK、console error 0）
 - **依賴**：Slice 1、Slice 2
 - **平行組**：獨立
 
-### [x] Slice 4 — 相機即時判定畫面與組間休息換成 Motu 樣式
-- **目標**：訓練中全螢幕畫面（HUD 數字、深度量表、提示條、取景與光線提示、暫停／結束按鈕、組間休息）換成遊戲端視覺，而且疊在任何相機影像上都讀得清楚。
-- **範圍內**：`lv-*` 系列選擇器與休息畫面的寫死色換成 token；HUD 磚改為白 92% 底＋`--motu-shadow-md`＋深藍字；按鈕改 Motu；該區 emoji 換成 `icon()`；`workout.js` 內 HUD 相關的寫死色。
-- **範圍外**：骨架疊圖的判定色（不變量 2）；深度量表的語意顏色（`gaugeColor` 不動）；任何判定邏輯。
-- **改動檔案**：`app/features/workout/workout.css`（修改）、`app/features/workout/workout.js`（修改）、`app/ui/feedback.js`（僅限非判定用的裝飾色，若有）、`tests/display-colors.test.js`（修改：追加鎖定斷言）、`tests/ui-no-emoji.test.js`（新增）
-- **設計要點**：HUD 不用半透明玻璃；最小觸控目標 44px；計時與次數用等寬數字。
+### [ ] Slice 4 — 主頁隱藏島嶼自帶浮層，左側建造鈕接到島嶼
+- **目標**：主頁上只看得到遊戲端樣式的外殼＋3D 島嶼，不再疊著我方舊的深色浮層；按左側「建造」能打開島嶼原本的建造功能。
+- **範圍內**：
+  - `island.js`：模組多提供一個選用的 `openBuild()`（開啟現有商店抽屜／編輯模式，沿用 `openSheet`／`toggleEdit`），並提供隱藏浮層的開關（class 或參數），**不改島嶼的建造邏輯與資料**。
+  - `island.css`：外殼模式下隱藏 `.isl-left`、`.isl-right`、`.isl-goal`、`.isl-hint`、`.isl-ach`；建造時需要的商店抽屜與擺放列仍可顯示。
+  - `main.js`：左側「建造」在主頁時呼叫 `FEATURES.island.openBuild?.()`；島嶼模組若沒有提供（例如日後換成遊戲組模組）就退回提示。
+- **範圍外**：島嶼浮層換皮（商店抽屜仍是舊樣式，列入交接）；島嶼 3D 場景本身；遊戲組模組接入。
+- **改動檔案**：`app/features/island/island.js`（修改）、`app/features/island/island.css`（修改）、`app/main.js`（修改）、`tests/island-facade.test.js` 或新增 `tests/island-build-entry.test.js`
+- **設計要點**：`openBuild` 是選用契約，必須在 `main.js` 的 feature 契約註解補上說明；島嶼仍只拿受限 store。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [x] `PALETTES` 三套配色數值與換皮前完全相同（測試鎖定）
-  - [x] `workout.js` 在註解以外沒有任何 emoji
-  - [x] 分別在亮背景與暗背景的相機畫面（或示範模式）截圖，HUD 文字都清楚
-  - [x] 示範模式能完整跑完一組並進到結算
-- **測試策略**：`tests/display-colors.test.js` 追加 `PALETTES` 快照斷言（先寫好，換皮過程中若誤改就會失敗）；`tests/ui-no-emoji.test.js` 掃描 `workout.js`（去掉註解）不得含 emoji（先失敗→本 Slice 完成後通過）；邊界：語音用的純文字常數若含 emoji 也算違規。
-- **完成定義**：`npm test` 全綠＋亮／暗背景各一張實機截圖＋slice-reviewer
+  - [ ] 主頁截圖中沒有 🛒✏️🧭、縮放鈕、目標條、成就徽章
+  - [ ] 按「建造」能開啟島嶼商店並完成一次擺放（或在金幣不足時出現原本的提示）
+  - [ ] 島嶼模組沒有 `openBuild` 時，按「建造」只跳提示、不報錯
+- **測試策略**：靜態／單元測試 — 島嶼模組 export 含選用的 `openBuild`；`main.js` 呼叫時有 `?.` 保護（邊界：模組缺這個方法）；受限 store 的既有斷言保持通過。
+- **完成定義**：`npm test` 全綠＋實機完成一次建造＋slice-reviewer
 - **對外介面**：
-  - `app/ui/feedback.js`：`drawProgressRing` 預設色 `#2fd6c6` → `#2A9D8F`（Motu 海洋青，本組次數進度環，裝飾色）；`drawSkeleton`／`drawCountdownRing`／`COLOR` 未動
-  - `workout.js` 內部新增（未 export）：`setTrack(el, 圖示名, 文字)`（追蹤膠囊，內容沒變就不重寫 DOM，文字經跳脫）、`trackHtml()`、`pauseHtml(paused)`、`setVoiceBtn(b, on)`／`setBgmBtn(b, on)`（純圖示按鈕，帶 `aria-label`＋`aria-pressed`）、`escHtml()`；`TRACK_LABEL` 值改為 `[圖示名, 文字]`
-  - 模組 `export default` 的 `icon` 欄位由 `'🏋️'` 改為 `'dumbbell'`（分頁列實際讀 main.js 的 TABS，此欄位沒有消費端）
-  - CSS：`.lv-wrap` 定義 `--lv-hud-bg`（白 92%）；因 `lumina.css` 在 `workout.css` 之後載入且有同權重規則，`.lv-metric`／`.lv-btn`／`.lv-exit`／`.lv-coach`／`.lv-pause` 一律加 `.lv-wrap` 前綴 —— **Slice 5 改這幾個選擇器的動效時要沿用前綴，否則會被 lumina.css 蓋掉**
-  - 刻意保留：深度量表填色 `i[data-c=yellow/red]` 的寫死色（判定語意，金／珊瑚色相太近會分不出黃紅）；組間休息遮罩用遊戲端 modal token `--motu-scrim`
-  - 測試：`tests/ui-no-emoji.test.js`（新）鎖定 workout.js 註解外無 emoji；`tests/display-colors.test.js` 鎖定 `PALETTES` 換皮前數值
-  - 計畫外改動（已申報、審查員判定合理）：`tests/icons.test.js` 移除一條「註解外找不到 emoji 即視為掃描失效」的前提斷言（Slice 4 後此前提不再成立；掃描器有效性仍由同檔 probe 測試把關）
-  - 給 Slice 5／6：`.wk-chip.on` 也被 `lumina.css:136` 覆寫成 `--grad-accent` 底＋`#04231a` 字（對比仍合格，但不是 Slice 3 原意的深青底白字）；`.wk-grade-ring` 的 box-shadow 同樣被 `lumina.css` 覆寫 —— 這兩處屬 Slice 3 範圍，未在本 Slice 處理
-- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-24；獨立重跑 npm test 341/341、demo／cam 兩種 QA；附帶觀察：週期燈 `transition` 過場瞬間的取樣偽陽性，穩態白字配深青 5.2:1）
-- **依賴**：Slice 1、Slice 2、Slice 3
+- **依賴**：Slice 3
 - **平行組**：獨立
 
-### [x] Slice 5 — 微互動與動效對齊 Motu
-- **目標**：按鈕按壓、卡片 hover、進場、數字跳動的節奏和遊戲端一致。
-- **範圍內**：訓練頁的 transition／animation 改用 `--motu-duration-*`、`--motu-ease-*`；按壓 `scale(.98)`；`focus-visible` 外框用 `--motu-color-focus`；進場 stagger 30–50ms；可領取狀態用 `.motu-is-claimable` 的脈動；全部在 `prefers-reduced-motion` 下關閉。
-- **範圍外**：新增任何動畫種類以外的功能；範圍外頁面。
-- **改動檔案**：`app/features/workout/workout.css`（修改）、`app/styles/motu-skin.css`（修改）、`tests/motu-skin.test.js`（修改）；**計畫外補登**：`app/features/workout/workout.js`（1 行：資源膠囊加 `motu-is-claimable`，CSS 無法替元素加 class）
-- **設計要點**：只動 transform／opacity，不動 width／height。
+### [ ] Slice 5 — 健身頁適配懸浮分頁列
+- **目標**：在「健身」分頁裡，訓練頁的內容和按鈕都不會被底部懸浮分頁列蓋住，第一階段的畫面維持原樣。
+- **範圍內**：`shell.css` 為非主頁的 `#view` 留出底部空間（分頁列高度＋安全區）；「快速開始 AI 訓練」浮動鈕改以新分頁列定位；電腦版的內容置中限寬沿用第一階段。
+- **範圍外**：訓練頁本身的任何樣式與功能（第一階段已完成）；主頁。
+- **改動檔案**：`app/styles/shell.css`（修改）、`app/features/workout/workout.css`（修改：僅浮動鈕定位，若需要）
+- **設計要點**：不改訓練頁的色彩、字級、間距；只處理與外殼的交界。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [x] 範圍內 CSS 沒有 `transition`／`animation` 寫死 ms 數（全部走 token）
-  - [x] reduced-motion 下所有動畫停止（實機用 DevTools 模擬）
-  - [x] 所有可點元素都有 `focus-visible` 外框
-- **測試策略**：`tests/motu-skin.test.js` 追加：掃描範圍內 CSS 的 `transition`／`animation` 宣告，不得出現寫死的 ms／s 數值（邊界：`0s` 與 reduced-motion 區塊內的 `0.001ms` 例外）。
-- **完成定義**：`npm test` 全綠＋實機錄一段按壓與進場＋slice-reviewer
+  - [ ] 動作清單、結算、領取獎勵捲到最底時，最後一顆按鈕完整露出、可點
+  - [ ] 以第一階段 9 張截圖的畫面重拍比對，除外殼外無差異
+- **測試策略**：靜態測試鎖定「非主頁 `#view` 底部留白 ≥ 分頁列高度」的規則存在；實機用 Playwright 量測最後一顆按鈕的 bottom 小於分頁列 top（邊界：手機 390 寬、內容最長的結算頁）。
+- **完成定義**：`npm test` 全綠＋實機量測＋slice-reviewer
 - **對外介面**：
-  - `motu-skin.css`（全域）：`.btn` transition 改走 token（transform fast／其餘 base，`--motu-ease-standard`）、`.btn:active` → `scale(.98)`（原 .96）；新增全域 `:focus-visible { outline: 2px solid var(--motu-color-focus); outline-offset: 2px }`；新增 reduced-motion 全域 `animation-iteration-count: 1 !important`＋`scroll-behavior: auto`。**範圍外頁面的 `.btn` 也會套到按壓與焦點外框**（審查員判定不違規）
-  - `workout.css`：所有 transition／animation 時長走 `--motu-duration-*`（倍數用 `calc`）；按壓一律 `.98`；新增 `@keyframes fragment-ready-pulse`（逐字取自遊戲組原檔第 8782 行，供 motu.css 的 `.motu-is-claimable` 使用）、`@keyframes lvRepHold`（減少動態用）；進場 `.fade-in`（訓練頁）與 `:is(.wk-grid, .wk-stats, .wk-res-grid, .wk-rw).stagger > *` 改 300ms `--motu-ease-out`、**填充 `backwards`**、每項延遲 `calc(var(--wk-i) * fast / 4)`≈37.5ms（第 8 項起封頂）；`--wk-i` 由 `.stagger > :nth-child(n)` 設定
-  - `workout.js`：`gameResourceCard` 的膠囊多一個 class `motu-is-claimable`（簽名與全 0 行為不變）
-  - 時長微調（token 倍數）：計次閃現 950→900ms、倒數 680→600ms、金幣飛行 520→500ms（JS 560ms 移除，必須更短）、深度量表 80→75ms、成績環改 `--motu-ease-spring`
-  - 修掉的換皮前問題：①進場動畫 `both` 填充鎖住 transform → 動作卡 hover／按壓原本完全無效 ②減少動態下計次閃現原本永遠看不到 → 改為不縮放、停留 900ms 後消失
-  - 給 Slice 6：`.wk2` 動作卡是 `div` 無 `tabindex`，鍵盤無法聚焦；`.wk-toggle input` 為 `display:none`，開關鍵盤碰不到（需改 workout.js）；完成定義的「錄一段按壓與進場」只做了截圖＋computed style 實測，未錄影
-- **審查紀錄**：slice-reviewer 第 1 輪 BLOCK（reduced-motion 漏 4 個一次性動畫）→ 修正＋補測試 → 第 2 輪 PASS（2026-09-25；npm test 350/350）
+- **依賴**：Slice 3
+- **平行組**：獨立
+
+### [ ] Slice 6 — 照遊戲端截圖細修外殼造型
+- **目標**：主頁外殼和 `image.png` 並排時看起來是同一個產品。
+- **範圍內**：`shell.css` —— 分頁列頁籤造型（選中頁籤海洋青底、上緣斜角、上方小圓點、面板頂緣虛線）；帳號卡（右上斜角、LV 膠囊、虛線分隔、金幣列）；左側直欄（深藍豎線、按鈕右側尖角、小標籤膠囊）；右下禮物大圓鈕（金色小點）與轉盤（CSS conic-gradient 用 Motu 色票畫彩色圓盤）；載入畫面的 🏝️ 改 Lucide。
+- **範圍外**：動效（Slice 7）；對比與無障礙收尾（Slice 8）。
+- **改動檔案**：`app/styles/shell.css`（修改）、`app/ui/shell.js`（修改：若需額外結構）、`index.html`（修改：載入畫面圖示）、`tests/shell.test.js`（修改）
+- **設計要點**：只用 `--motu-*`；斜角用 `clip-path` 或偽元素，不用圖片；不自創色值。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [ ] 電腦版 1920 寬截圖與 `image.png` 並排，外殼的位置、造型、選中態一致（神似即可）
+  - [ ] `shell.css` 不出現 `--motu-*` 以外的色值
+  - [ ] `index.html` 載入畫面沒有 emoji
+- **測試策略**：`tests/shell.test.js` 追加 — `shell.css` 自創色值掃描（沿用 `motu-skin.test.js` 的偵測器，含防空轉 probe）；載入畫面無 emoji（邊界：去掉註解後仍掃得到 `<div class="loader-logo">` 內容）。
+- **完成定義**：`npm test` 全綠＋電腦／手機截圖＋slice-reviewer
+- **對外介面**：
 - **依賴**：Slice 3、Slice 4
 - **平行組**：獨立
 
-### [x] Slice 6 — 無障礙與對比收尾，產出企劃書截圖
-- **目標**：交出一組可以直接放進企劃書的健身畫面截圖，而且全部通過對比與無障礙檢查。
-- **範圍內**：
-  - 新增純函式 `contrastRatio(a, b)`，列出範圍內所有「文字色 × 底色」組合並檢查 ≥4.5（大字 ≥3）；修掉不合格的組合。
-  - 只有圖示的按鈕補 `aria-label`；觸控目標 ≥44px。
-  - 範圍外頁面（今日、島嶼、健康、設定）與外殼只做可讀性檢查，發現文字看不見才修，不美化。
-  - 截圖：動作清單、動作說明、倒數、即時判定（示範模式，亮／暗背景）、組間休息、結算、領取獎勵。截圖時隱藏外殼（用 `setChrome(false)` 或裁切），存到 `文件/初審圖/健身端_Motu/`。
-- **範圍外**：新功能、文案改寫。
-- **改動檔案**：`app/ui/contrast.js`（新增）、`tests/contrast.test.js`（新增）、`app/styles/motu-skin.css`（修改）、`app/features/workout/workout.css`（修改，視檢查結果）、`app/features/workout/workout.js`（修改：aria-label）
-- **設計要點**：對比組合清單寫成資料放在測試裡，之後換色時會自動再驗。
+### [ ] Slice 7 — 外殼微互動與動效
+- **目標**：外殼按鈕的 hover、按壓、分頁切換節奏和第一階段訓練頁一致。
+- **範圍內**：`shell.css` 的 transition 走 `--motu-duration-*`／`--motu-ease-*`；按壓 `scale(.98)`；分頁切換時選中頁籤的過場；禮物鈕的小點可用遊戲端的可領取脈動（若語意合適）；`prefers-reduced-motion` 下全部停止。
+- **範圍外**：3D 島嶼的動畫；新增動畫種類以外的功能。
+- **改動檔案**：`app/styles/shell.css`（修改）、`tests/motu-skin.test.js`（修改：把 `shell.css` 納入寫死時長與按壓比例掃描）
+- **設計要點**：只動 transform／opacity。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [x] 對比測試涵蓋範圍內每一組文字／底色，全部通過
-  - [x] 截圖存到指定資料夾，每張檔名標明畫面名稱
-  - [x] 使用者看過截圖並確認可放進企劃書（2026-09-25 使用者確認）
-- **測試策略**：`tests/contrast.test.js` — `contrastRatio` 的已知值（黑白 21:1、同色 1:1，邊界）；對比組合清單全數達標。
-- **完成定義**：`npm test` 全綠＋截圖交付＋使用者確認＋收尾批次審查（Final Validation）
+  - [ ] `shell.css` 的 transition／animation 沒有寫死時長
+  - [ ] reduced-motion 下外殼動畫全部停止（實機模擬）
+  - [ ] 所有外殼按鈕按壓縮放為 `.98`
+- **測試策略**：`tests/motu-skin.test.js` 的 `MOTION_FILES` 加入 `app/styles/shell.css`，沿用既有掃描器與 reduced-motion 涵蓋檢查（邊界：`0s` 與 reduced-motion 區塊例外）。
+- **完成定義**：`npm test` 全綠＋實機錄一段切換與按壓＋slice-reviewer
 - **對外介面**：
-  - 新模組 `app/ui/contrast.js`（純函式）：`parseColor(str|obj)`（支援 hex／rgb(a)／`color(srgb …)`／`oklab()`，無法解析就丟錯）、`over(top, bottom)`（半透明疊色）、`mix(a, pct, b)`（對應 CSS color-mix in srgb）、`luminance(c)`、`contrastRatio(fg, bg)`（底色半透明會丟錯）、`passesAA(ratio, { large })`
-  - `tests/contrast.test.js`：23 組文字／底色組合直接從 `motu.css` 解析色值（遊戲組換色會自動重驗）；另鎖定鍵盤／報讀屬性、`workout.css` 內 0<opacity<1 只准白名單（`.wk2.locked .wk2-lock`、未渲染的 `.wk-card.soon`）
-  - `workout.js`：`.wk2` 卡片加 `role="button" tabindex="0" aria-label`，綁 Enter／空白鍵等同點擊；`#wk-q`、`#lv-zoom-range` 加 `aria-label`；規劃中卡片不宣告 `aria-disabled`（仍可點，會顯示開發中提示）
-  - `workout.css`：觸控目標補到 ≥44px（`.wk-input`、`.wk-chip`、`.wk-back`）；`.wk-groups .wk-chip.on` 加前綴蓋過 lumina.css（改回白字／深青底）；`.wk-toggle input` 改視覺隱藏可聚焦＋開關外框；規劃中卡片與 `.wk2-stats.dim`、`*-target small` 不再用 opacity 淡化文字
-  - 截圖：`文件/初審圖/健身端_Motu/` 9 張（390×844、2 倍）；`05_…暗背景模擬` 是把示範舞台底色換深色模擬，**不是實機相機畫面**；截圖時只注入樣式隱藏捲軸，App 未改
-  - 實機 QA：訓練頁全部畫面對比不合格 0、觸控目標 <44px 0、console error 0；週期燈穩態 5.15:1；Tab 順序全部有焦點外框
-  - 範圍外頁面：無「看不見」的文字，未修改；但健康頁（▼ 變化量、「N 次有效」）與設定頁（滑桿數值、關於副標）有珊瑚／金色小字 2.0–2.7:1，偏難讀 —— 合體後歸遊戲組，待使用者決定是否轉告
-- **審查紀錄**：slice-reviewer 第 1 輪 BLOCK（規劃中卡片整張 opacity .7，標題實際約 4.4:1，對比測試未涵蓋）→ 修正＋補 opacity 白名單測試 → 第 2 輪 PASS（2026-09-25；npm test 362/362）
-- **依賴**：Slice 1–5
+- **依賴**：Slice 6
 - **平行組**：獨立
 
+### [ ] Slice 8 — 外殼無障礙、RWD 收尾，產出主頁截圖
+- **目標**：外殼在電腦與手機都通過對比、觸控目標與鍵盤檢查，並交出可放進企劃書的主頁截圖。
+- **範圍內**：
+  - 分頁列 `<nav aria-label>`＋`aria-current="page"`；只有圖示的按鈕補 `aria-label`（不做的註明「即將推出」）；觸控目標 ≥44px；Tab 順序合理（帳號卡 → 左側直欄 → 內容 → 右下 → 分頁列）。
+  - `tests/contrast.test.js` 的 `PAIRS` 加入外殼的文字／底色組合（分頁列選中白字／海洋青的字級要符合大字標準，否則改深青底）。
+  - 截圖：主頁電腦版（1920、1440）、主頁手機版（390）、健身分頁電腦版與手機版，存到 `文件/初審圖/主頁_Motu/`，截圖時不注入任何會改變 App 外觀的樣式（隱藏捲軸除外，需註明）。
+- **範圍外**：新功能、文案改寫；範圍外頁面（今日、健康、設定模組）。
+- **改動檔案**：`app/ui/shell.js`（修改）、`app/styles/shell.css`（修改，視檢查結果）、`tests/contrast.test.js`（修改）、`tests/shell.test.js`（修改）
+- **設計要點**：對比組合清單寫成資料，之後換色會自動再驗。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [ ] 外殼每一組文字／底色都達 WCAG AA（一般 4.5、大字 3），測試涵蓋
+  - [ ] 電腦與手機版外殼按鈕都 ≥44px、Tab 可走遍且有焦點外框
+  - [ ] 截圖存到指定資料夾，檔名標明畫面與尺寸
+  - [ ] 使用者看過截圖並確認可放進企劃書
+- **測試策略**：`tests/contrast.test.js` 追加外殼組合；`tests/shell.test.js` — 分頁列模板含 `aria-current="page"` 且只出現一次（邊界：沒有選中分頁時不得出現）、不做的按鈕都有含「即將推出」的 `aria-label`。
+- **完成定義**：`npm test` 全綠＋截圖交付＋使用者確認＋收尾批次審查（Final Validation）
+- **對外介面**：
+- **依賴**：Slice 1–7
+- **平行組**：獨立

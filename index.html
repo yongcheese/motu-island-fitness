@@ -14,6 +14,9 @@
   <link rel="stylesheet" href="./app/features/today/today.css" />
   <link rel="stylesheet" href="./app/styles/lumina.css" />
   <link rel="stylesheet" href="./app/styles/motu.css" />
+  <!-- 外殼樣式排在 motu-skin 之前：motu-skin 必須最後載入（tests/motu-skin.test.js），
+       外殼全用 sh-* 新 class，不會被 motu-skin 的舊 .tabbar/.tab 規則影響 -->
+  <link rel="stylesheet" href="./app/styles/shell.css" />
   <link rel="stylesheet" href="./app/styles/motu-skin.css" />
   <script src="./vendor/lib/chart.umd.min.js" defer></script>
 </head>
@@ -28,9 +31,14 @@
   </div>
 
   <div id="app">
-    <header class="topbar" id="topbar"></header>
     <main id="view"></main>
-    <nav class="tabbar" id="tabbar"></nav>
+    <!-- 外殼（遊戲端主頁樣式）：全螢幕訓練時整個 #shell 一次隱藏 -->
+    <div id="shell">
+      <div class="sh-account" id="sh-account"></div>
+      <div class="sh-rail" id="sh-rail"></div>
+      <div class="sh-corner" id="sh-corner"></div>
+      <nav class="sh-tabs" id="sh-tabs" aria-label="主要分頁"></nav>
+    </div>
   </div>
   <div class="toast" id="toast"></div>
 
