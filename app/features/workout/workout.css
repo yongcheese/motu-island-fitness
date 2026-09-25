@@ -20,6 +20,7 @@
   width: 100%; padding: 12px 18px 12px 44px; border-radius: var(--motu-radius-pill); border: 1px solid var(--motu-color-border);
   background: var(--motu-color-surface); color: var(--motu-color-text); font-size: 15px; outline: none;
   box-shadow: var(--motu-shadow-sm); transition: border-color var(--motu-duration-base) var(--motu-ease-standard), box-shadow var(--motu-duration-base) var(--motu-ease-standard);
+  min-height: 44px;   /* 合體 Slice 6：觸控目標 ≥44px */
 }
 .wk-input:focus { border-color: var(--motu-color-focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--motu-color-focus) 20%, transparent); }
 .wk-input::placeholder { color: var(--motu-color-text-muted); }
@@ -66,12 +67,17 @@
 .wk2-coin .icon, .wk-rec-coin .icon, .wk2-stats.dim > span:first-child .icon { color: var(--motu-gold); }
 .wk2-target, .wk-rec-target { color: var(--motu-color-text-muted); }
 .wk2-target .icon, .wk-rec-target .icon, .wk2-stats.dim > span:last-child .icon { color: var(--motu-coral); }
-.wk2-target small { font-weight: 600; font-size: 10px; opacity: .75; }
+/* 合體 Slice 6：不用 opacity 做淡化 —— 父層已是深藍淡，再乘 .75 會掉到 4.5 以下；改靠字重區分 */
+.wk2-target small { font-weight: 600; font-size: 10px; }
 .wk2-go { margin-left: auto; color: var(--motu-teal-dark); font-size: 20px; transition: transform var(--motu-duration-base) var(--motu-ease-standard); }
 .wk2:hover .wk2-go { transform: translateX(3px); }
-.wk2-stats.dim { opacity: .45; }
+/* 規劃中卡片的「--」：原本 opacity .45（實際對比約 2.6）→ 改成深藍淡字，圖示保留原色（裝飾） */
+.wk2-stats.dim { color: var(--motu-color-text-muted); }
 .wk2-soon { color: var(--motu-color-text-muted); font-size: 12px; white-space: nowrap; }
-.wk2.locked { cursor: default; opacity: .7; filter: grayscale(.4); border-color: var(--motu-color-border); background: var(--motu-color-surface); box-shadow: none; }
+/* 合體 Slice 6：原本整張卡 opacity .7＋grayscale，標題實際對比只剩約 4.4 → 改成只把插圖區淡化，文字換深藍淡（6.6:1） */
+.wk2.locked { cursor: default; border-color: var(--motu-color-border); background: var(--motu-color-surface); box-shadow: none; }
+.wk2.locked .wk2-lock { opacity: .7; }
+.wk2.locked .wk2-name { color: var(--motu-color-text-muted); }
 .wk2.locked .wk2-hero { background: var(--motu-color-surface-sunken); }
 .wk2.locked:hover { transform: none; box-shadow: none; border-color: var(--motu-color-border); }
 
@@ -90,14 +96,15 @@
 .wk-groups { display: flex; gap: 8px; overflow-x: auto; padding: 2px 4px 8px; scrollbar-width: none; }
 .wk-groups::-webkit-scrollbar { display: none; }
 .wk-chip {
-  flex-shrink: 0; padding: 8px 16px; border-radius: var(--motu-radius-pill); border: 1px solid var(--motu-color-border);
+  flex-shrink: 0; min-height: 44px; padding: 8px 16px; border-radius: var(--motu-radius-pill);   /* 合體 Slice 6：原本 37px */ border: 1px solid var(--motu-color-border);
   background: var(--motu-color-surface); color: var(--motu-color-text-muted); font-weight: 700; font-size: 13px;
   transition: color var(--motu-duration-base) var(--motu-ease-standard), background-color var(--motu-duration-base) var(--motu-ease-standard), border-color var(--motu-duration-base) var(--motu-ease-standard), transform var(--motu-duration-fast) var(--motu-ease-standard);
 }
 .wk-chip:active { transform: scale(.98); }
 .wk-chip:hover { color: var(--motu-teal-dark); border-color: var(--motu-teal-light); }
 /* 不加陰影：.wk-groups 是橫向捲動容器，陰影會被裁成方塊 */
-.wk-chip.on { background: var(--motu-teal-dark); color: var(--motu-white); border-color: transparent; }
+/* 合體 Slice 6：lumina.css 在後面載入、同權重的 .wk-chip.on 會蓋成海洋青漸層＋墨綠字 → 加 .wk-groups 前綴，用 background 簡寫清掉漸層 */
+.wk-groups .wk-chip.on { background: var(--motu-teal-dark); color: var(--motu-white); border-color: transparent; }
 
 .wk-list { display: flex; flex-direction: column; gap: 10px; }
 .wk-card {
@@ -113,7 +120,7 @@
 .wk-card-est { font-size: 12px; color: var(--gold); font-weight: 700; text-align: right; flex-shrink: 0; }
 
 /* intro */
-.wk-back { background: none; border: 0; color: var(--motu-color-text-muted); font-size: 15px; padding: 8px 0; min-height: 44px; font-weight: 700; }
+.wk-back { background: none; border: 0; color: var(--motu-color-text-muted); font-size: 15px; padding: 8px 0; min-height: 44px; min-width: 44px; font-weight: 700; }   /* 合體 Slice 6：原本寬 40px */
 .wk-back:hover { color: var(--motu-teal-dark); }
 .wk-hero { position: relative; height: 260px; border-radius: var(--motu-radius-panel); overflow: hidden; display: grid; place-items: center; margin: 4px 0 6px; background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--motu-mint) 35%, transparent), transparent 70%), var(--motu-mint-pale); }
 .wk-hero canvas { max-width: 100%; }
@@ -131,7 +138,10 @@
 .wk-toggle { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: var(--motu-radius-lg); background: var(--motu-color-surface); border: 1px solid var(--motu-color-border); box-shadow: var(--motu-shadow-sm); margin: 10px 0; font-weight: 700; font-size: 14px; color: var(--motu-color-text); }
 .wk-toggle span { flex: 1; }
 .wk-toggle span .icon { color: var(--motu-coral); }
-.wk-toggle input { display: none; }
+/* 合體 Slice 6：原本 display:none，鍵盤完全碰不到開關 → 改成視覺隱藏但可聚焦，焦點外框畫在旁邊的開關上 */
+.wk-toggle { position: relative; }
+.wk-toggle input { position: absolute; width: 1px; height: 1px; opacity: 0; margin: 0; pointer-events: none; }
+.wk-toggle input:focus-visible + i { outline: 2px solid var(--motu-color-focus); outline-offset: 2px; }
 .wk-toggle i { width: 46px; height: 28px; border-radius: var(--motu-radius-pill); background: var(--motu-line); position: relative; transition: background-color var(--motu-duration-base) var(--motu-ease-standard); flex-shrink: 0; }
 .wk-toggle i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--motu-white); box-shadow: var(--motu-shadow-sm); transition: transform var(--motu-duration-base) var(--motu-ease-standard); }
 .wk-toggle input:checked + i { background: var(--motu-teal); }
@@ -382,7 +392,7 @@
 .wk-rec-why .icon, .wk2-tag .icon { color: var(--motu-teal-dark); }
 .wk-rec-plan { color: var(--motu-color-text-muted); font-size: 12.5px; margin: 2px 0 0; }
 .wk-rec-stats { display: flex; align-items: center; gap: 14px; margin-top: 12px; font-weight: 800; font-size: 15px; }
-.wk-rec-target small { font-weight: 600; font-size: 10px; opacity: .75; }
+.wk-rec-target small { font-weight: 600; font-size: 10px; }   /* 同 .wk2-target small：不用 opacity 淡化文字 */
 .wk-rec-go { margin-left: auto; color: var(--motu-teal-dark); font-size: 20px; transition: transform var(--motu-duration-base) var(--motu-ease-standard); }
 .wk-rec:hover .wk-rec-go { transform: translateX(3px); }
 @media (min-width: 960px) {

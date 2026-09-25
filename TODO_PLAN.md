@@ -58,7 +58,7 @@
 
 ## 進度總覽
 - 總 Slice 數：6
-- 已完成：5 / 6
+- 已完成：6 / 6
 - 平行組：無（Slice 1 碰共用的 `index.html` 與全域 token；Slice 3–6 都會碰 `workout.css` 或 `motu-skin.css`，全部序列執行）
 
 ---
@@ -200,7 +200,7 @@
 - **依賴**：Slice 3、Slice 4
 - **平行組**：獨立
 
-### [ ] Slice 6 — 無障礙與對比收尾，產出企劃書截圖
+### [x] Slice 6 — 無障礙與對比收尾，產出企劃書截圖
 - **目標**：交出一組可以直接放進企劃書的健身畫面截圖，而且全部通過對比與無障礙檢查。
 - **範圍內**：
   - 新增純函式 `contrastRatio(a, b)`，列出範圍內所有「文字色 × 底色」組合並檢查 ≥4.5（大字 ≥3）；修掉不合格的組合。
@@ -212,12 +212,20 @@
 - **設計要點**：對比組合清單寫成資料放在測試裡，之後換色時會自動再驗。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [ ] 對比測試涵蓋範圍內每一組文字／底色，全部通過
-  - [ ] 截圖存到指定資料夾，每張檔名標明畫面名稱
-  - [ ] 使用者看過截圖並確認可放進企劃書
+  - [x] 對比測試涵蓋範圍內每一組文字／底色，全部通過
+  - [x] 截圖存到指定資料夾，每張檔名標明畫面名稱
+  - [x] 使用者看過截圖並確認可放進企劃書（2026-09-25 使用者確認）
 - **測試策略**：`tests/contrast.test.js` — `contrastRatio` 的已知值（黑白 21:1、同色 1:1，邊界）；對比組合清單全數達標。
 - **完成定義**：`npm test` 全綠＋截圖交付＋使用者確認＋收尾批次審查（Final Validation）
 - **對外介面**：
+  - 新模組 `app/ui/contrast.js`（純函式）：`parseColor(str|obj)`（支援 hex／rgb(a)／`color(srgb …)`／`oklab()`，無法解析就丟錯）、`over(top, bottom)`（半透明疊色）、`mix(a, pct, b)`（對應 CSS color-mix in srgb）、`luminance(c)`、`contrastRatio(fg, bg)`（底色半透明會丟錯）、`passesAA(ratio, { large })`
+  - `tests/contrast.test.js`：23 組文字／底色組合直接從 `motu.css` 解析色值（遊戲組換色會自動重驗）；另鎖定鍵盤／報讀屬性、`workout.css` 內 0<opacity<1 只准白名單（`.wk2.locked .wk2-lock`、未渲染的 `.wk-card.soon`）
+  - `workout.js`：`.wk2` 卡片加 `role="button" tabindex="0" aria-label`，綁 Enter／空白鍵等同點擊；`#wk-q`、`#lv-zoom-range` 加 `aria-label`；規劃中卡片不宣告 `aria-disabled`（仍可點，會顯示開發中提示）
+  - `workout.css`：觸控目標補到 ≥44px（`.wk-input`、`.wk-chip`、`.wk-back`）；`.wk-groups .wk-chip.on` 加前綴蓋過 lumina.css（改回白字／深青底）；`.wk-toggle input` 改視覺隱藏可聚焦＋開關外框；規劃中卡片與 `.wk2-stats.dim`、`*-target small` 不再用 opacity 淡化文字
+  - 截圖：`文件/初審圖/健身端_Motu/` 9 張（390×844、2 倍）；`05_…暗背景模擬` 是把示範舞台底色換深色模擬，**不是實機相機畫面**；截圖時只注入樣式隱藏捲軸，App 未改
+  - 實機 QA：訓練頁全部畫面對比不合格 0、觸控目標 <44px 0、console error 0；週期燈穩態 5.15:1；Tab 順序全部有焦點外框
+  - 範圍外頁面：無「看不見」的文字，未修改；但健康頁（▼ 變化量、「N 次有效」）與設定頁（滑桿數值、關於副標）有珊瑚／金色小字 2.0–2.7:1，偏難讀 —— 合體後歸遊戲組，待使用者決定是否轉告
+- **審查紀錄**：slice-reviewer 第 1 輪 BLOCK（規劃中卡片整張 opacity .7，標題實際約 4.4:1，對比測試未涵蓋）→ 修正＋補 opacity 白名單測試 → 第 2 輪 PASS（2026-09-25；npm test 362/362）
 - **依賴**：Slice 1–5
 - **平行組**：獨立
 

@@ -108,7 +108,7 @@ function renderMenu(activeGroup = 'all') {
       <div class="wk-filters">
         <div class="wk-search">
           <span class="wk-search-ic">${icon('search')}</span>
-          <input id="wk-q" class="wk-input" placeholder="搜尋動作（深蹲、開合跳…）" />
+          <input id="wk-q" class="wk-input" aria-label="搜尋動作" placeholder="搜尋動作（深蹲、開合跳…）" />
         </div>
         <div class="wk-groups">
           ${groups.map(g => `<button class="wk-chip ${g === activeGroup ? 'on' : ''}" data-g="${g}">${groupName(g)}</button>`).join('')}
@@ -130,6 +130,10 @@ function renderMenu(activeGroup = 'all') {
     });
     listEl.querySelectorAll('[data-soon]').forEach(c => {
       c.onclick = () => CTX.toast('此動作開發中，敬請期待');
+    });
+    // 合體 Slice 6：卡片是 div（role=button），鍵盤的 Enter／空白鍵要等同點擊（同今日推薦卡）
+    listEl.querySelectorAll('.wk2[role="button"]').forEach(c => {
+      c.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); c.click(); } };
     });
     startCardAnims();
   };
@@ -235,7 +239,7 @@ function cardHtml(e) {
   const tag = TAGLINE[e.id] || '';
   if (!e.ready) {
     return `
-    <div class="wk2 locked" data-soon="1">
+    <div class="wk2 locked" data-soon="1" role="button" tabindex="0" aria-label="${e.name}（即將推出，按下會顯示說明）">
       <div class="wk2-hero"><span class="wk2-lock">${icon('lock', { size: 24 })}</span><span class="wk2-badge soon">規劃中</span></div>
       <div class="wk2-body">
         <div class="wk2-top"><h3 class="wk2-name">${exIcon(e.id)} ${e.name}</h3><span class="wk2-soon">即將推出</span></div>
@@ -245,7 +249,7 @@ function cardHtml(e) {
     </div>`;
   }
   return `
-    <div class="wk2" data-id="${e.id}" style="--accent:${ACCENT[e.group] || 'var(--green)'}">
+    <div class="wk2" data-id="${e.id}" role="button" tabindex="0" aria-label="${e.name}：查看動作說明" style="--accent:${ACCENT[e.group] || 'var(--green)'}">
       <div class="wk2-hero">
         <canvas class="wk2-canvas" data-ex="${e.id}"></canvas>
         <span class="wk2-badge">${grp}</span>
@@ -702,7 +706,7 @@ function liveShell(ex) {
       </div>
       <div class="lv-zoom" id="lv-zoom" hidden>
         <span class="lv-zoom-ic" title="拉到最左＝最廣（全身入鏡）">${icon('search', { size: 16 })}</span>
-        <input type="range" id="lv-zoom-range" />
+        <input type="range" id="lv-zoom-range" aria-label="視野縮放（最左＝最廣，全身入鏡）" />
         <span class="lv-zoom-lbl">廣</span>
       </div>
       <div class="lv-hudtop">
