@@ -125,3 +125,31 @@ test('shell: 外殼模板輸出不含任何 emoji，且直欄與頭像都已是 
   assert(!railHtml().includes('class="sh-ph"'), '直欄四鈕都應是線條圖示（不再有暫代字）');
   assert(!accountCardHtml({ name: 'A', level: 1, coins: 0 }).includes('class="sh-ph"'), '頭像應是線條圖示');
 });
+
+// Slice 5：非主頁的捲動頁面要留出懸浮分頁列的高度
+const SHELL_CSS = readFileSync(fileURLToPath(new URL('../app/styles/shell.css', import.meta.url)), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '');
+const padVars = () => [...SHELL_CSS.matchAll(/--sh-view-pad-b:\s*([^;]+);/g)].map((m) => m[1]);
+
+test('shell: 非主頁 #view 底部留白規則存在，只針對 page 模式且排除全螢幕訓練', () => {
+  const rule = SHELL_CSS.match(/([^{}]*)\{\s*padding-bottom:\s*var\(--sh-view-pad-b\);?\s*\}/);
+  assert(rule, 'shell.css 應有以 --sh-view-pad-b 設定 padding-bottom 的規則');
+  const sel = rule[1].trim();
+  assert(/#shell\[data-page="page"\]/.test(sel), `應只在非主頁（data-page="page"）生效，實得：${sel}`);
+  assert(/#view:not\(\.full\)/.test(sel), `全螢幕訓練（#view.full）不應留白，實得：${sel}`);
+  assert(!/data-page="home"/.test(sel), '主頁不應被留白');
+});
+
+test('shell: 底部留白 ≥ 分頁列高度＋安全區；電腦版另計懸浮離底距離（邊界）', () => {
+  const vals = padVars();
+  eq(vals.length, 2, '手機、電腦各一個 --sh-view-pad-b');
+  for (const v of vals) {
+    assert(v.includes('var(--sh-tab-h)'), `留白必須包含分頁列高度：${v}`);
+    assert(v.includes('env(safe-area-inset-bottom)'), `留白必須包含安全區：${v}`);
+    assert(/\+\s*var\(--motu-space-\d+\)/.test(v), `留白要比分頁列多一段間距，按鈕才不會貼齊：${v}`);
+  }
+  const desktop = SHELL_CSS.slice(SHELL_CSS.indexOf('@media (min-width: 960px)'));
+  const dv = desktop.match(/--sh-view-pad-b:\s*([^;]+);/);
+  assert(dv, '電腦版區塊應重新定義留白');
+  assert(dv[1].includes('var(--motu-space-4)'), `電腦版分頁列離底 space-4，留白要算進去：${dv[1]}`);
+});

@@ -33,6 +33,12 @@
 }
 #shell button:focus-visible { outline: 2px solid var(--motu-color-focus); outline-offset: 2px; }
 
+/* —— 非主頁的捲動頁面：底部留出懸浮分頁列的高度，最後一顆按鈕才不會被蓋住 ——
+   以 #shell 的 data-page 判斷而不是島嶼的 .isl-host，日後換掉島嶼模組也不受影響；
+   全螢幕訓練（#view.full）不留白 */
+:root { --sh-view-pad-b: calc(var(--sh-tab-h) + env(safe-area-inset-bottom) + var(--motu-space-6)); }
+#app:has(> #shell[data-page="page"]) > #view:not(.full) { padding-bottom: var(--sh-view-pad-b); }
+
 /* 圖示還沒補齊時的暫代字（Slice 2 補 Lucide 後就不會出現） */
 .sh-ph { font-weight: 900; font-size: 1rem; line-height: 1; }
 
@@ -144,6 +150,8 @@
     width: 30rem; transform: translateX(-50%);
     border-radius: var(--motu-radius-lg);
   }
+  /* 懸浮分頁列離底 space-4，留白要多算這一段 */
+  :root { --sh-view-pad-b: calc(var(--sh-tab-h) + var(--motu-space-4) + env(safe-area-inset-bottom) + var(--motu-space-6)); }
   /* 舊版 ≥960px 的 toast 放在視窗底部 32px，會蓋到懸浮分頁列 */
   .toast { bottom: calc(var(--sh-tab-h) + var(--motu-space-8)); }
 }
