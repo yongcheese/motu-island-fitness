@@ -124,6 +124,35 @@ export const GATE_DEPTH = -0.10;
 /** gate 深度換算成 progress（量表達標線該畫的位置）。 */
 export const GATE_PROGRESS = (GATE_DEPTH - DEPTH_NORM.lo) / (DEPTH_NORM.hi - DEPTH_NORM.lo);
 
+// ══ 第二個深度訊號：髖下降量（2026-09-25，實機回報「正對鏡頭蹲到底不計次、轉 45° 才計」）══════
+// 髖膝高低差在正面機位會系統性低估：蹲下時膝蓋往前靠近鏡頭，鏡頭又高於膝，透視讓膝在畫面上
+// 顯得比髖低 —— 3D 上髖已低於膝，畫面上仍是髖在上。UI-PRMD 以筆電機位（1150mm）正面投影重跑：
+// 髖低於膝的動作只計到 10.3%（腳踝出框時 0%），45° 62.1%（出框 20.7%），側身 100%。與實機回報一致。
+//
+// 下降量 = [(髖 y − 站立髖 y) − (膝 y − 站立膝 y)] ÷ 站立大腿長（engine.js 的 hipDrop）。
+// 比的是髖、膝「各自相對站立時」移動了多少：膝往前靠近鏡頭造成的透視偏移只剩膝位移那一小部分；
+// 扣掉膝也讓整體平移（鏡頭被碰到、腳架晃動）完全抵消。分母是站立時直立的大腿，不隨朝向改變。
+// UI-PRMD（Vicon，10 人 × 20 次）400／800／1150／1500mm × 0°／45°／90° 十二種條件，
+//   蹲到底 vs 髖高於膝 ≥100mm 的逐次 AUC 皆 1.000。
+// 判定取兩訊號較大者：側身時原本的髖膝高低差已經準，不因此改變；正面時由此訊號補上。
+//
+// 門檻 0.72 的由來（逐次計次、與程式判定條件一致；完整表見 docs/verification/深蹲朝向驗證.md）：
+//   筆電機位 1150mm：正面 10.3% → 96.6%、45° 62.1% → 100%、側身 100% 不變；腳踝出框時正面 0% → 96.6%。
+//   明確半蹲（髖高於膝 ≥100mm）誤計：800／1150／1500mm 皆 0.0%。
+//   0.70 可讓 1150mm 正面 100%，但 800mm 側身半蹲誤計 4.0%；計次會給予金幣，以低誤判優先。
+// ⚠️ 第一版只用髖的下降量（門檻 1.00），被 slice-reviewer 退回：跨時間訊號不具平移不變性，
+//   全身在畫面上快速下移約一個大腿長就能騙到一次（舊引擎不會）。不要改回去。
+// ⚠️ 兩端失準（必須揭露）：鏡頭高於頭部（1500mm）正面 20.7%、45° 31.0%，幾乎計不到；
+//   地板機位（400mm）半蹲誤計 6–10%。示範機位應在 80–115cm。
+// 代價：理想機位（鏡頭與身體中心同高）對「髖低於膝」三維真值的特異度 96.5% → 84.8%
+//   （靈敏度 93.1% → 100%）—— 會放行「接近平行」（髖高於膝 0–100mm）。這與 GATE_DEPTH 原本
+//   放行近平行的設計意圖一致，但企劃書引用的 96.0%／93.1%／96.5% 必須改寫；
+//   筆電機位一致率則由 87.0% 升為 95.5%。
+// ⚠️ 需先站直約 1 秒建立基準（引擎在直立時更新）。未經真人鏡頭實測；UI-PRMD 為雙臂過頭的 FMS 深蹲。
+export const DROP_GATE = 0.72;
+/** 髖下降量換算成 progress：DROP_GATE 對齊原本的 GATE_PROGRESS，量表上的達標線因此不變。 */
+export const dropProgress = (drop) => Math.max(0, Math.min(1, drop * GATE_PROGRESS / DROP_GATE));
+
 export const squat = {
   id: 'squat', name: '深蹲', group: 'lower',
   met: 5.4, baseCoinPerRep: 10, intensity: 1.0,
@@ -180,8 +209,10 @@ export const squat = {
     const legLen = ankleReliable ? s.legLength : (distance(hipC, kneeC) * 2 || s.legLength);
     // 深度：髖相對膝（以腿長正規化），髖越低值越大
     const depth = (hipC.y - kneeY) / legLen;
-    const progress = norm(depth, DEPTH_NORM.lo, DEPTH_NORM.hi);
-    const gatePass = depth >= GATE_DEPTH;        // Demo 校準 -0.02→-0.10：允許髖到近膝(近平行蹲)，半蹲峰值 depth≈-0.33 仍被擋
+    // 兩個深度訊號取大（見上方 DROP_GATE 註解）：hipDrop 在站立基準建立前為 null，只用髖膝高低差
+    const drop = Number.isFinite(s.hipDrop) ? s.hipDrop : null;
+    const progress = Math.max(norm(depth, DEPTH_NORM.lo, DEPTH_NORM.hi), drop === null ? 0 : dropProgress(drop));
+    const gatePass = depth >= GATE_DEPTH || (drop !== null && drop >= DROP_GATE);   // Demo 校準 -0.02→-0.10：允許髖到近膝(近平行蹲)，半蹲峰值 depth≈-0.33 仍被擋
     const faults = [];
     // 門檻 45°。以下為 2026-08-22 實測值（跑合成序列逐幀量 vAngleFromVertical 取峰值）：
     //   clean 0.00° ／ half 0.00° ／ compensation 46.42°

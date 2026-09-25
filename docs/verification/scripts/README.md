@@ -53,6 +53,7 @@ node measure.mjs /tmp/vdata/cL.json /tmp/vdata/nL.json torso=0.86
 | `fetch_data.py` | 自公開來源取得資料。以 HTTP Range 讀取壓縮檔中央目錄，只下載所需項目 |
 | `vicon_to_mp.py` | UI-PRMD（Vicon）三維座標 → 正面鏡頭視角之 MediaPipe 座標；並輸出三維真值 |
 | `measure.mjs` | 送入**正式判定引擎**並輸出數值 |
+| `measure_squat_view.mjs` | 深蹲計次 × 鏡頭高度 × 身體朝向（`vicon_to_mp.py` 第 4 個參數＝朝向角度），見 `../深蹲朝向驗證.md` |
 | `EXPECTED.md` | 預期輸出，供比對 |
 
 ## 五、資料來源與授權

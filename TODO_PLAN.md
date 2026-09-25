@@ -20,7 +20,7 @@
 - **UI 骨架 Slice：有（Slice 1）**。外殼是新的產品形狀，先給使用者看版面再接細節。三件套依 L 檔各自獨立：骨架＝Slice 1、視覺美學＝Slice 6、微互動＝Slice 7。
 
 ## 本次的不變量（任何 Slice 都不得破壞）
-1. 判定引擎（`app/core/`）、資料流（`app/state/store.js`）、訓練流程與第一階段的訓練頁樣式不動。**例外（2026-09-25 使用者核准，見 Slice 9）**：推薦卡縮圖改 3D 人物、深度量表填色加描邊；判定邏輯、顏色語意（綠／黃／紅／取景藍）不變。
+1. 判定引擎（`app/core/`）、資料流（`app/state/store.js`）、訓練流程與第一階段的訓練頁樣式不動。**例外（2026-09-25 使用者核准，見 Slice 9）**：推薦卡縮圖改 3D 人物、深度量表填色加描邊；判定邏輯、顏色語意（綠／黃／紅／取景藍）不變。**例外二（2026-09-25 使用者要求，見 Slice 14）**：深蹲深度判定加入「髖下降量」訊號（`engine.js` 新增站立髖高度／大腿長基準、`squat.js` 新增 `DROP_GATE`）；其他動作與既有門檻數值不動。
 2. 島嶼插槽機制不動：`main.js` 的 `ISLAND_MODULES`／`resolveIsland`、島嶼只拿受限 store（`island-facade`）。相關測試保留。
 3. 主頁沿用 `island` 這個分頁 id；`ctx.navigate('island')`、`ctx.navigate('workout')` 的既有呼叫端不必改。
 4. `motu.css` 逐字區段不得修改；色值、字型、圓角、陰影、動效一律用 `--motu-*`，不自創色值。
@@ -51,8 +51,8 @@
 > 下游的 run-slice 與 slice-builder 一律沿用本區塊，不得重新調用 ui-ux-pro-max。
 
 ## 進度總覽
-- 總 Slice 數：13（2026-09-25 追加 Slice 9；同日晚間使用者試用換皮版後再提四點，追加 Slice 10–13，計次 Bug 最優先）
-- 已完成：13 / 13
+- 總 Slice 數：14（2026-09-25 追加 Slice 9；同日晚間使用者試用換皮版後再提四點，追加 Slice 10–13；使用者實機再回報深蹲正面不計次，追加 Slice 14）
+- 已完成：14 / 14
 - 平行組：無（Slice 1、3–8 都會碰 `main.js` 或 `shell.css`；Slice 2 雖只碰圖示模組，但 Slice 1 之後才知道確切需要哪些圖示，保守序列執行）
 
 ---
@@ -362,4 +362,28 @@
 - **Circuit Breaker**：0 次（2 次測試失敗皆為測試字串範圍問題，非實作錯誤）。
 - **審查紀錄**：slice-reviewer 第 1 輪 BLOCK（彩帶 canvas 在切頁／鍵盤操作時可能殘留；Slice 13 條目缺驗收段落）→ 兩項已修，實機驗證通過。Slice 10–12 同輪 PASS。
 - **已知缺口**：`app/styles/lumina.css` 仍有 `.wk-grade-ring` 死選擇器（無作用，未清以免動到共用樣式檔）；結算頁模板依賴執行期 DOM，0 下／0 金幣只以原始碼檢查＋實機截圖驗證。
+- **平行組**：獨立
+
+### [x] Slice 14 — 🔴 深蹲正對鏡頭不計次（轉 45° 才計）
+- **來源**：2026-09-25 使用者實機回報（Slice 10 的計次問題實為此項）：「正面朝向時偵測不了，45 度角時卻偵測得到」。
+- **根因（已用真人資料重現）**：深度只看畫面上「髖 vs 膝」高低。正面蹲下時膝往前靠近鏡頭、鏡頭又高於膝，透視讓膝在畫面上偏低 → 3D 髖已低於膝、畫面上仍是髖在上。UI-PRMD 投影到筆電機位（1150mm）：正面只計到 10.3%（腳踝出框 0%）、45° 62.1%、側身 100%，與回報一致。
+- **修法**：加第二訊號「(髖相對站立的下降量 − 膝相對站立的下降量) ÷ 站立大腿長」（十二種機位×朝向 AUC 皆 1.000），與舊訊號取大；門檻 `DROP_GATE = 0.72`（比較 0.70／0.72／0.75／0.78 後，以低誤判優先選定）。
+- **範圍內**：`app/core/engine.js`（站立髖／膝高度與未正規化大腿長基準、`hipDrop`）、`app/core/exercises/squat.js`（`DROP_GATE`、`dropProgress`、判定取大）、驗證腳本（`vicon_to_mp.py` 加朝向參數、新增 `measure_squat_view.mjs`）、驗證文件、`EXPECTED.md`、真人資料測試夾具。
+- **範圍外**：其他三個動作；既有門檻數值（`GATE_DEPTH`、`DEPTH_NORM`、advisory 門檻）；企劃書數字改寫（需使用者決定）。
+- **改動檔案**：`app/core/engine.js`、`app/core/exercises/squat.js`、`tests/squat-view.test.js`（新增）、`tests/fixtures/squat_front_1150.json`（新增，UI-PRMD 公眾領域）、`docs/verification/scripts/vicon_to_mp.py`、`docs/verification/scripts/measure_squat_view.mjs`（新增）、`docs/verification/scripts/EXPECTED.md`、`docs/verification/scripts/README.md`、`docs/verification/深蹲朝向驗證.md`（新增）
+- **UI Slice?**：NO
+- **驗收標準**：
+  - [x] 筆電機位 1150mm：正面 ≥90%、45° ≥90%、側身維持 100%（UI-PRMD 投影；實得 96.6%／100%／100%，腳踝出框同）
+  - [x] 明確半蹲（髖高於膝 ≥100mm）在 800／1150／1500mm 誤計 0%
+  - [x] 合成作弊變體新舊引擎計次逐項相同
+  - [x] 全身（或鏡頭）快速上下平移 0.1／0.2／0.3、走近鏡頭 20% 皆不計次（第一輪審查 BLOCK 項）
+  - [x] 回歸測試以真人夾具鎖住：正面 5 次深蹲 ≥4 次計入（修改前 0 次，前提測試證明舊訊號看不到）、5 次半蹲 0 次
+  - [x] 示範模式實機計次正常，console 0 error（20 秒：11 下有效、2 下半蹲被擋，與修改前相同）
+- **測試策略**：`tests/squat-view.test.js` 10 項（真人夾具前提／深蹲／半蹲、全身平移、走近、合成 clean／half／compensation × 26／30 幀、合成量級對照真人、基準前為 null、達標線對齊）。
+- **完成定義**：`npm test` 全綠（452 → 462）＋真人資料投影驗證＋示範模式實機＋slice-reviewer（動到判定核心，必審）
+- **對外介面**：`stableScale()` 回傳新增 `hipDrop`（髖相對膝的下降量，站立基準前為 null）、`frameHipY`、`frameKneeY`、`frameThighRaw`；`updateStandBaseline` 多三個參數；`squat.js` 新增 export `DROP_GATE`、`dropProgress(drop)`。
+- **施工備註**：突變檢查：拿掉「扣膝」→ 平移測試等 4 項失敗；拿掉新訊號 → 真人正面測試失敗；門檻放鬆 → 半蹲測試失敗。/tmp 的 UI-PRMD 資料已被清除，以 `fetch_data.py` 重新下載。夾具中 1 次壓線動作（髖低於膝 8mm）計不到，如實以 ≥4/5 斷言，不換樣本。
+- **對既有數字的影響（已揭露於驗證文件）**：理想機位特異度 96.5% → 84.8%（一致率 96.0% → 87.0%）；筆電機位一致率 87.0% → 95.5%（靈敏度 10.3% → 96.6%）。**企劃書引用的 96.0%／93.1%／96.5% 已不成立**，待使用者決定如何改寫。
+- **審查紀錄**：slice-reviewer 第 1 輪 BLOCK（只看髖的第一版可被全身平移騙到一次）→ 改為扣膝版、補平移回歸測試 → 第 2 輪 PASS（平移 maxDrop 精確為 0；鏡頭傾斜、半蹲加平移等組合皆未觸發；夾具非挑樣本；文件數字獨立重跑相符）。
+- **已知限制**：需先站直約 1 秒建立基準；鏡頭高於頭部（1500mm）正面 20.7%，幾乎計不到；地板機位（400mm）半蹲誤計 6–10%；未經真人鏡頭實測。
 - **平行組**：獨立

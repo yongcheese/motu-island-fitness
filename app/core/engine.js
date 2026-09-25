@@ -170,6 +170,14 @@ export function createDetector(spec, opts = {}) {
   // 其畫面投影隨之縮短。同一批資料實測五機位僅衰減 12%、逐段 CV 0.032。
   // 與 standTorso 同理，只在身體直立、動作尚未展開時更新。
   let standThigh = null;
+  // 站立基準「髖、膝高度」與「大腿投影長（未正規化）」：深蹲的朝向不變深度訊號用（2026-09-25）。
+  // 下降量 = [(當幀髖 y − 站立髖 y) − (當幀膝 y − 站立膝 y)] ÷ 站立大腿長。
+  // 與「同幀髖 vs 膝」不同：比的是各自相對站立時移動了多少，膝往前靠近鏡頭造成的透視偏移
+  // 只剩「膝的位移量」那一小部分，不再是整個高低關係（這正是「正對鏡頭蹲到底也不計次」的根因）。
+  // 扣掉膝的位移也讓整體平移完全抵消。UI-PRMD 十二種機位×朝向實測 AUC 皆 1.000，
+  // 見 docs/verification/深蹲朝向驗證.md。與 standTorso 同理，只在直立時更新。
+  // 兩者都用原始影像座標（不正規化）：分子分母同單位，且分母取站立時的值，不會隨蹲下縮短。
+  let standHipY = null, standKneeY = null, standThighRaw = null;
   function stableScale(frame) {
     const s = bodyScale(frame);
     if (!scaleEma) {
@@ -200,6 +208,9 @@ export function createDetector(spec, opts = {}) {
     const thighL = dist2(frame[LM.LEFT_HIP], frame[LM.LEFT_KNEE]) / unit;
     const thighR = dist2(frame[LM.RIGHT_HIP], frame[LM.RIGHT_KNEE]) / unit;
     const foreshorten = (v) => (standThigh && standThigh > 1e-6 ? Math.max(0, 1 - v / standThigh) : 0);
+    const hipY = (frame[LM.LEFT_HIP].y + frame[LM.RIGHT_HIP].y) / 2;
+    const kneeY = (frame[LM.LEFT_KNEE].y + frame[LM.RIGHT_KNEE].y) / 2;
+    const thighRaw = Math.max(thighL, thighR) * unit;
     return {
       ...s, ...scaleEma, frameTorso,
       torsoRatio: standTorso ? frameTorso / standTorso : 1,
@@ -207,11 +218,23 @@ export function createDetector(spec, opts = {}) {
       // 供 update() 更新站立基準用：已正規化，與 standThigh 同一個單位
       frameThighMax: Math.max(thighL, thighR),
       standThigh,
+      // 髖相對膝的下降量（站立基準建立前為 null，由動作自行退回其他訊號）。
+      // 必須扣掉膝的下降量：只看髖的話，整個人或鏡頭在畫面上快速上下移動（鏡頭被碰到、
+      // 腳架晃動）就會被當成蹲下 —— 這是跨時間訊號，不像同幀相對量天生不受平移影響。
+      // 扣掉膝之後整體平移完全抵消（2026-09-25 slice-reviewer 抓到）。
+      hipDrop: (standHipY !== null && standThighRaw > 1e-6)
+        ? ((hipY - standHipY) - (kneeY - standKneeY)) / standThighRaw : null,
+      frameHipY: hipY, frameKneeY: kneeY, frameThighRaw: thighRaw,
     };
   }
   /** 由 update 在確認身體直立（動作尚未展開）時呼叫，緩慢更新站立基準。 */
-  function updateStandBaseline(frameTorso, isUpright, frameSpan, frameThigh) {
+  function updateStandBaseline(frameTorso, isUpright, frameSpan, frameThigh, frameHipY, frameKneeY, frameThighRaw) {
     if (!isUpright) return;
+    if (Number.isFinite(frameHipY) && Number.isFinite(frameKneeY) && Number.isFinite(frameThighRaw) && frameThighRaw > 1e-6) {
+      standHipY = standHipY === null ? frameHipY : 0.05 * frameHipY + 0.95 * standHipY;
+      standKneeY = standKneeY === null ? frameKneeY : 0.05 * frameKneeY + 0.95 * standKneeY;
+      standThighRaw = standThighRaw === null ? frameThighRaw : 0.05 * frameThighRaw + 0.95 * standThighRaw;
+    }
     standTorso = standTorso === null ? frameTorso : 0.05 * frameTorso + 0.95 * standTorso;
     if (Number.isFinite(frameSpan) && frameSpan > 0) {
       standSpan = standSpan === null ? frameSpan : 0.05 * frameSpan + 0.95 * standSpan;
@@ -395,7 +418,7 @@ export function createDetector(spec, opts = {}) {
       // 短暫掉幀 vs 真的離開畫面：前者只是凍結（保住進行中的那一下），後者才重置狀態機。
       if (lostSinceMs === null) lostSinceMs = tMs;
       if (tMs - lostSinceMs >= cfg.abortAfterMs) {
-        scaleEma = null; standTorso = null; standSpan = null; standThigh = null;   // 重新進入畫面時重新校準尺度與站立基準
+        scaleEma = null; standTorso = null; standSpan = null; standThigh = null; standHipY = null; standKneeY = null; standThighRaw = null;   // 重新進入畫面時重新校準尺度與站立基準
         for (const k in tracks) { tracks[k].tk.abort(); tracks[k].buf = []; tracks[k].faults.clear(); }
       }
       const seg = {}; for (const k of SEG_KEYS) seg[k] = 'red';
@@ -438,6 +461,7 @@ export function createDetector(spec, opts = {}) {
       // 已以當幀軀幹長正規化（見 stableScale）—— 不可改回傳原始像素長度，
       // 那會讓基準與當幀值單位不一致，比值恆為錯。
       scale.frameThighMax,
+      scale.frameHipY, scale.frameKneeY, scale.frameThighRaw,
     );
     let phase = 'READY';
     let signal = 0;
@@ -504,7 +528,7 @@ export function createDetector(spec, opts = {}) {
 
   function reset() {
     validReps = invalidReps = attempts = 0; lastCountTime = -1e9; lastSide = null; visStreak = 0; scaleEma = null;
-    unconfirmedFirstAlt = false; prevAttemptSide = null; standTorso = null; standSpan = null; standThigh = null;
+    unconfirmedFirstAlt = false; prevAttemptSide = null; standTorso = null; standSpan = null; standThigh = null; standHipY = null; standKneeY = null; standThighRaw = null;
     framingWin = []; lostSinceMs = null;
     for (const k in faultCounts) delete faultCounts[k];
     for (const k in advisoryCounts) delete advisoryCounts[k];

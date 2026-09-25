@@ -57,7 +57,7 @@ def resample(P, src_hz=100, dst_hz=30):
     return P[i0] * (1 - w) + P[i0 + 1] * w
 
 
-def to_frames(P, cam_dist_ratio=1.6, target_span=0.78, cam_height_mm=None):
+def to_frames(P, cam_dist_ratio=1.6, target_span=0.78, cam_height_mm=None, yaw_deg=0.0):
     """三維座標 → 正面鏡頭所見的 MediaPipe-33 正規化影像座標。
 
     三個刻意的設計決定：
@@ -73,6 +73,13 @@ def to_frames(P, cam_dist_ratio=1.6, target_span=0.78, cam_height_mm=None):
 
     keys = list(pts.keys())
     A = np.stack([pts[k] for k in keys], axis=1)
+    if yaw_deg:
+        # 身體朝向（2026-09-25 新增）：繞「首幀骨盆中心」的鉛直軸旋轉，模擬使用者不正對鏡頭。
+        # 0 = 正對鏡頭；90 = 側身。只轉受試者、不動鏡頭，鏡頭距離與高度的定義不變。
+        c = A[0, [keys.index('LEFT_HIP'), keys.index('RIGHT_HIP')], :].mean(axis=0)
+        t = np.deg2rad(yaw_deg); ct, st = np.cos(t), np.sin(t)
+        X, Y = A[:, :, 0] - c[0], A[:, :, 1] - c[1]
+        A = A.copy(); A[:, :, 0] = c[0] + ct * X - st * Y; A[:, :, 1] = c[1] + st * X + ct * Y
     h0 = g('LFHD')[0, 2] - g('LANK')[0, 2]          # 站立首幀身高（mm）
     camX = P[:, :, 0].max() + cam_dist_ratio * h0    # 鏡頭在受試者前方
     camZ = float(A[:, :, 2].mean()) if cam_height_mm is None else float(cam_height_mm)
@@ -119,10 +126,11 @@ if __name__ == '__main__':
     import glob, json, os, sys
     src, dst = sys.argv[1], sys.argv[2]
     cam = None if len(sys.argv) < 4 or sys.argv[3] == 'ideal' else float(sys.argv[3])
+    yaw = float(sys.argv[4]) if len(sys.argv) >= 5 else 0.0   # 身體朝向（度），0＝正對鏡頭
     recs = []
     for p in sorted(glob.glob(os.path.join(src, '*_positions*.txt'))):
         base = os.path.basename(p).split('_positions')[0]
-        fr = convert(p, cam_height_mm=cam)
+        fr = convert(p, cam_height_mm=cam, yaw_deg=yaw)
         recs.append(dict(
             id=base,
             gt=ground_truth_depth(p),   # 三維真值：髖−膝最小值(mm)，負值＝髖低於膝
