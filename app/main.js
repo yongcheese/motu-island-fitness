@@ -9,7 +9,7 @@ import { resolveIsland } from './features/island/registry.js';
 import tracking from './features/tracking/tracking.js';
 import settings from './features/settings/settings.js';
 import { createIslandFacade } from './state/island-facade.js';
-import { tabbarHtml, accountCardHtml, railHtml, cornerHtml } from './ui/shell.js';
+import { tabbarHtml, accountCardHtml, accountFromState, railHtml, cornerHtml, SOON_MESSAGE } from './ui/shell.js';
 
 const coach = createCoach({ enabled: store.getState().prefs.voice });
 
@@ -49,8 +49,6 @@ const TABS = [
   { id: 'tracking', label: '追蹤', icon: 'heart', soon: true },
   { id: 'settings', label: '設定', icon: 'settings', soon: true },
 ];
-// Slice 1 骨架先寫死；Slice 3 改接 store 的暱稱、等級、金幣
-const MOCK_ACCOUNT = { name: '島主', level: 1, coins: 0 };
 
 const els = {
   view: document.getElementById('view'),
@@ -80,8 +78,17 @@ const ctx = {
   },
 };
 
+// 帳號卡跟著 store 更新；內容沒變就不重畫（訓練中 store 會頻繁 emit）
+let accountHtml = '';
+function renderAccount(s) {
+  const html = accountCardHtml(accountFromState(s));
+  if (html === accountHtml) return;
+  accountHtml = html;
+  els.account.innerHTML = html;
+}
+
 function renderShell() {
-  els.account.innerHTML = accountCardHtml(MOCK_ACCOUNT);
+  renderAccount(store.getState());
   els.rail.innerHTML = railHtml();
   els.corner.innerHTML = cornerHtml();
 }
@@ -93,10 +100,20 @@ function renderTabbar() {
 els.tabs.addEventListener('click', (e) => {
   const b = e.target.closest('[data-tab]');
   if (!b) return;
-  // Slice 1：不做的分頁先只記錄；Slice 3 改成跳「即將推出」提示
-  if (b.dataset.soon) { console.info('[shell] 即將推出：', b.dataset.tab); return; }
+  // 追蹤、設定合體後由遊戲組提供：只跳提示，不切換頁面
+  if (b.dataset.soon) { ctx.toast(SOON_MESSAGE); return; }
   show(b.dataset.tab);
 });
+
+// 左側直欄與右下按鈕：建造先回主頁（實際開啟島嶼建造在 Slice 4），其餘只擺樣子
+function onShellAction(e) {
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  if (b.dataset.act === 'build') { show('island'); return; }
+  ctx.toast(SOON_MESSAGE);
+}
+els.rail.addEventListener('click', onShellAction);
+els.corner.addEventListener('click', onShellAction);
 
 function show(id) {
   if (current === id) return;
@@ -127,8 +144,8 @@ function syncPalette(s) {
   setPalette(appliedColorMode);
 }
 
-// 狀態變更 → 同步調色盤
-store.subscribe((s) => { syncPalette(s); });
+// 狀態變更 → 同步調色盤、帳號卡（暱稱、等級、金幣）
+store.subscribe((s) => { syncPalette(s); renderAccount(s); });
 
 // 啟動
 function boot() {

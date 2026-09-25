@@ -4,6 +4,7 @@
    左上帳號卡、左側四鈕直欄、右下禮物與轉盤、底部四個分頁。
    全部是純函式：吃資料、回 HTML 字串，不碰 DOM —— 方便在 node 測試，
    也方便遊戲組原始碼到了之後整支換掉。
+   Slice 3：帳號卡改吃真實 state（accountFromState）、圖示改用 Slice 2 的正式名稱。
    ============================================================ */
 import { ICONS, icon } from './icons.js';
 
@@ -24,8 +25,29 @@ export const RAIL_ITEMS = [
   { id: 'build', label: '建造', icon: 'hammer' },
   { id: 'shop', label: '商店', icon: 'shopping-bag' },
   { id: 'bag', label: '背包', icon: 'backpack' },
-  { id: 'emote', label: '動作', icon: 'smile' },
+  { id: 'emote', label: '動作', icon: 'face-slightly-smiling' },
 ];
+
+/** 不做的按鈕（分頁、直欄、右下）按下時的統一提示文字 */
+export const SOON_MESSAGE = '即將推出';
+
+/**
+ * 把 store 的完整 state 收斂成帳號卡要的三個欄位（Slice 3）。
+ * 只取金幣這一種資源 —— 需求明定帳號卡不顯示第二種資源。
+ * 欄位缺漏（舊存檔、測試用的殘缺 state）時退回安全預設，不讓外殼整片壞掉。
+ * @param {object} s  store.getState() 的回傳值
+ * @returns {{ name: string, level: number, coins: number }}
+ */
+export function accountFromState(s) {
+  const name = s?.profile?.nickname;
+  const level = Number(s?.wallet?.level);
+  const coins = Number(s?.wallet?.coins);
+  return {
+    name: typeof name === 'string' && name.trim() ? name : '島主',
+    level: Number.isFinite(level) && level >= 1 ? level : 1,
+    coins: Number.isFinite(coins) && coins >= 0 ? coins : 0,
+  };
+}
 
 /**
  * 底部分頁列。
@@ -46,7 +68,7 @@ export function tabbarHtml(tabs, current) {
  * @param {{ name: string, level: number, coins: number }} state
  */
 export function accountCardHtml(state) {
-  return `<div class="sh-avatar">${glyph('waves', '島', 24)}</div>`
+  return `<div class="sh-avatar">${glyph('waves-horizontal', '島', 24)}</div>`
     + `<div class="sh-id"><div class="sh-name">${esc(state.name)}</div>`
     + `<span class="sh-lv">LV ${esc(state.level)}</span></div>`
     + `<div class="sh-res"><span class="sh-coin-ico">${glyph('coins', '幣', 18)}</span>`

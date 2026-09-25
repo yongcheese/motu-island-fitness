@@ -52,7 +52,7 @@
 
 ## 進度總覽
 - 總 Slice 數：8
-- 已完成：2 / 8
+- 已完成：3 / 8
 - 平行組：無（Slice 1、3–8 都會碰 `main.js` 或 `shell.css`；Slice 2 雖只碰圖示模組，但 Slice 1 之後才知道確切需要哪些圖示，保守序列執行）
 
 ---
@@ -105,7 +105,7 @@
 - **依賴**：Slice 1
 - **平行組**：獨立
 
-### [ ] Slice 3 — 外殼接上真實狀態與按鈕行為
+### [x] Slice 3 — 外殼接上真實狀態與按鈕行為
 - **目標**：帳號卡顯示真實的暱稱、等級、金幣並即時更新；分頁列標示目前所在；不做的按鈕按下跳「即將推出」。
 - **範圍內**：
   - `shell.js` 的模板改吃真實 state（暱稱經跳脫、等級、金幣）；**不顯示第二種資源**。
@@ -116,12 +116,16 @@
 - **設計要點**：金幣用金色圖示＋深藍數字（`color-not-only`）；暱稱一律跳脫。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [ ] 完成一次訓練領取獎勵後回到主頁，帳號卡的金幣與等級已更新
-  - [ ] 七個不做的按鈕按下只跳提示、不報錯；追蹤與設定不會切換頁面
-  - [ ] 外殼沒有任何 emoji
+  - [x] 完成一次訓練領取獎勵後回到主頁，帳號卡的金幣與等級已更新（實機以 `commitSession` 模擬領獎：LV 5／1438 → LV 6／1487；未走真實相機流程）
+  - [x] 七個不做的按鈕按下只跳提示、不報錯；追蹤與設定不會切換頁面
+  - [x] 外殼沒有任何 emoji
 - **測試策略**：`tests/shell.test.js` — `accountCardHtml` 顯示 state 的暱稱／等級／金幣、暱稱含 `<script>` 時被跳脫（邊界）、金幣為 0 時仍顯示 0；不可用分頁的清單固定為 `tracking`、`settings`；外殼模板輸出不含 emoji。
 - **完成定義**：`npm test` 全綠＋實機 console 0 error＋slice-reviewer
 - **對外介面**：
+  - `app/ui/shell.js` 新增 `accountFromState(state)` → `{ name, level, coins }`（讀 `profile.nickname`、`wallet.level`、`wallet.coins`；缺漏或非法值退回 `島主`／1／0；刻意不帶出 emoji 的 `profile.avatar`）、`SOON_MESSAGE = '即將推出'`。`RAIL_ITEMS` 的 emote 圖示改為 `face-slightly-smiling`，頭像改為 `waves-horizontal`（外殼已無暫代字）。
+  - `main.js`：`MOCK_ACCOUNT` 移除；`renderAccount(s)` 掛在 `store.subscribe`（內容沒變不重畫）；`#sh-rail`、`#sh-corner` 以 `onShellAction` 委派點擊 —— `data-act="build"` 目前只 `show('island')`（**Slice 4 在這裡改成開啟島嶼建造**），其餘 `ctx.toast(SOON_MESSAGE)`；soon 分頁改跳同一提示、不切頁。
+- **施工備註**：測試 373 → 379（Slice 2 收尾基線 373）。實機（Playwright 1200 寬）七顆按鈕都跳「即將推出」且不切頁、建造鈕從健身頁回主頁、console 0 error／0 warning。主頁上方與右上仍看得到島嶼自帶浮層的 emoji，屬 Slice 4 範圍。
+- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-25）
 - **依賴**：Slice 1、Slice 2
 - **平行組**：獨立
 
