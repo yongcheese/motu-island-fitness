@@ -115,8 +115,7 @@ function renderMenu(activeGroup = 'all') {
         </div>
       </div>
       <div class="wk-grid stagger" id="wk-list"></div>
-    </div>
-    <button class="wk-fab" id="wk-fab">${icon('rocket', { size: 20 })} <span>快速開始 AI 訓練</span></button>`;
+    </div>`;
 
   const listEl = root.querySelector('#wk-list');
   const renderCards = (items) => {
@@ -147,8 +146,6 @@ function renderMenu(activeGroup = 'all') {
       !kw || e.name.includes(kw) || e.id.includes(kw));
     renderCards(filtered);
   };
-  const fab = root.querySelector('#wk-fab');
-  if (fab) fab.onclick = () => { const ex = Object.values(EXERCISES)[0]; if (ex) renderIntro(ex); };
 
   // 推薦卡：hook 只用 data-rec-id（與型錄卡 [data-id]/.wk2 完全隔離）；innerHTML 後綁定＋null-guard
   const recEl = root.querySelector('[data-rec-id]');

@@ -85,7 +85,7 @@ const PAIRS = [
   ['規劃中卡片標題與「--」（深藍淡／白卡，不再疊 opacity）', T['color-text-muted'], T['color-surface'], false],
   ['規劃中徽章、靜音鈕（深藍淡／沙色）', T['color-text-muted'], T['color-surface-sunken'], false],
   ['凹陷底上的正文（深藍／沙色）', T['color-text'], T['color-surface-sunken'], false],
-  ['主按鈕、快速開始、分類 chip 選中、週期燈、暫停（白字／深青）', T.white, T['teal-dark'], false],
+  ['主按鈕、分類 chip 選中、週期燈、暫停（白字／深青）', T.white, T['teal-dark'], false],
   ['示範模式舞台上的狀態字（深藍／薄荷淡）', T['color-text'], T['mint-pale'], false],
   ['HUD 數字與提示，暗影像（深藍／白 92%）', T['color-text'], HUD_DARK, false],
   ['HUD 標籤，暗影像（深藍淡／白 92%）', T['color-text-muted'], HUD_DARK, false],

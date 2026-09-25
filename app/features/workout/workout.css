@@ -81,18 +81,6 @@
 .wk2.locked .wk2-hero { background: var(--motu-color-surface-sunken); }
 .wk2.locked:hover { transform: none; box-shadow: none; border-color: var(--motu-color-border); }
 
-/* 浮動「快速開始」鈕：15px 字，白字需放深青底才有 5.2:1 */
-.wk-fab {
-  position: fixed; right: 24px; bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 18px);
-  display: inline-flex; align-items: center; gap: 8px; min-height: 44px;
-  padding: 14px 22px; border: 0; border-radius: var(--motu-radius-pill);
-  background: var(--motu-teal-dark); color: var(--motu-white); font-weight: 900; font-size: 15px;
-  box-shadow: var(--motu-shadow-primary); z-index: 200;
-  transition: transform var(--motu-duration-fast) var(--motu-ease-standard), box-shadow var(--motu-duration-base) var(--motu-ease-standard);
-}
-.wk-fab:hover { transform: scale(1.05); box-shadow: var(--motu-shadow-primary-hover); }
-.wk-fab:active { transform: scale(.98); }
-@media (min-width: 960px) { .wk-fab { bottom: 32px; } }
 .wk-groups { display: flex; gap: 8px; overflow-x: auto; padding: 2px 4px 8px; scrollbar-width: none; }
 .wk-groups::-webkit-scrollbar { display: none; }
 .wk-chip {
@@ -657,7 +645,7 @@
   /* 計次閃現是判定回饋，不能跟著消失：改成不縮放、不位移，停留同樣時間後直接消失。
      !important 是為了蓋過 app.css 對 * 的 0.001ms（那條會讓閃現瞬間變回透明，減少動態的人看不到判定） */
   .lv-repflash.pop { animation: lvRepHold calc(var(--motu-duration-slow) * 3) steps(1, end) forwards !important; }
-  :is(.wk2, .wk-rec, .wk-fab, .wk-chip):is(:hover, :active), .wk-card:not(.soon):active,
+  :is(.wk2, .wk-rec, .wk-chip):is(:hover, :active), .wk-card:not(.soon):active,
   .lv-wrap .lv-btn:active { transform: none; }
 }
 
