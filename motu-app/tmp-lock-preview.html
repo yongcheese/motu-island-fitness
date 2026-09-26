@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <title>XP lock preview</title>
+    <style>
+      body { margin: 0; padding: 16px; background: #eef1f5; font-family: system-ui, sans-serif; }
+      pre { color: #b00020; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <pre id="err"></pre>
+    <script>
+      const show = (m) => { document.getElementById('err').textContent += m + '\n'; };
+      window.addEventListener('error', (e) => show('ERROR: ' + (e.message || e.error) + ' @ ' + e.filename));
+      window.addEventListener('unhandledrejection', (e) => show('REJECT: ' + e.reason));
+    </script>
+    <script type="module" src="/tmp-lock-preview.tsx"></script>
+  </body>
+</html>

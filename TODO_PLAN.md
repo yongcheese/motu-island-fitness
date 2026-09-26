@@ -1,389 +1,335 @@
-# TODO_PLAN — Island Fitness AI｜合體第二階段（前段）：主頁外殼改成遊戲組樣式，健身搬進「健身」分頁
+# TODO_PLAN — Island Fitness AI｜合體第二階段（整合）：健身頁導入遊戲組元件
 <!-- cross-model-review: skip（2026-09-24 使用者裁示：本專案不送 Codex 審） -->
 
-> 產生時間：2026-09-25
-> 需求來源：`REQUIREMENT.md`（含第 5 節規格審查拍板 10 條、第 6 節驗收標準）
-> 前一份看板：第一階段換皮 6/6 已結案，封存為 `TODO_PLAN_合體第一階段.md`（最後存檔點 `1d7a6ba`）
-> 技術棧：純前端 ES Modules（無框架、無打包、無 TypeScript）；three.js r161；遊戲組 Motu 樣式（`app/styles/motu.css` 逐字擷取＋`motu-skin.css`）
-> 測試指令：`npm test`（`node tests/run.js`，基線 **362/362 綠**，不得下降）
-> 執行方式：`python3 serve.py 8080` → `http://localhost:8080`
-> 參考畫面：`文件/遊戲組系統UI畫面/image.png`（遊戲端主頁）
+> 產生時間：2026-09-26
+> 需求來源：`REQUIREMENT.md`（第 6 節拍板 9 條、第 7 節驗收標準）
+> 前一份看板：第二階段前段 14/14，封存為 `TODO_PLAN_合體第二階段前段.md`（最後 commit `f5b6661`）。**它的收尾 Final Validation 尚未做，併入本看板的收尾總驗證一起跑。**
+> 動工前備份：`../育秀杯_備份/健身組_加入遊戲組元件前_20260926-2200/`（含 `.git`，commit `099299a`）
+> 技術棧：
+>   - **整合版**（新）：`motu-app/`＝遊戲組原始碼（`Motu-島嶼健身-原始碼-最新版/`，git 95d63eb）的工作複本，React 19＋TS＋Vite＋Tailwind 4＋R3F，three r184；由本 repo 追蹤
+>   - **健身核心**（既有）：`app/` 純 ES Modules，整合版以 Vite 別名**直接引用**，不複製第二份
+> 測試指令：
+>   - 我方：`npm test`（基線 **462/462 綠**，只增不減）
+>   - 整合版：`cd motu-app && npx tsc --noEmit`、`npm run test:workout-rewards`（基線 61/61）、本看板新增的 `npm run test:fitness`
+>   - 完整 build：`cd motu-app && npx vite build`
+> 執行方式：整合版 `cd motu-app && npm run dev` → `http://localhost:3000`（訪客登入，存檔只在本機瀏覽器）；我方舊版 `python3 serve.py 8080` 仍可獨立運作
 
 ## 需求檔位
 - **檔位**：L
-- **判定理由**：從 S 起算，加分清單命中 3 條 →
-  ①改動的介面有多個消費端：`ctx.setChrome`（訓練頁呼叫）、`ctx.navigate('island')`（訓練、今日、健康三處呼叫）、分頁表 `TABS`（兩支既有測試鎖定）；
-  ②brownfield 且耦合未完全掌握：島嶼頁 559 行自帶一整套浮層，「建造」鈕要接進它的編輯／商店流程，內部狀態（`S.editing`、`openSheet`）尚未細讀；
-  ③橫跨 3 個以上關注點：外殼結構、分頁狀態、島嶼整合、健身頁版面、RWD 兩套斷點、無障礙。
-  未命中：不碰持久化／登入；不引入新套件（Lucide 圖示以本機 SVG 字串追加）。
-- **本檔位規格**：Slice 數 8 ｜ slice-reviewer 逐 Slice ｜ 完整 build **N/A（本專案沒有 build）**，改用 `npm test` 全綠＋瀏覽器實機 console 0 error ｜ context 隔離：半自動模式每 2–3 個 Slice 換一次對話
-- **UI 骨架 Slice：有（Slice 1）**。外殼是新的產品形狀，先給使用者看版面再接細節。三件套依 L 檔各自獨立：骨架＝Slice 1、視覺美學＝Slice 6、微互動＝Slice 7。
+- **判定理由**：從 S 起算，加分清單命中 4 條 →
+  ①碰持久化／經濟：結算改由遊戲端發金幣、經驗、碎片（寫 `users/{uid}` 或本機存檔）；
+  ②介面多個消費端：訓練頁 `ctx`（`store`／`setChrome`／`navigate`）要同時服務我方舊外殼與整合版宿主；
+  ③brownfield 且耦合未完全掌握：遊戲組 `Avatar.tsx` 4311 行、角色骨架與穿著系統、`useWorkoutRewards` 發獎流程皆為他人程式；
+  ⑤橫跨 5 個以上關注點：建置整合、3D 角色、動作轉換、SVG 動畫、發獎、動畫序列、結算版面。
+  （④新依賴：不新增 npm 套件，整合版沿用遊戲組既有依賴，未命中。）
+- **本檔位規格**：Slice 數 13 ｜ slice-reviewer **逐 Slice**（L 檔） ｜ 完整 build（`vite build`）每個平行組一次＋動到建置設定時＋收尾 ｜ context 隔離：半自動每 2–3 個 Slice 換一次對話（或 `/run-slice N --isolate`）
+- **UI 骨架 Slice：有（Slice 1）**。三件套獨立：骨架＝Slice 1、視覺美學＝Slice 12、微互動＝Slice 13。
+
+## 架構決策（本看板的地基）
+1. **單一原始碼**：整合版 `vite.config.ts` 加別名 `@fitness` → `../app`，並開 `server.fs.allow` 到上一層；`app/` 仍是我方唯一的健身原始碼，舊版 :8080 與 462 條測試照跑。
+2. **vendor 靜態資源**：MediaPipe wasm／模型以宿主提供的絕對路徑 `/vendor/...` 供應（`server.ts` 靜態掛載＋ build 時複製），`app/core/pose.js` 改為可由 `ctx` 注入資產根目錄，預設值維持 `./vendor`（舊版不受影響）。
+3. **宿主 `FitnessHost.tsx`** 取代遊戲組 `FitnessView`（App.tsx 只換一行掛載；`FitnessView.tsx` 保留不刪）：
+   - 以 ref 容器呼叫 `workout.mount(el, ctx)`，卸載時 `unmount()`；
+   - `ctx.setChrome(false)` → `setIsWorkoutActive(true)`（遊戲端既有的全螢幕隱藏 HUD 機制）；
+   - `ctx.navigate('island')` → 切回遊戲主頁。
+4. **健身頁 ↔ 遊戲端契約**（`ctx.game`，選配；沒有時訓練頁走舊行為，舊版與測試不受影響）：
+   - `ctx.game.balances()` / `subscribe(fn)`：金幣、碎片、經驗、等級（讀遊戲組 profile）
+   - `ctx.game.settle(summary) → Promise<Award[]>`：以**有效次數與時間**呼叫 `reportWorkoutCompletion`（金幣／經驗照遊戲端 `payoutForWorkout`）＋碎片照遊戲端 `fragmentsForWorkout`／`grantFragments`
+   - `ctx.game.claim(awards) → Promise<void>`：播逐項領獎序列，玩家按下「任意鍵以繼續」後 resolve
+   - `ctx.slots.mount(name, el, props)` / `unmount(name)`：訓練頁在自己的 DOM 留插槽，宿主用 React portal 把遊戲元件（主角、阿肌背景、對話框、資源列）畫進去
+   - `ctx.events.emit(type, payload)`：`rep`（每計一下）、`phase`（準備／進行／休息／結束）、`milestone`（達標、剩最後幾下）
+5. **金額以遊戲端為準**：我方 `coinsFor` 只留在舊版；整合版的顯示與發放一律走 `ctx.game`（遵守藍圖「資源怎麼發是遊戲端的事」）。訓練統計仍只算 AI 判定的有效次數。
+6. **我方判定引擎 `app/core/` 不動**。
+7. **健身頁關在 Shadow DOM 裡**（Slice 1 施工時確立）：兩邊 CSS 互相衝突（我方有 `:root`／`body`／`* {}`／`button {}` 全域規則，遊戲端有 Tailwind preflight），直接同頁載入會互相打壞。做法：
+   - `FitnessHost` 在宿主元素上開 shadow root，結構同舊版 `#app > #view`；
+   - 我方樣式以 `?raw` 讀入，經 `fitnessStyles.ts` 的 `toShadowCss()` 改寫（`:root`→`:host`、`html`／`body`→`.fx-body`、`@font-face` 抽出掛到 `document.head`，字型網址改為 `/vendor/…`），測試 `scripts/test-fitness-shadow-css.ts`；
+   - 遊戲端樣式（`document.head` 的 style／link）複製一份進 shadow root，讓畫進插槽的遊戲元件有 Tailwind 樣式；遊戲的 `:root` 變數靠 CSS 自訂屬性繼承穿過 shadow 邊界。
+   - 後續 Slice 的遊戲元件一律用 `createPortal` 畫進插槽或 `.fx-overlay` 層（都在 shadow 內）。
+8. **回島嶼的方式**：遊戲端分頁列只在主頁顯示（`App.tsx`：`currentView === View.HOME`），其他頁面各自有右上角關閉鍵。健身頁照健康頁、設定頁的做法，由 `FitnessHost` 在非全螢幕時顯示右上角關閉鍵回主頁。
 
 ## 本次的不變量（任何 Slice 都不得破壞）
-1. 判定引擎（`app/core/`）、資料流（`app/state/store.js`）、訓練流程與第一階段的訓練頁樣式不動。**例外（2026-09-25 使用者核准，見 Slice 9）**：推薦卡縮圖改 3D 人物、深度量表填色加描邊；判定邏輯、顏色語意（綠／黃／紅／取景藍）不變。**例外二（2026-09-25 使用者要求，見 Slice 14）**：深蹲深度判定加入「髖下降量」訊號（`engine.js` 新增站立髖高度／大腿長基準、`squat.js` 新增 `DROP_GATE`）；其他動作與既有門檻數值不動。
-2. 島嶼插槽機制不動：`main.js` 的 `ISLAND_MODULES`／`resolveIsland`、島嶼只拿受限 store（`island-facade`）。相關測試保留。
-3. 主頁沿用 `island` 這個分頁 id；`ctx.navigate('island')`、`ctx.navigate('workout')` 的既有呼叫端不必改。
-4. `motu.css` 逐字區段不得修改；色值、字型、圓角、陰影、動效一律用 `--motu-*`，不自創色值。
-5. 今日（`app/features/today/`）與健康（`app/features/tracking/`）、設定（`app/features/settings/`）模組檔案**保留不刪**，只是不再從分頁列進入。
-6. 測試數只增不減（362 起算）；不新增 skip/only；既有斷言只有在「需求變更」時才可改寫，且必須在看板申報（目前：`tests/island-registry.test.js` 的五分頁斷言〔Slice 1〕；`tests/shell.test.js` 缺圖示測試的範例從 `heart` 換成 `no-such-icon`，斷言不變〔Slice 2，因 heart 已收錄使原前提失效〕；`tests/shell.test.js` 直欄報讀名稱斷言改為 `shop:商店（即將推出）…`、轉盤斷言改為 `aria-label="幸運轉盤（即將推出）"`〔Slice 8，需求要求只擺樣子的按鈕報讀名稱註明「即將推出」〕）。
-7. 外殼集中在 `main.js`、`index.html`、新的 `app/ui/shell.js`、新的 `app/styles/shell.css`；島嶼頁只做「隱藏浮層＋接建造鈕」的最小改動。遊戲組原始碼到了要能整個換掉。
+1. 判定引擎（`app/core/` 的判定、計次、門檻）不動；`pose.js` 只允許新增「資產根目錄」參數且預設值不變。
+2. 骨架判定色（藍綠黃紅＋色盲配色）保持我方的。
+3. 我方 `npm test` 只增不減（462 起算）；不新增 skip/only；既有斷言只有在需求變更時才可改寫，且須在下方申報。
+4. 遊戲組原始碼交付資料夾 `Motu-島嶼健身-原始碼-最新版/` **不修改**（唯讀參考）；所有改動都在 `motu-app/`。
+5. `motu-app/` 裡遊戲組既有檔案：只允許改 `App.tsx`（掛載一行）、`vite.config.ts`、`server.ts`（靜態掛載）、`tsconfig.json`（`@fitness/*` 路徑對應，Slice 1 申報：沒有它 TS 解析不到別名）、`package.json`（新增 script）、`CoachSprite.tsx`（新增姿勢，既有姿勢外觀不變；Slice 1 申報：嘴型 `motion.path` 補 `initial`，修正遊戲組原有的 console 錯誤 `attribute d: "undefined"`，該錯誤在遊戲端新手引導同樣會出現，外觀不變）；其他一律新增檔案。改檔時保留原檔的 CRLF 換行，避免整檔差異。遊戲組的 `test:workout-rewards` 61/61 不得退步。
+6. 免費優先；不新增 npm 套件、不接付費服務；不 push。
+7. 企劃書截圖以整合版畫面為正式畫面（REQUIREMENT 第 6 節第 9 條）。
+
+**已申報的需求變更（既有斷言改寫）**：
+- （施工時回填，例：結算頁移除金幣／經驗 → `tests/session-rewards.test.js`、`tests/game-resource-card.test.js` 相關斷言；今日推薦卡移除太陽 → `tests/workout-visual.test.js`）
 
 ## 設計鐵律速查（本專案版，覆蓋 make-plan 預設）
-- 視覺系統＝遊戲組 **Motu**（奶油紙質底 `#F8F6F1`、白卡、暖灰線 `#E1DED4`、深藍文字 `#264653`、海洋青主行動 `#2A9D8F`、金只用於獎勵）。make-plan 預設的 neutral/zinc 灰階**不適用**（需求明定照遊戲組）。
-- 外殼元件照 `image.png`：
-  - **底部分頁列**：白底圓角面板、頂緣虛線、四個等寬頁籤（上方小圓點＋線條圖示＋文字），選中頁籤是海洋青底白字、上緣收斜角的「頁籤」造型；電腦版置中懸浮於畫面底部。
-  - **左上帳號卡**：白卡、右上角收斜角、海洋青圓形頭像（Lucide 圖示）、名稱、LV 膠囊、下方虛線分隔、金幣數（金色圖示＋深藍數字）。
-  - **左側直欄**：深藍細豎線串起四個白色按鈕（右側箭頭形尖角）、按鈕下方小標籤膠囊。
-  - **右下**：白色大圓形禮物鈕（右上角金色小點）、幸運轉盤圓鈕。
-- 圖示一律 Lucide 線條（本機 SVG 字串，`app/ui/icons.js`），不混用 emoji；沒有 React，不用 `lucide-react`。
-- 文字只用深藍／深藍淡／深青（第一階段對比規則）；海洋青、金只當填色與圖示。
-- 動效用 `--motu-duration-*`／`--motu-ease-*`，按壓 `scale(.98)`，尊重 `prefers-reduced-motion`（沿用第一階段規則與測試）。
-- Motu 只有淺色，不做深色模式。
-- 外觀原則：神似即可、不追求逐像素；尺寸以 Motu token 取近似值。
+- 視覺系統＝遊戲組 **Motu**：整合版內一律用遊戲組既有的 Tailwind `island-*` 色與 DesignKit 元件（`HintBubble`、`ModalOverlay`、`PortholeFrame`…）；我方 `app/` 內沿用 `--motu-*` token。make-plan 預設的 neutral/zinc 灰階**不適用**。
+- 圖示：整合版用 `lucide-react`（遊戲組既有）；我方 `app/` 用 `app/ui/icons.js` 的本機 Lucide 字串，**`coins` 路徑換成遊戲組 lucide-react 0.546 版本**，兩邊方向一致。
+- 文字只用深藍／深藍淡／深青（第一階段對比規則）；金、海洋青只當填色與圖示。
+- 動效用遊戲組既有節奏（`motion/react`、`canvas-confetti`），全部尊重 `prefers-reduced-motion`。
+- Motu 只有淺色，不做深色模式。不出現 emoji。
 
 ## 設計顧問輸入（ui-ux-pro-max）
-- **沿用第一階段查詢結果**（2026-09-23，見 `TODO_PLAN_合體第一階段.md` 同名區塊），本次不重新查詢。理由：設計系統是專案層級決策，且本次外殼的造型由需求直接指定為遊戲端截圖（UI Authority 第 1 順位），重新查詢只會產生不一致的建議。
-- **沿用的採納項**：`no-emoji-icons`／`icon-style-consistent`；`color-contrast`（文字只用深藍 10.1、深藍淡 6.6、深青 5.2；白字放海洋青只限 ≥18.66px 粗體）；`color-not-only`（金幣一律圖示＋數字）；`touch-target-size` ≥44px；`focus-states` 用 `--motu-color-focus`；`duration-timing` 150–300ms。
+- **沿用第一階段查詢結果**（2026-09-23，見 `TODO_PLAN_合體第一階段.md` 同名區塊），本次不重新查詢。理由：本次所有新元素（主角、阿肌、對話框、金幣、領獎動畫）都是**直接採用遊戲組現成元件**，UI Authority 第 1–3 順位（需求＋既有設計系統）已決定外觀，重新查詢只會產生不一致的建議。
+- **沿用的採納項**：`no-emoji-icons`／`icon-style-consistent`；`color-contrast`；`color-not-only`（資源一律圖示＋數字）；`touch-target-size` ≥44px；`focus-states`；`duration-timing` 150–300ms（領獎序列的揭曉動畫例外，照遊戲組 `DailyClaimReveal` 約 0.9s 的節奏）。
 - **本次補充（依需求與既有規範推導，非新查詢）**：
-  - 導覽列語意：分頁用 `<nav aria-label="主要分頁">`＋`aria-current="page"`；只擺樣子的按鈕保留可聚焦、`aria-label` 註明「即將推出」。
-  - 懸浮在 3D 場景上的外殼：白底不透明（Motu 規範：避免厚重玻璃與黑色遮罩），確保疊在任何島嶼畫面上都讀得清楚。
-- **駁回**：`--design-system` 自動配色與字型推薦（色票與字型已由遊戲組定案）；Phosphor 圖示庫（同一產品必須同一套 Lucide）；深色模式成對撰寫（Motu 只有淺色）。
+  - 訓練畫面背景「明亮活潑」：以遊戲組淺色系（奶油、薄荷、淺海洋青、淡金）做漸層＋柔和圖形，**相機畫面周圍保持低對比**，不與骨架判定色搶注意力；阿肌只放在相機畫面外側。
+  - 「按任意鍵」：同時接受點擊、觸控、鍵盤；提示字用深藍淡、呼吸式透明度（減少動畫時固定不閃）。
+  - 對話框報讀：主角台詞容器 `role="status" aria-live="polite"`，避免打斷語音教練。
+- **駁回**：自動配色與字型推薦（遊戲組已定案）；新增圖示庫；深色模式。
 > 下游的 run-slice 與 slice-builder 一律沿用本區塊，不得重新調用 ui-ux-pro-max。
 
 ## 進度總覽
-- 總 Slice 數：14（2026-09-25 追加 Slice 9；同日晚間使用者試用換皮版後再提四點，追加 Slice 10–13；使用者實機再回報深蹲正面不計次，追加 Slice 14）
-- 已完成：14 / 14
-- 平行組：無（Slice 1、3–8 都會碰 `main.js` 或 `shell.css`；Slice 2 雖只碰圖示模組，但 Slice 1 之後才知道確切需要哪些圖示，保守序列執行）
+- 總 Slice 數：13
+- 已完成：1 / 13
+- 平行組：P1 = {Slice 2, Slice 3}（兩者都只新增純函式檔與測試檔，檔案兩兩不相交、互不依賴）
 
 ---
 
-### [x] Slice 1 — 刻出新外殼的骨架並切換成四個分頁
-- **目標**：打開 App 就看到遊戲端主頁的形狀 —— 底部「主頁、健身、追蹤、設定」四個分頁、左上帳號卡、左側四鈕直欄、右下禮物與轉盤鈕，中間是我方島嶼；按「健身」進入訓練頁。
+### [x] Slice 1 — 建立整合版並刻出健身頁新畫面骨架
+- **目標**：在遊戲組系統裡點「健身」就進到我方訓練頁，而且所有新元素的位置都先用寫死資料擺出來，讓使用者先看流程與版面。
 - **範圍內**：
-  - `index.html`：外殼容器改成新結構（`#shell` 包住帳號卡、左側直欄、右下按鈕、分頁列），移除舊頂部列的載入點。
-  - 新增 `app/ui/shell.js`：**純模板函式**（吃資料回字串，不碰 DOM），至少 `tabbarHtml(tabs, current)`、`accountCardHtml(state)`、`railHtml()`、`cornerHtml()`；資料在本 Slice 可寫死（名稱、等級、金幣用 mock）。
-  - `main.js`：`TABS` 改成四個（`island` 主頁、`workout` 健身、`tracking` 追蹤、`settings` 設定），追蹤與設定標記為不可用（本 Slice 按了先無反應或 `console.info` 即可）；開機預設進 `island`；舊頂部列不再渲染；`setChrome(false)` 改為隱藏整個 `#shell`。
-  - 新增 `app/styles/shell.css`（最後載入）：基礎版面 —— 電腦版分頁列置中懸浮底部、帳號卡左上、直欄左側、右下按鈕；手機版分頁列貼底；拿掉 ≥960px 的舊左側欄版面。主頁時 `#view` 滿版給島嶼、其他分頁時 `#view` 是捲動頁面。
-  - `tests/island-registry.test.js`：**申報的需求變更** —— 「五個分頁 id」斷言改為新的四個分頁（`today` 不在分頁列），島嶼註冊表相關斷言保留。
-- **範圍外**：任何 hover／active／進場動畫；照截圖細修造型（斜角、虛線、豎線、小圓點）；Lucide 新圖示（缺的先用文字或既有圖示暫代）；帳號卡接真實 store；不做按鈕的「即將推出」提示；島嶼浮層處理；健身頁底部留白；無障礙細項。以上分別留給 Slice 2–8。
-- **改動檔案**：`index.html`（修改）、`app/main.js`（修改）、`app/ui/shell.js`（新增）、`app/styles/shell.css`（新增）、`tests/island-registry.test.js`（修改：申報）、`tests/shell.test.js`（新增）
-- **設計要點**：Motu 基礎版（白卡、`--motu-radius-*`、`--motu-shadow-*`、深藍字）；外殼元素全部放進 `#shell`，方便全螢幕時一次隱藏。
+  - 複製 `Motu-島嶼健身-原始碼-最新版/` → `motu-app/`（排除 `node_modules`、`dist`），`.gitignore` 補 `motu-app/node_modules`、`motu-app/dist`、`motu-app/.env`；`npm install`
+  - `vite.config.ts` 別名 `@fitness` → `../app`、`server.fs.allow`；`server.ts` 靜態掛載 `/vendor` → `../vendor`
+  - `app/core/pose.js` 新增可注入資產根目錄（預設 `./vendor` 不變）
+  - 新增 `src/components/fitness/FitnessHost.tsx`：掛載 `workout.js`、`setChrome` → `setIsWorkoutActive`、`navigate('island')` → 主頁；`App.tsx` 改掛 `FitnessHost`
+  - 新增 `ctx.slots` 最小實作＋訓練頁插槽：初始頁「主角」「資源列」、訓練中「背景」「陪伴主角＋對話框」
+  - 骨架佔位（**寫死資料**）：資源列（金幣 1,234／碎片 56，遊戲組圖示）、主角位置（灰色剪影框）、亮色背景色塊＋阿肌靜態 SVG、右上主角框＋一句寫死台詞的遊戲組對話框、數據列與控制鈕的新位置（使用者截圖標註的調整）、結束後三張可點擊的領獎佔位卡（金幣→經驗→碎片→「按下任意鍵以繼續」）→ 結算頁（金幣／經驗區塊先隱藏、左側新增欄位佔位）
+- **範圍外**：真實存檔、真實主角與穿著、任何動畫（阿肌動作、飛入、彩帶、進場）、對話內容邏輯、發獎、減少動畫、效能、視覺細修。全部留給 Slice 2–13。
+- **改動檔案**：`motu-app/**`（新增，複本）、`motu-app/vite.config.ts`、`motu-app/server.ts`、`motu-app/tsconfig.json`、`motu-app/package.json`、`motu-app/src/App.tsx`、`motu-app/src/components/UI/CoachSprite.tsx`（見不變量 5 申報）、`motu-app/src/components/fitness/FitnessHost.tsx`（新增）、`motu-app/src/components/fitness/fitnessStyles.ts`（新增）、`motu-app/src/components/fitness/skeleton/*.tsx`（新增，佔位）、`motu-app/scripts/test-fitness-shadow-css.ts`（新增）、`app/core/pose.js`、`app/features/workout/workout.js`（插槽節點與版面位置）、`app/features/workout/workout.css`、`.gitignore`、`tests/pose-assets.test.js`（新增）、`tests/workout-slots.test.js`（新增）
+- **設計要點**：佔位用遊戲組 `island-*` 色與 DesignKit；版面照 `photo/修改照片.jpg` 標註調整；只做 `focus-visible`，不做其他動畫。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [x] 分頁列只有四個按鈕，依序主頁、健身、追蹤、設定；開機停在主頁並顯示我方島嶼
-  - [x] 按「健身」進入訓練頁，完整流程可走到領取獎勵；進入全螢幕訓練時整個外殼隱藏、結束後恢復
-  - [x] 電腦版（1440 寬）不再出現舊的左側欄；手機版（390 寬）可正常使用
-  - [x] 使用者看過骨架畫面並確認版面方向正確（2026-09-25 使用者下達 `/run-slice 2` 繼續；「健身頁只留分頁列」未另行回覆，維持現況）
-- **測試策略**：`tests/shell.test.js` — `tabbarHtml` 輸出四個頁籤且順序正確、`current` 對應的頁籤帶選中標記（邊界：`current` 不在清單內時沒有任何頁籤被選中）；`tests/island-registry.test.js` 改寫後仍鎖定島嶼註冊表與受限 store。
-- **完成定義**：`npm test` 全綠（數量 ≥362）＋瀏覽器實機 console 0 error＋電腦／手機各一張截圖＋slice-reviewer＋**停下來請使用者開 `python3 serve.py 8080` 親眼確認版面**
+  - [x] `cd motu-app && npm run dev` 後以訪客登入，點底部「健身」看到我方動作清單，可進入訓練（相機或示範模式）、全螢幕時遊戲端 HUD 隱藏、離開後恢復
+  - [x] 上述每個新元素都有佔位且位置正確；結束後可依序點過三張領獎卡→按任意鍵→結算頁
+  - [x] 我方舊版 `:8080` 照常運作（沒有 `ctx.game`／`ctx.slots` 時不出現佔位）
+  - [x] console 0 error（兩個版本）
+- **測試策略**：`tests/pose-assets.test.js`（新增）— 資產根目錄預設為 `./vendor`、注入 `/vendor` 時路徑正確、空字串邊界；`tests/workout-slots.test.js`（新增）— 無 `ctx.slots` 時不產生插槽節點、有時產生指定插槽；`motu-app/scripts/test-fitness-shadow-css.ts`（新增，`npm run test:fitness`）— Shadow DOM 樣式改寫（架構決策 7）。整合版 `npx tsc --noEmit` 通過。
+- **完成定義**：`npm test` 全綠（≥462＋新增）＋`tsc --noEmit` PASS＋`vite build` PASS（動到建置設定）＋dev server 截圖；**回報後停下來，等使用者看過流程與版面才往下**。
 - **對外介面**：
-  - `app/ui/shell.js`：`tabbarHtml(tabs, current)`（tabs 元素 `{ id, label, icon?, soon? }`；選中頁籤 class `is-active`；不可用頁籤帶 `data-soon="1"`；每顆 `data-tab="<id>"`）、`accountCardHtml({ name, level, coins })`（全部跳脫）、`railHtml()`、`cornerHtml()`、`RAIL_ITEMS`（build／shop／bag／emote）。按鈕以 `data-act`（build、shop、bag、emote、gift、wheel）辨識。缺的 Lucide 圖示由內部 `glyph()` 以單字暫代，Slice 2 補進 `ICONS` 後自動換成圖示，不必改模板。
-  - DOM：`#shell`（`.hidden` 全隱藏；`data-page="home"|"page"`，非主頁只留分頁列）內含 `#sh-account`、`#sh-rail`、`#sh-corner`、`nav#sh-tabs`。舊 `#topbar`、`#tabbar` 已移除。
-  - `main.js`：`TABS` 四項（tracking、settings 帶 `soon: true`）；`MOCK_ACCOUNT`（Slice 3 換真實 store）；分頁點擊委派在 `#sh-tabs`，soon 分頁目前只 `console.info`。
-  - CSS：`--sh-tab-h: 84px`，並把 `--tabbar-h` 指向它（訓練頁浮動鈕與 toast 自動避開）。
-- **施工備註**：`shell.css` 沒有「最後載入」，而是排在 `motu-skin.css` 之前 —— `tests/motu-skin.test.js` 鎖定 motu-skin 必須最後；外殼全用 `sh-*` 新 class，不受 motu-skin 舊規則影響。`#app` 維持 flex 欄（島嶼的 `#view.isl-host{position:relative}` 會蓋掉絕對定位導致 0 高）。本 Slice 實測健身頁最後的按鈕未被分頁列擋住（1440、390），底部留白仍照計畫在 Slice 5 正式處理。
+  - `app/features/workout/workout.js`：export `slotHtml(slots, name)`（無 slots 回 `''`）、`previewAwards(session) → [{kind:'coins'|'xp', amount}]`（骨架用，Slice 9 改走 `ctx.game.settle`）。
+  - 訓練頁讀的 ctx 選配欄位：`ctx.slots.set(Record<名稱, HTMLElement>)`（每次重畫整批交出，卸載時交 `{}`）；`ctx.game.claim(awards) → Promise<void>`（有則結束時先領獎再進結算、結算頁隱藏獎勵區並顯示 `.wk-sum-more`）；`ctx.assetRoot`（MediaPipe 資產根目錄）。
+  - 插槽名稱：`wallet`（選單頂端）、`hero`（今日推薦卡縮圖）、`backdrop`（訓練畫面底層）、`companion`（訓練畫面右上）。訓練畫面有插槽時 `.lv-wrap` 加 class `lv-fx`。
+  - `app/core/pose.js`：export `poseAssetPaths(root = './vendor') → { wasm, model: { lite, full } }`；`createPose({ assetRoot })`。
+  - `motu-app/src/components/fitness/FitnessHost.tsx`：export `FitnessHost`（App.tsx 在 `View.FITNESS` 掛載）；非全螢幕時右上關閉鍵回 `View.HOME`；`setChrome(v)` → `setIsWorkoutActive(!v)`。
+  - `motu-app/src/components/fitness/fitnessStyles.ts`：export `toShadowCss(css) → { css, fontFaces }`、型別 `ShadowCss`。
+  - `motu-app/src/components/fitness/skeleton/FitnessSkeleton.tsx`：`WalletSkeleton`、`HeroSkeleton`、`BackdropSkeleton`、`CompanionSkeleton`、`ClaimSkeleton({awards, onDone})`、型別 `ClaimAward {kind:'coins'|'xp'|'fragments'; amount}`（後續 Slice 逐一替換，全部換完刪檔）。
+  - `motu-app/package.json`：script `test:fitness`（目前跑 `scripts/test-fitness-shadow-css.ts`，後續 Slice 的測試腳本串接在後）。
+- **審查紀錄**：2026-09-26 slice-reviewer 第 1 輪 BLOCK（pose.js 注入與其測試未做、.gitignore 未補、tsconfig／CoachSprite 未申報、Shadow DOM 決策未寫回看板；另兩項疑慮〔dist 未排除、領獎遮罩未壓暗〕經 `git check-ignore` 與實測 hit-test 查證為誤判，審查員自行撤回）→ 修正後第 2 輪 **PASS**。
+- **施工備忘**：`npm ci` 的 prepare 腳本（`scripts/setup-hooks.mjs`）會把**本 repo** 的 `core.hooksPath` 設成 `scripts/hooks`（motu-app 沒有自己的 .git），已 `git config --local --unset core.hooksPath` 還原；之後在 motu-app 重裝套件要再檢查一次。已知留給後續：真實 4:3 相機在 1440 寬時兩側只剩約 120px，阿肌會被相機畫面蓋住一半（Slice 6）；手機寬度阿肌與底部數據列重疊（Slice 6／8）；領獎時背後訓練畫面的提示文字仍透出（Slice 10）；整合版 console 只剩遊戲組原有的 favicon.ico 404。
 - **依賴**：無
 - **平行組**：獨立
 
-### [x] Slice 2 — 補齊外殼需要的 Lucide 圖示
-- **目標**：外殼每個按鈕都有和遊戲端相同語意的線條圖示，不再用文字或 emoji 暫代。
-- **範圍內**：`app/ui/icons.js` 追加外殼用圖示（預估：`heart`（追蹤）、`settings`（設定）、`hammer`（建造）、`shopping-bag`（商店）、`backpack`（背包）、`smile`（動作）、`gift`（禮物）、`waves`（頭像）；實際清單以 Slice 1 的暫代處為準）。SVG 路徑必須與 Lucide 官方 icon-nodes 逐字相同（ISC 授權）。
-- **範圍外**：把圖示放進外殼（Slice 3）；轉盤的彩色圓盤（Slice 6 用 CSS 畫）。
-- **改動檔案**：`app/ui/icons.js`（修改）、`tests/icons.test.js`（修改：追加）
-- **設計要點**：stroke 2、`currentColor`、尺寸用既有 `ICON_SIZES`。
+### [ ] Slice 2 — 定義健身頁與遊戲端的資料契約
+- **目標**：把「遊戲存檔 → 健身頁看得懂的數字」與「一次訓練 → 該領哪些獎勵」變成可測的純函式。
+- **範圍內**：新增 `motu-app/src/components/fitness/gameContract.ts`：
+  - `balancesFromProfile(profile)` → `{ coins, fragments, xp, level }`（用遊戲組 `getBalance`、`profileLevel`；profile 為空時全為 0）
+  - `completionFromSession(session, userId)` → `WorkoutCompletion`（repCount＝**有效次數**、durationSeconds＝實際秒數、來源標為 AI 相機；示範模式／手動計數回傳 `null` 不發獎，依藍圖「只統計相機真人」）
+  - `awardQueue({ payout, fragments })` → 依序 `[金幣, 經驗, 碎片]`，數量 0 的項目剔除；全空回傳 `[]`（0 下有效跳過領獎）
+- **範圍外**：實際呼叫存檔、UI。
+- **改動檔案**：`motu-app/src/components/fitness/gameContract.ts`（新增）、`motu-app/scripts/test-fitness-contract.ts`（新增）
+- **設計要點**：N/A ｜ 純邏輯
+- **UI Slice?**：NO
+- **驗收標準**：
+  - [ ] 三個函式的型別與行為符合上述定義
+  - [ ] 示範模式、0 下有效、碎片 0、profile 為 null 皆有明確結果
+- **測試策略**：`scripts/test-fitness-contract.ts` — 正常一輪、0 下、只有金幣、示範模式回 null、profile null、超過遊戲端單次上限（交由 `payoutForWorkout` 截斷）。
+- **完成定義**：`npx tsx scripts/test-fitness-contract.ts` PASS＋`tsc --noEmit` PASS
+- **對外介面**：
+- **依賴**：Slice 1
+- **平行組**：P1
+
+### [ ] Slice 3 — 把我方動作資料轉成遊戲角色的關節旋轉
+- **目標**：遊戲組主角可以用我方的深蹲、伏地挺身、開合跳、高抬腿動作來動。
+- **範圍內**：新增 `motu-app/src/components/fitness/poseToRig.ts`：輸入我方 `makeSequence` 產生的 33 點 landmarks 一幀 → 輸出 `{ torso, head, leftArm, rightArm, leftLeg, rightLeg }` 的歐拉旋轉（對應遊戲組 `CharacterRig` 只吃旋轉的規則），含身體下沉量（torso 的 y 位移，給深蹲用）；關鍵點缺失時回傳站姿。
+- **範圍外**：畫出角色、接進畫面。
+- **改動檔案**：`motu-app/src/components/fitness/poseToRig.ts`（新增）、`motu-app/scripts/test-fitness-pose-to-rig.ts`（新增）
+- **設計要點**：N/A ｜ 純邏輯
+- **UI Slice?**：NO
+- **驗收標準**：
+  - [ ] 站姿 → 四肢旋轉接近 0；深蹲最低點 → 大腿旋轉 > 60°、身體下沉；開合跳張開 → 雙臂外展 > 120°
+  - [ ] 缺點（visibility 低）時不產生 NaN
+- **測試策略**：`scripts/test-fitness-pose-to-rig.ts` — 用 `app/core/synth.js` 產生四種動作的關鍵幀驗證角度範圍；NaN／缺點邊界案例。
+- **完成定義**：測試 PASS＋`tsc --noEmit` PASS
+- **對外介面**：
+- **依賴**：Slice 1
+- **平行組**：P1
+
+### [ ] Slice 4 — 健身初始頁換上島嶼主角並拿掉太陽、換遊戲組金幣
+- **目標**：初始頁的推薦卡角色變成使用者在島嶼上的主角（同一套穿著），做我方的示範動作。
+- **範圍內**：
+  - 新增 `FitnessCharacter.tsx`：R3F 畫布＋遊戲組 `CharacterModel`，穿著由 profile `equippedItems` 經 `resolveCharacterOutfit` 取得（profile 變動即重算＝與島嶼同步），關節由 Slice 3 `poseToRig` 驅動
+  - 推薦卡插槽換成 `FitnessCharacter`（我方舊版維持藍色小人）
+  - 拿掉今日推薦卡的太陽圖示；`app/ui/icons.js` 的 `coins` 路徑換成遊戲組 lucide-react 0.546 版本
+- **範圍外**：訓練中陪伴主角（Slice 7）、資源列（Slice 5）。
+- **改動檔案**：`motu-app/src/components/fitness/FitnessCharacter.tsx`（新增）、`motu-app/src/components/fitness/FitnessHost.tsx`、`app/features/workout/workout.js`、`app/ui/icons.js`、`tests/icons.test.js`（新增案例）、`tests/workout-visual.test.js`（申報：太陽斷言）
+- **設計要點**：角色置於推薦卡原 3D 位置，背景透明；WebGL 失敗時顯示遊戲組 `AvatarIcon` 替代。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [x] 新增的每個圖示都能由 `icon(name)` 輸出合法 SVG
-  - [x] 路徑與官方來源逐字相符（沿用第一階段 Slice 2 的比對方式）
-- **測試策略**：`tests/icons.test.js` 追加 — 新名稱都存在於 `ICONS`、輸出含 `<svg` 且 `aria-hidden`；邊界：不存在的名稱仍依既有行為處理（不得靜默輸出空字串以外的東西）。
-- **完成定義**：`npm test` 全綠＋slice-reviewer
+  - [ ] 在島嶼更衣室換裝 → 切到健身頁，推薦卡主角穿著一致
+  - [ ] 推薦卡無太陽；金幣圖示與遊戲端 HUD 相同方向
+  - [ ] 主角以我方動作循環播放；離開頁面 WebGL 資源釋放（無記憶體持續上升）
+- **測試策略**：`tests/icons.test.js` — `coins` 路徑等於遊戲組版本；`tests/workout-visual.test.js` — 推薦卡不含 `sun`；整合版以 dev server 實機換裝驗證並截圖。
+- **完成定義**：`npm test`＋`tsc --noEmit` PASS＋截圖
 - **對外介面**：
-  - `app/ui/icons.js` 的 `ICONS` 新增 8 個（lucide-static v1.47.0 官方名稱）：`backpack`、`face-slightly-smiling`、`gift`、`hammer`、`heart`、`settings`、`shopping-bag`、`waves-horizontal`。`icon()` 介面不變。
-  - ⚠️ **給 Slice 3**：v1.47.0 沒有 `smile`、`waves`，`app/ui/shell.js` 仍寫這兩個舊名稱（`RAIL_ITEMS` 的 emote、`accountCardHtml` 的頭像），所以「動作」鈕與頭像還是暫代字；Slice 3 改 shell.js 時要換成 `face-slightly-smiling`、`waves-horizontal`。其餘外殼圖示已因 `glyph()` 自動換成線條圖示（實機確認）。
-- **施工備註**：比對來源 `https://cdn.jsdelivr.net/npm/lucide-static@1.47.0/icon-nodes.json`；ICONS 全部 56 個與官方逐字相符（主線與 slice-reviewer 各自獨立比對）。Circuit Breaker 1 次：Slice 1 的 `tests/shell.test.js` 以 heart 當缺圖示例子，補上 heart 後紅燈，換成 `no-such-icon`（已在不變量 6 申報）。
-- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-25）
+- **依賴**：Slice 2、Slice 3
+- **平行組**：獨立
+
+### [ ] Slice 5 — 健身頁新增金幣與碎片數量列並與島嶼同步
+- **目標**：健身初始頁看得到跟島嶼一樣的金幣與碎片數字，任一邊變動另一邊立刻更新。
+- **範圍內**：新增 `FitnessWallet.tsx`（遊戲組 `Coins` 金色、`Gem` 深青圖示＋數字，樣式同遊戲組 `CurrencyChips`），掛進資源列插槽，數字來自 `balancesFromProfile`；並提供 `ctx.game.balances()`／`subscribe()`，讓我方頁面內原本顯示金幣的地方改讀遊戲端數字。
+- **範圍外**：領獎飛入動畫（Slice 10）。
+- **改動檔案**：`motu-app/src/components/fitness/FitnessWallet.tsx`（新增）、`motu-app/src/components/fitness/FitnessHost.tsx`、`app/features/workout/workout.js`
+- **設計要點**：數字用深藍、`aria-label="金幣 N"`；大數字用遊戲組 `shortNumber` 規則。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [ ] 健身頁數字＝島嶼 HUD 數字；在管理員面板調整金幣後健身頁即時更新
+  - [ ] 無 `ctx.game` 時（舊版）行為不變
+- **測試策略**：`tests/workout-slots.test.js` 新增：有 `ctx.game` 時金幣顯示取自 `balances()`；整合版實機比對截圖。
+- **完成定義**：`npm test`＋`tsc --noEmit` PASS＋截圖
+- **對外介面**：
+- **依賴**：Slice 4
+- **平行組**：獨立
+
+### [ ] Slice 6 — 訓練畫面換成亮色背景並讓阿肌做健身動作
+- **目標**：訓練中相機畫面周圍不再是單調深青，而是明亮背景＋教練阿肌輪流做深蹲、開合跳。
+- **範圍內**：
+  - `CoachSprite.tsx` 新增 `pose="squat"`、`pose="jack"` 兩個循環動作（沿用他既有的畫法規則：雙層描邊、各部位獨立節奏；既有 `idle`／`cheer` 不變）
+  - 新增 `CoachBackdrop.tsx`：淺色漸層＋柔和圖形，阿肌在相機畫面外側輪播兩個動作；掛進背景插槽
+- **範圍外**：減少動畫與效能降級（Slice 13）。
+- **改動檔案**：`motu-app/src/components/UI/CoachSprite.tsx`、`motu-app/src/components/fitness/CoachBackdrop.tsx`（新增）、`motu-app/src/components/fitness/FitnessHost.tsx`、`app/features/workout/workout.css`（背景透出）
+- **設計要點**：背景低對比、不遮相機；阿肌大小不超過畫面高度 35%。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [ ] 訓練中背景為亮色、阿肌依序做深蹲與開合跳，動作可辨識
+  - [ ] 新手引導的阿肌（`idle`／`cheer`）外觀不變
+- **測試策略**：`scripts/test-fitness-coach-poses.ts` — 姿勢清單包含 squat／jack、未知姿勢退回 idle（純資料部分）；實機截圖比對新手引導未退步。
+- **完成定義**：`tsc --noEmit` PASS＋測試 PASS＋截圖
+- **對外介面**：
 - **依賴**：Slice 1
 - **平行組**：獨立
 
-### [x] Slice 3 — 外殼接上真實狀態與按鈕行為
-- **目標**：帳號卡顯示真實的暱稱、等級、金幣並即時更新；分頁列標示目前所在；不做的按鈕按下跳「即將推出」。
+### [ ] Slice 7 — 訓練中加入跟著使用者動的主角與加油對話框
+- **目標**：右上角的主角隨使用者計次做同一個動作，並用遊戲組對話框說鼓勵的話。
 - **範圍內**：
-  - `shell.js` 的模板改吃真實 state（暱稱經跳脫、等級、金幣）；**不顯示第二種資源**。
-  - `main.js`：store 變動時重畫帳號卡；分頁列選中態跟著 `current`；追蹤、設定、商店、背包、動作、禮物、轉盤按下呼叫 `ctx.toast('即將推出')`；外殼改用 Slice 2 的圖示。
-  - 左側「建造」本 Slice 先切到主頁（若不在主頁），實際開啟島嶼建造留給 Slice 4。
-- **範圍外**：島嶼浮層與建造接線（Slice 4）；造型細修（Slice 6）；動效（Slice 7）。
-- **改動檔案**：`app/ui/shell.js`（修改）、`app/main.js`（修改）、`tests/shell.test.js`（修改）
-- **設計要點**：金幣用金色圖示＋深藍數字（`color-not-only`）；暱稱一律跳脫。
+  - 陪伴插槽掛 `FitnessCharacter`（mode＝sync：每收到 `rep` 事件播一次該動作循環；說話時改做加油動作）
+  - 新增純函式 `cheerLine(event, state)`：開始、每 5 下、剩最後 3 下、達標、休息、動作失誤連續 3 次等情境各有台詞，同一句不連續重複
+  - 對話框用遊戲組 `HintBubble`（名字小字＋內容＋箭頭），`role="status"`
+  - `workout.js` 透過 `ctx.events` 發 `rep`／`phase`／`milestone`
+- **範圍外**：語音（沿用我方語音教練）、動畫細修。
+- **改動檔案**：`motu-app/src/components/fitness/CompanionCoach.tsx`（新增）、`motu-app/src/components/fitness/cheerLines.ts`（新增）、`motu-app/scripts/test-fitness-cheer.ts`（新增）、`motu-app/src/components/fitness/FitnessHost.tsx`、`app/features/workout/workout.js`
+- **設計要點**：主角與對話框不遮擋相機中央區域與骨架；台詞 ≤ 16 字。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [x] 完成一次訓練領取獎勵後回到主頁，帳號卡的金幣與等級已更新（實機以 `commitSession` 模擬領獎：LV 5／1438 → LV 6／1487；未走真實相機流程）
-  - [x] 七個不做的按鈕按下只跳提示、不報錯；追蹤與設定不會切換頁面
-  - [x] 外殼沒有任何 emoji
-- **測試策略**：`tests/shell.test.js` — `accountCardHtml` 顯示 state 的暱稱／等級／金幣、暱稱含 `<script>` 時被跳脫（邊界）、金幣為 0 時仍顯示 0；不可用分頁的清單固定為 `tracking`、`settings`；外殼模板輸出不含 emoji。
-- **完成定義**：`npm test` 全綠＋實機 console 0 error＋slice-reviewer
+  - [ ] 每計一下主角做一下；達標、休息時說對應台詞
+  - [ ] 事件只在 `ctx.events` 存在時發送，舊版不受影響
+- **測試策略**：`scripts/test-fitness-cheer.ts` — 各情境台詞、不連續重複、未知事件回 null；`tests/workout-slots.test.js` — 計次時發出 `rep` 事件、次數正確。
+- **完成定義**：`npm test`＋測試＋`tsc --noEmit` PASS＋截圖
 - **對外介面**：
-  - `app/ui/shell.js` 新增 `accountFromState(state)` → `{ name, level, coins }`（讀 `profile.nickname`、`wallet.level`、`wallet.coins`；缺漏或非法值退回 `島主`／1／0；刻意不帶出 emoji 的 `profile.avatar`）、`SOON_MESSAGE = '即將推出'`。`RAIL_ITEMS` 的 emote 圖示改為 `face-slightly-smiling`，頭像改為 `waves-horizontal`（外殼已無暫代字）。
-  - `main.js`：`MOCK_ACCOUNT` 移除；`renderAccount(s)` 掛在 `store.subscribe`（內容沒變不重畫）；`#sh-rail`、`#sh-corner` 以 `onShellAction` 委派點擊 —— `data-act="build"` 目前只 `show('island')`（**Slice 4 在這裡改成開啟島嶼建造**），其餘 `ctx.toast(SOON_MESSAGE)`；soon 分頁改跳同一提示、不切頁。
-- **施工備註**：測試 373 → 379（Slice 2 收尾基線 373）。實機（Playwright 1200 寬）七顆按鈕都跳「即將推出」且不切頁、建造鈕從健身頁回主頁、console 0 error／0 warning。主頁上方與右上仍看得到島嶼自帶浮層的 emoji，屬 Slice 4 範圍。
-- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-25）
-- **依賴**：Slice 1、Slice 2
+- **依賴**：Slice 4、Slice 6
 - **平行組**：獨立
 
-### [x] Slice 4 — 主頁隱藏島嶼自帶浮層，左側建造鈕接到島嶼
-- **目標**：主頁上只看得到遊戲端樣式的外殼＋3D 島嶼，不再疊著我方舊的深色浮層；按左側「建造」能打開島嶼原本的建造功能。
-- **範圍內**：
-  - `island.js`：模組多提供一個選用的 `openBuild()`（開啟現有商店抽屜／編輯模式，沿用 `openSheet`／`toggleEdit`），並提供隱藏浮層的開關（class 或參數），**不改島嶼的建造邏輯與資料**。
-  - `island.css`：外殼模式下隱藏 `.isl-left`、`.isl-right`、`.isl-goal`、`.isl-hint`、`.isl-ach`；建造時需要的商店抽屜與擺放列仍可顯示。
-  - `main.js`：左側「建造」在主頁時呼叫 `FEATURES.island.openBuild?.()`；島嶼模組若沒有提供（例如日後換成遊戲組模組）就退回提示。
-- **範圍外**：島嶼浮層換皮（商店抽屜仍是舊樣式，列入交接）；島嶼 3D 場景本身；遊戲組模組接入。
-- **改動檔案**：`app/features/island/island.js`（修改）、`app/features/island/island.css`（修改）、`app/main.js`（修改）、`tests/island-facade.test.js` 或新增 `tests/island-build-entry.test.js`
-- **設計要點**：`openBuild` 是選用契約，必須在 `main.js` 的 feature 契約註解補上說明；島嶼仍只拿受限 store。
-- **UI Slice?**：YES
-- **驗收標準**：
-  - [x] 主頁截圖中沒有 🛒✏️🧭、縮放鈕、目標條、成就徽章
-  - [x] 按「建造」能開啟島嶼商店並完成一次擺放（或在金幣不足時出現原本的提示）（實機 1440：石階 1487→1477；390：花圃 1477→1462，帳號卡同步）
-  - [x] 島嶼模組沒有 `openBuild` 時，按「建造」只跳提示、不報錯
-- **測試策略**：靜態／單元測試 — 島嶼模組 export 含選用的 `openBuild`；`main.js` 呼叫時有 `?.` 保護（邊界：模組缺這個方法）；受限 store 的既有斷言保持通過。
-- **完成定義**：`npm test` 全綠＋實機完成一次建造＋slice-reviewer
-- **對外介面**：
-  - 島嶼 feature 契約新增**選用** `openBuild?()`（`app/features/island/island.js`：未掛載時不做事；掛載後開啟既有造型商店抽屜，之後沿用原放置流程）。已寫進 `main.js` 的 feature 契約註解。
-  - 島嶼 mount 的 ctx 多一個旗標 `hideOverlay: true`（只給島嶼的 `featCtx`，共用 `ctx` 不帶）；`island.js` 收到後在 `#isl-stage` 掛 `.isl-shelled`。
-  - `main.js` 新增內部 `openBuild()`：先 `show('island')`，模組沒有 `openBuild` 時 toast「這個島嶼版本沒有提供建造功能」，呼叫出錯 toast「建造功能暫時無法開啟」；`data-act="build"` 改走它。
-  - CSS（`island.css` 的 `.isl-shelled` 區段）：隱藏 `.isl-left/.isl-right/.isl-goal/.isl-hint/.isl-ach`；商店抽屜與擺放／選取列抬到 `--sh-tab-h` 上方、收合時 `visibility:hidden`；**抽屜開啟時用 `#view:has(...) ~ #shell` 讓 `.sh-rail`、`.sh-corner` 暫時隱藏**（依賴 `#view` 與 `#shell` 為相鄰兄弟，Slice 5–8 改 `index.html` 結構時要保留）。
-- **施工備註**：測試 379 → 388（新增 `tests/island-build-entry.test.js` 9 個；既有斷言未改）。Circuit Breaker 2 次：①`hideOverlay` 原本寫進受限 store 那行，撞到 `island-facade.test.js` 鎖定的寫法 → 改成另一行設定，既有斷言不動；②新測試自己的反向 regex 誤判 → 改成逐一檢查選擇器。實機發現手機版左側直欄與右下鈕蓋住商店品項，本 Slice 內以 `:has` 讓位修正。console 0 error／0 warning。
-- **交接／已知缺口**：外殼模式下島嶼的**編輯模式（旋轉、移除建築）與重置視角、縮放鈕無入口**（原本在隱藏的 ✏️🧭＋－；滑鼠滾輪與拖曳仍可縮放旋轉）；商店抽屜與擺放列仍是舊樣式、含 emoji（範圍外，列入交接）。
-- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-25）；其建議的收合時間 0.3s→0.35s 已對齊。
-- **依賴**：Slice 3
-- **平行組**：獨立
-
-### [x] Slice 5 — 健身頁適配懸浮分頁列
-- **目標**：在「健身」分頁裡，訓練頁的內容和按鈕都不會被底部懸浮分頁列蓋住，第一階段的畫面維持原樣。
-- **範圍內**：`shell.css` 為非主頁的 `#view` 留出底部空間（分頁列高度＋安全區）；「快速開始 AI 訓練」浮動鈕改以新分頁列定位；電腦版的內容置中限寬沿用第一階段。
-- **範圍外**：訓練頁本身的任何樣式與功能（第一階段已完成）；主頁。
-- **改動檔案**：`app/styles/shell.css`（修改）、`app/features/workout/workout.css`（修改：僅浮動鈕定位，若需要）
-- **設計要點**：不改訓練頁的色彩、字級、間距；只處理與外殼的交界。
-- **UI Slice?**：YES
-- **驗收標準**：
-  - [x] 動作清單、結算、領取獎勵捲到最底時，最後一顆按鈕完整露出、可點（實機：390×844 清單最後卡 736 < 分頁列 760；390×560 說明／結算／領獎最後鈕離分頁列 32px 且可點；1440 清單離 24px）
-  - [x] 以第一階段 9 張截圖的畫面重拍比對，除外殼外無差異（改以「開／關本規則比對 #view 內全部元素位置」代替逐張重拍：清單、結算、領獎 0 差異；說明頁因變成可捲動，無頭 Chromium 的傳統捲軸造成水平 4px 位移，垂直與尺寸不變；倒數、即時、休息為全螢幕 #view.full，規則不作用）
-- **測試策略**：靜態測試鎖定「非主頁 `#view` 底部留白 ≥ 分頁列高度」的規則存在；實機用 Playwright 量測最後一顆按鈕的 bottom 小於分頁列 top（邊界：手機 390 寬、內容最長的結算頁）。
-- **完成定義**：`npm test` 全綠＋實機量測＋slice-reviewer
-- **對外介面**：
-  - CSS 變數 `--sh-view-pad-b`（`app/styles/shell.css`）：非主頁捲動頁面的底部留白；手機＝`--sh-tab-h`＋安全區＋`--motu-space-6`，電腦版另加懸浮離底 `--motu-space-4`。Slice 6–8 若改分頁列高度或離底距離，只要維持 `--sh-tab-h` 即自動跟上；改離底距離時要同步改電腦版這個變數。
-  - 規則 `#app:has(> #shell[data-page="page"]) > #view:not(.full)`：依賴 `#shell` 是 `#app` 的直接子元素、`data-page` 由 `main.js` 的 `show()` 設定（Slice 6–8 改 `index.html` 結構時要保留）。無新 export。
-- **施工備註**：測試 388 → 390（`tests/shell.test.js` 新增 2 個 CSS 靜態測試）。`workout.css` 未改：960 寬時浮動鈕 [751–936] 與分頁列 [240–720] 不重疊，1440 亦不重疊。實機示範模式走完一輪到結算、領獎；console 0 error（warning 僅為刻意模擬無相機）。
-- **已知限制**：手機版「快速開始 AI 訓練」浮動鈕（fixed）蓋住捲到底時最後一張「即將推出」鎖定卡的右下角 —— 第一階段既有行為、屬 `workout.css`，本 Slice 未造成也未加劇；該卡本身不可點。
-- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-25；獨立以 headless Chrome 重量，結論一致）
-- **依賴**：Slice 3
-- **平行組**：獨立
-
-### [x] Slice 6 — 照遊戲端截圖細修外殼造型
-- **目標**：主頁外殼和 `image.png` 並排時看起來是同一個產品。
-- **範圍內**：`shell.css` —— 分頁列頁籤造型（選中頁籤海洋青底、上緣斜角、上方小圓點、面板頂緣虛線）；帳號卡（右上斜角、LV 膠囊、虛線分隔、金幣列）；左側直欄（深藍豎線、按鈕右側尖角、小標籤膠囊）；右下禮物大圓鈕（金色小點）與轉盤（CSS conic-gradient 用 Motu 色票畫彩色圓盤）；載入畫面的 🏝️ 改 Lucide。
-- **範圍外**：動效（Slice 7）；對比與無障礙收尾（Slice 8）。
-- **改動檔案**：`app/styles/shell.css`（修改）、`app/ui/shell.js`（修改：若需額外結構）、`index.html`（修改：載入畫面圖示）、`tests/shell.test.js`（修改）
-- **設計要點**：只用 `--motu-*`；斜角用 `clip-path` 或偽元素，不用圖片；不自創色值。
-- **UI Slice?**：YES
-- **驗收標準**：
-  - [x] 電腦版 1920 寬截圖與 `image.png` 並排，外殼的位置、造型、選中態一致（神似即可）（`.playwright-mcp/s6_after_1920.png`、`s6_after_390.png`；改前 `s6_before_1920.png`）
-  - [x] `shell.css` 不出現 `--motu-*` 以外的色值
-  - [x] `index.html` 載入畫面沒有 emoji
-- **測試策略**：`tests/shell.test.js` 追加 — `shell.css` 自創色值掃描（沿用 `motu-skin.test.js` 的偵測器，含防空轉 probe）；載入畫面無 emoji（邊界：去掉註解後仍掃得到 `<div class="loader-logo">` 內容）。
-- **完成定義**：`npm test` 全綠＋電腦／手機截圖＋slice-reviewer
-- **對外介面**：
-  - **`--sh-tab-h` 由 84px 改為 96px**（容納頁籤小圓點與頂緣虛線）。Slice 4 的島嶼抽屜抬高、Slice 5 的 `--sh-view-pad-b` 都是變數引用，已自動跟上（實機：1440 抽屜底緣＝分頁列頂緣 788；健身頁留白 136px）。
-  - `app/ui/shell.js` 的 `cornerHtml()`：轉盤內容改為空的裝飾 `<span class="sh-wheel-disc" aria-hidden="true"></span>`（不再有「轉盤」文字），報讀名稱仍由按鈕 `aria-label="幸運轉盤"` 提供。其餘 export 不變。
-  - CSS 內部尺寸變數（僅 shell.css 內用）：`--sh-cut`（帳號卡斜角）、`--sh-tip`（直欄尖角）、`--sh-tab-cut`（選中頁籤斜角）。
-  - 造型手法（給 Slice 7 動效）：帳號卡底色在 `.sh-account::before`、直欄按鈕與選中頁籤用 `clip-path`，陰影改在外層 `filter: drop-shadow(--motu-shadow-*)`（`.sh-account`、`.sh-rail-item`）。Slice 7 若要做 hover 陰影，要改外層的 filter，不是按鈕的 box-shadow。
-- **施工備註**：測試 390 → 396（`tests/shell.test.js` 新增 6 個：自創色值掃描＋防空轉 probe、造型關鍵規則、轉盤為純裝飾、載入畫面無 emoji〔去註解邊界〕、棕櫚樹路徑與 `ICONS['tree-palm']` 逐字相同）。實機 1920／1440／390 截圖，console 0 error／0 warning。
-- **與計畫文字的落差**：計畫寫禮物「右上角金色小點」，但 `image.png` 的金點在**左上**；驗收以截圖並排為準，照截圖放左上（CSS 註解已註明）。
-- **交接／已知缺口**：`index.html` 的 favicon 仍是 🏝️ emoji（不在本 Slice「載入畫面」範圍，未改）；截圖中帳號卡右側的下拉箭頭、轉盤左上的金幣小膠囊未做（需求未列）。
-- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-25）
-- **依賴**：Slice 3、Slice 4
-- **平行組**：獨立
-
-### [x] Slice 7 — 外殼微互動與動效
-- **目標**：外殼按鈕的 hover、按壓、分頁切換節奏和第一階段訓練頁一致。
-- **範圍內**：`shell.css` 的 transition 走 `--motu-duration-*`／`--motu-ease-*`；按壓 `scale(.98)`；分頁切換時選中頁籤的過場；禮物鈕的小點可用遊戲端的可領取脈動（若語意合適）；`prefers-reduced-motion` 下全部停止。
-- **範圍外**：3D 島嶼的動畫；新增動畫種類以外的功能。
-- **改動檔案**：`app/styles/shell.css`（修改）、`tests/motu-skin.test.js`（修改：把 `shell.css` 納入寫死時長與按壓比例掃描）
-- **設計要點**：只動 transform／opacity。
-- **UI Slice?**：YES
-- **驗收標準**：
-  - [x] `shell.css` 的 transition／animation 沒有寫死時長
-  - [x] reduced-motion 下外殼動畫全部停止（實機模擬：Playwright `reducedMotion: reduce`，transform／animation／transition 全為 none）
-  - [x] 所有外殼按鈕按壓縮放為 `.98`（直欄、禮物、轉盤、頁籤實測 matrix(0.98…)）
-- **測試策略**：`tests/motu-skin.test.js` 的 `MOTION_FILES` 加入 `app/styles/shell.css`，沿用既有掃描器與 reduced-motion 涵蓋檢查（邊界：`0s` 與 reduced-motion 區塊例外）。
-- **完成定義**：`npm test` 全綠＋實機錄一段切換與按壓＋slice-reviewer
-- **對外介面**：
-  - 無新增 export／props／storage key。僅 shell.css 內部新增 `@keyframes sh-tab-in`（選中頁籤子元素浮上，只動 transform／opacity，不設 fill-mode）。
-  - 給 Slice 8：外殼 hover 上浮包在 `@media (hover: hover)`；檔尾的 `prefers-reduced-motion` 區塊選擇器與上方逐字對應，Slice 8 若新增外殼按鈕 class，要同步加進 `:active` 縮放規則與 reduced-motion 區塊（`tests/motu-skin.test.js` 會抓）。
-- **施工備註**：測試 396 → 400（`MOTION_FILES` 納入 `shell.css`；新增 4 個：transition／keyframes 只動 transform／opacity、四類按鈕都有 .98 按壓、reduced-motion 覆蓋完整〔選擇器逐字比對〕、hover 只在 `@media (hover: hover)` 內〔括號配對取區塊〕）。突變檢查 5 項全被抓到（拿掉 reduce 的 animation:none、.98→.95、寫死 .25s、keyframes 加 color、hover 移出區塊）。實機 1440 錄切換與按壓：`.playwright-mcp/s7_switch_30ms/90ms/300ms.png`、`s7_rail_hover.png`；console 0 error／0 warning。
-- **與計畫文字的落差**：禮物金點**未做**可領取脈動 —— 禮物目前是「即將推出」，脈動會暗示有東西可領；且遊戲端 `fragment-ready-pulse` 改的是 box-shadow，違反「只動 transform／opacity」。計畫原文為「若語意合適」，判定不合適（CSS 註解已註明）。
-- **Circuit Breaker**：Attempt 1 一次（測試解析器把 `@media` 標頭當成選擇器，修正測試本身，CSS 未改）。
-- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-25）
-- **依賴**：Slice 6
-- **平行組**：獨立
-
-### [x] Slice 8 — 外殼無障礙、RWD 收尾，產出主頁截圖
-- **目標**：外殼在電腦與手機都通過對比、觸控目標與鍵盤檢查，並交出可放進企劃書的主頁截圖。
-- **範圍內**：
-  - 分頁列 `<nav aria-label>`＋`aria-current="page"`；只有圖示的按鈕補 `aria-label`（不做的註明「即將推出」）；觸控目標 ≥44px；Tab 順序合理（帳號卡 → 左側直欄 → 內容 → 右下 → 分頁列）。
-  - `tests/contrast.test.js` 的 `PAIRS` 加入外殼的文字／底色組合（分頁列選中白字／海洋青的字級要符合大字標準，否則改深青底）。
-  - 截圖：主頁電腦版（1920、1440）、主頁手機版（390）、健身分頁電腦版與手機版，存到 `文件/初審圖/主頁_Motu/`，截圖時不注入任何會改變 App 外觀的樣式（隱藏捲軸除外，需註明）。
-- **範圍外**：新功能、文案改寫；範圍外頁面（今日、健康、設定模組）。
-- **改動檔案**：`app/ui/shell.js`（修改）、`app/styles/shell.css`（修改，視檢查結果）、`tests/contrast.test.js`（修改）、`tests/shell.test.js`（修改）
-- **設計要點**：對比組合清單寫成資料，之後換色會自動再驗。
-- **UI Slice?**：YES
-- **驗收標準**：
-  - [x] 外殼每一組文字／底色都達 WCAG AA（一般 4.5、大字 3），測試涵蓋
-  - [x] 電腦與手機版外殼按鈕都 ≥44px、Tab 可走遍且有焦點外框（實測最小：電腦 84×72、手機 60×52）
-  - [x] 截圖存到指定資料夾，檔名標明畫面與尺寸（`01_主頁_電腦版_1920.png`…`05_健身分頁_手機版_390.png`，2 倍解析度，未注入樣式、未隱藏捲軸）
-  - [x] 使用者看過截圖並確認可放進企劃書（2026-09-25 交付；使用者看過後要求先修推薦卡與深度量表 → Slice 9 完成後重截 04、05 → 使用者確認 OK）
-- **測試策略**：`tests/contrast.test.js` 追加外殼組合；`tests/shell.test.js` — 分頁列模板含 `aria-current="page"` 且只出現一次（邊界：沒有選中分頁時不得出現）、不做的按鈕都有含「即將推出」的 `aria-label`。
-- **完成定義**：`npm test` 全綠＋截圖交付＋使用者確認＋收尾批次審查（Final Validation）
-- **對外介面**：
-  - `app/ui/shell.js`：`RAIL_ITEMS` 的商店／背包／動作多了 `soon: true`（新增欄位，既有欄位不變）；`tabbarHtml()` 選中頁籤多 `aria-current="page"`、soon 頁籤多 `aria-label="<名稱>（即將推出）"`；`railHtml()` soon 按鈕報讀名稱加註「（即將推出）」，下方標籤 `aria-hidden="true"`；`cornerHtml()` 禮物／轉盤報讀名稱加註「（即將推出）」。函式簽名不變。
-  - `shell.css`：選中頁籤底色改 `--motu-color-primary-hover`（深青，白字 5.15:1）；新增焦點外框規則（`.sh-rail-item:has(> .sh-rail-btn:focus-visible)`、`.sh-tab.is-active:focus-visible`、禮物／轉盤白色內圈）。
-- **施工備註**：測試 400 → 409（contrast 3 個：外殼 5 組對比〔色值從 shell.css 解析〕、選中頁籤不得是白字／海洋青、解析器防空轉；shell 6 個：aria-current 只出現一次、無選中時不出現〔邊界〕、即將推出標籤與按鈕是否可用一一對應、報讀名稱以可見文字開頭、直欄標籤 aria-hidden、clip-path 按鈕的替代焦點外框）。突變檢查 4 項全被抓到。實機 1920／1440／390，console 0 error／0 warning。
-  - **實機發現並修正**：直欄按鈕與選中頁籤用 clip-path 裁形，聚焦時自己的 outline 被一起裁掉、完全看不到（`.playwright-mcp/s8_focus_*.png`）；另外手機版海洋青外框疊在青綠色海面上幾乎看不見 → 浮在島嶼上的按鈕改白色內圈＋海洋青外框。
-- **與計畫文字的落差**：Tab 順序計畫寫「帳號卡 → 直欄 → 內容 → 右下 → 分頁列」，但 DOM 裡 `#view` 在整個 `#shell` 之前，要完全照做得動 `index.html`（不在本 Slice 改動檔案）。實測主頁 `#view` 內沒有 Tab 可達元素、帳號卡也沒有可聚焦元素，實際順序「直欄 → 右下 → 分頁列」與要求等價，故未改。**已知缺口**：島嶼建造抽屜打開時，抽屜內按鈕會排在直欄之前。
-- **交接／已知缺口**：手機健身頁的「快速開始」浮動鈕會蓋到動作卡一角（第一階段既有行為，非本 Slice 範圍）；favicon 仍是 emoji（Slice 6 已記）。
-- **Circuit Breaker**：1 次（slice-reviewer 第 1 輪 BLOCK：測試註解寫「已在看板申報」但看板漏記，補申報後通過）。
-- **審查紀錄**：slice-reviewer 第 1 輪 BLOCK（不變量 6 申報漏記）→ 第 2 輪 PASS（2026-09-25）
-- **依賴**：Slice 1–7；Slice 9（健身分頁截圖需在 Slice 9 後重截，2026-09-25 追加）
-- **平行組**：獨立
-
-### [x] Slice 9 — 訓練頁兩處視覺修正：推薦卡改 3D 人物、深度量表填色看得清楚
-- **來源**：2026-09-25 使用者看 Slice 8 截圖與實際試用後提出，選擇「先修再重截」。屬需求追加，不變量 1 已申報例外。
-- **目標**：①「今日推薦」卡左側縮圖和下方動作卡一樣是 3D 人物循環示範（現在是 Lucide 往下箭頭，看起來像下載鍵）；②深度量表的填色在白底軌道上清楚可見。
-- **範圍內**：
-  - 推薦卡 hero 改放 canvas，**沿用動作卡共用的離屏 3D renderer**；推薦卡比例不同，一律從 renderer 目前的畫面置中裁切（cover）貼上，**不為它重設 renderer 尺寸**（原設計不掛 3D 就是為了避免每幀重設尺寸）。
-  - 深度量表填色：保留原本四色（判定回饋語意，與骨架一致），光暈改為深藍描邊。
-- **範圍外**：判定邏輯、`display-colors.js` 的顏色語意與調色盤；深度量表跟隨設定頁顏色顯示模式（既有缺口，另記）；金幣圖示方向與數字顏色（待遊戲組原始碼）；動作卡本身。
-- **改動檔案**：`app/features/workout/workout.js`（修改）、`app/features/workout/workout.css`（修改）、`tests/workout-visual.test.js`（新增）
-- **設計要點**：
-  - 為什麼不把黃、藍加深：黃要加深到 `#B88A00` 才有 3:1，此時與紅 `#ff5a5a` 亮度幾乎相同（1.03:1），色弱使用者黃紅分不出來。改用描邊界定填到哪裡（深藍對白 10:1），填色維持鮮明。
-  - 只用 `--motu-*`；描邊不改尺寸，不影響量表位置與達標線。
-- **UI Slice?**：YES
-- **驗收標準**：
-  - [x] 推薦卡縮圖是對應動作的 3D 人物循環動畫，電腦與手機都不變形（置中裁切）（`.playwright-mcp/s9_rec_1920.png`、`s9_rec_390.png`）
-  - [x] 共用 renderer 不因推薦卡而每幀重設尺寸（實機：離屏 canvas 寬度設定 1.5 秒與 3.5 秒皆 3 次，不隨時間增加；1920／390）
-  - [x] 深度量表四種填色都有深藍描邊、無光暈；判定顏色語意與 `gaugeColor()` 不變（`.playwright-mcp/s9_gauge_all.png`；0% 時無描邊）
-  - [x] 進入／離開訓練清單時推薦卡動畫會停止（沿用卡片動畫世代計數）
-- **測試策略**：`tests/workout-visual.test.js` — 置中裁切數學（寬圖貼窄框、窄圖貼寬框、同比例、尺寸為 0 的邊界）；推薦卡模板含 canvas 且不再含 `wk-ic-disc`；量表 CSS 四色都有深藍描邊、無 `0 0 12px` 光暈（邊界：`data-c` 選擇器與預設綠都要涵蓋）。
-- **完成定義**：`npm test` 全綠＋實機截圖（推薦卡電腦／手機、量表四色）＋slice-reviewer（L 檔）
-- **對外介面**：
-  - `app/features/workout/workout.js` 新增 export：`recHeroHtml(id)`（推薦卡縮圖模板，回 `<div class="wk-rec-hero"><canvas class="wk-rec-canvas" data-ex data-crop="1">`）、`coverCrop(srcW, srcH, dstW, dstH)`（置中裁切的 drawImage 來源矩形，任一邊 ≤0 回 null）。
-  - `startCardAnims()` 同時驅動 `canvas.wk-rec-canvas[data-ex]`（排在動作卡之後，不改 renderer 尺寸）。
-  - 深度量表：`#lv-gfill` 在 0% 時帶 class `empty`；CSS 變數 `--lv-gauge-edge`（定義在 `.lv-gauge-track`）。
-- **施工備註**：測試 409 → 421（新增 `tests/workout-visual.test.js` 12 個）。突變檢查 4 項全被抓到（黃色加回光暈、紅色蓋掉描邊、拿掉 empty 標記、推薦卡也去重設 renderer 尺寸）。深度量表因沒有攝影機，進入即時畫面後以程式設定 `#lv-gfill` 的高度與 `data-c`（與判定程式寫入的值相同，未注入樣式）截圖驗證。
-- **Circuit Breaker**：1 次（`recCardHtml` 會讀執行期 store，node 測試裡為 null → 拆出純函式 `recHeroHtml` 再測）。
-- **已知缺口**：深度量表不跟隨設定頁「顏色顯示模式」（高對比、單色模式下仍是三色），既有行為，本 Slice 未處理；手機推薦卡比例很窄，人物左緣會被裁到一點。
-- **審查紀錄**：slice-reviewer 第 1 輪 PASS（2026-09-25）
-- **依賴**：無（與 Slice 1–7 不相交）；Slice 8 的健身分頁截圖要在本 Slice 完成後重截
-- **平行組**：獨立
-
-### [x] Slice 10 — 🔴 訓練計次 Bug：次數會自己減少、「+1」有時不出現
-- **來源**：2026-09-25 使用者試用回報（第 4 點，標為嚴重 Bug、立即修）。
-- **根因（已查證）**：
-  1. 「+1 有時不出現」：`handleResult` 直接覆寫 `className = 'lv-repflash pop ok'`。連續兩下都有效時 class 字串完全相同，瀏覽器不會重播動畫；動畫是 `forwards` 停在 opacity 0，所以第二下起看不到。只有 ✓／✗ 交替時才會出現 →「有時有、有時沒有」。
-  2. 「次數有時會減少」：引擎（高抬腿）的防作弊規則——同一隻腳連抬兩下，會把「上一下」也作廢（有效次數 −1）。畫面只閃「✗ 未左右交替」，數字卻悄悄少 1。深蹲／開合跳／伏地挺身的有效次數在引擎層不會減少（合成序列 × 3 種雜訊實測）。
-  3. 示範模式：一次追補多幀時只把最後一幀交給 `handleResult`，中間幀的 ✓／✗ 會漏掉；沒有新幀的 rAF 又會把上一個結算結果再交一次（重閃、重嗶）。
-- **範圍內**：閃字改「移除 pop → reflow → 加回」；撤銷時明講「−1 左右腳要輪流」並由教練字幕說明原因；示範模式逐幀交出結算、沒有新幀時去掉結算旗標。
-- **範圍外**：引擎的撤銷規則本身（不變量 1，防作弊設計，不改）。
-- **改動檔案**：`app/features/workout/workout.js`（修改）、`tests/rep-count.test.js`（新增）
-- **UI Slice?**：YES（閃字行為）
-- **驗收標準**：
-  - [x] 連續有效的每一下都閃「✓ +1」，數字同步 +1（實機示範模式 25 秒：12 下有效、12 次 ✓ +1、2 次 ✗，console 0 error）
-  - [x] 有效次數變少的那一幀一定閃「−1」，不會只閃 ✗（`tests/rep-count.test.js` 端到端：高抬腿單腳序列）
-  - [x] 次數沒變的幀不會閃 ✓
-- **測試策略**：`repFlash` 純函式四種情況＋第一幀邊界；`popRepFlash` 用假元素驗「reflow 時 pop 已拿掉」；引擎＋畫面判斷端到端 6 組（四動作乾淨序列、半蹲、單腳高抬腿）。
-- **完成定義**：`npm test` 全綠＋實機示範模式
-- **對外介面**：`workout.js` 新增 export `repFlash(res, prevValid)` → `{kind:'ok'|'bad', text}|null`；`popRepFlash(el, {kind,text})`；`live.shownValid`（上一幀畫面上的有效次數）。
-- **施工備註**：測試 421 → 434（+13）。突變檢查 2 項都被抓到（不先拿掉 pop、撤銷判斷拿掉）。
-- **已知缺口**：真人鏡頭下「右腳抬太低、引擎完全沒偵測到」時仍會觸發撤銷——那是引擎門檻問題，需真人測試再決定，現在至少畫面會講清楚原因。
-- **平行組**：獨立
-
-### [x] Slice 11 — 訓練畫面左上角重新排版
-- **來源**：使用者第 1 點（`photo/截圖 下午6.47.06`）：結束鈕、動作名、追蹤狀態、四個階段燈各自是一顆膠囊，擠在一起、看起來全都像按鈕。
-- **目標**：左上角收成一張資訊卡：返回鈕＋動作名＋模式一列；虛線分隔；追蹤狀態一行；四階段改成一條相連的步驟條（明顯是指示器，不像按鈕）。
-- **改動檔案**：`app/features/workout/workout.js`、`app/features/workout/workout.css`、`tests/workout-layout.test.js`（新增）
-- **設計要點**：卡裡只有「結束」是按鈕（白底、外框、≥44px）；追蹤狀態改成「狀態色小圓點＋圖示＋深藍字」；階段改成圓點＋細線串起、無外框無陰影，目前階段圓點放大填海洋青。動作名旁的深蹲圖示（往下箭頭，像下載鍵）一併拿掉。模式（示範／即時偵測）從右上角移進卡內當副標。
-- **驗收標準**：
-  - [x] 電腦 1440 與手機 390 截圖不擠、不重疊（`.playwright-mcp/s11_head_1440.png`、`s11_head_390.png`）
-  - [x] 階段指示器不是按鈕外觀（無外框／背景／陰影）
-  - [x] 既有 id（`lv-exit`、`lv-track`、`lv-stages`、`lv-modebadge`）保留，`hud.stages` 接線不變
-- **完成定義**：`npm test` 全綠（434 → 440）＋實機截圖，console 0 error
-- **對外介面**：移除 `.lv-hudtop`；新增 `.lv-head`／`.lv-head-row`／`.lv-head-name`／`.lv-head-body`；`#lv-stages` 內多了 `<i>` 連接線（`#lv-stages span` 選擇器不受影響）。
-- **平行組**：獨立
-
-### [x] Slice 12 — 取景關卡的「跳過檢查」改成看得懂的次要選項
-- **來源**：使用者第 2 點（`photo/截圖 下午6.47.20`）：「跳過檢查，直接開始 ›」是一顆大白鈕，跟上面的提示字、檢查項長得一樣，分不出是提醒還是要按。
-- **目標**：一張狀態卡：上半是狀態（檢查清單＋「站穩 2 秒」進度條＋「就會自動開始」），虛線下才是唯一的操作——「偵測一直過不了？ 跳過檢查，直接開始」次要文字鈕＋「跳過後計次可能不準」後果說明（10 秒後才出現，沿用原邏輯）。
+### [ ] Slice 8 — 依骨架確認結果定案訓練畫面的數據列與控制鈕位置
+- **目標**：把 Slice 1 使用者看過後確認的數據列、控制鈕、「找不到人」提示位置正式化（含 RWD）。
+- **範圍內**：`workout.js`／`workout.css` 版面調整（電腦版與手機直式）、提示與控制鈕不重疊。
+- **範圍外**：判定、計次邏輯。
 - **改動檔案**：`app/features/workout/workout.js`、`app/features/workout/workout.css`、`tests/workout-layout.test.js`
-- **設計要點**：檢查項改圓圈打勾清單（膠囊在這個 App 裡代表按鈕）；跳過鈕改底線深青字（對白 5.2:1），觸控區仍 ≥44px；關卡上下留白讓出左上卡與數據列，人形框自動伸縮；取景期間隱藏深度量表（小螢幕會蓋到卡片）。
-- **驗收標準**：
-  - [x] 1440／390／375×667 都不重疊（`.playwright-mcp/s12_gate_1440.png`、`s12_gate_390.png`、`s12_gate_375.png`；無攝影機，以程式叫出關卡並模擬 3/5 打勾、進度 40%、跳過區已現身）
-  - [x] 跳過鈕視覺上明顯是次要選項，且說明後果
-  - [x] 10 秒現身、2 秒自動開始的邏輯不變
-- **完成定義**：`npm test` 全綠（440 → 445）＋實機截圖，console 0 error
-- **對外介面**：`.lv-gate-panel`／`.lv-gate-alt`／`.lv-gate-bar`；檢查項改 `<li class="lv-gate-chk">`（勾選符號由 CSS 畫，文字只放部位名）；`#lv-wrap.is-gating`。
-- **已知缺口**：真人鏡頭下的關卡未實測（本機無攝影機），需使用者實機看一次。
-- **平行組**：獨立
-
-### [x] Slice 13 — 結算畫面重新排版＋彩帶特效，拿掉意義不明的「C」
-- **來源**：使用者第 3 點（`photo/截圖 下午6.47.42`、`6.47.49`）：六格數字平鋪、看不出重點；中間的「C」沒有說明（實為評等，只由達標率決定：≥90% S、≥75% A、≥60% B、其餘 C）；缺慶祝感。遊戲組**沒有**提供結算畫面（`文件/遊戲組系統UI畫面/` 只有主頁、房屋、商店三張），版型語言沿用其商店頁。
-- **目標**：一頁由上而下回答三個問題：做得怎麼樣 → 拿到什麼 → 下次怎麼更好。
-- **範圍內**：
-  - 「結算頁 →『領取獎勵 ›』→ 獎勵頁」兩頁合成一頁。理由：金幣在按「結束」時就已入帳，「領取獎勵」會讓人以為還沒拿到。
-  - 標頭：青色方形圖示＋「訓練完成！」＋動作名／時長；右側評等章一定寫「評等 X ＋白話名稱（完美／很棒／不錯／再加油）」；0 下時不打評等。
-  - 表現卡：達標率圓環＋「N 下有效」大字＋「共做 N 下 · N 下沒算到」＋一句「達標率到 N% 就是 X 級」。
-  - 獎勵卡：金幣（滾動數字）與經驗並排、升級進度、碎片／抽獎券、島嶼目標（金幣飛進去的終點，原演出保留）。
-  - 改進卡：「沒算到的原因」與「可以更好（不影響次數）」分開。
-  - 彩帶：canvas 粒子從左右下角噴出約 2.6 秒，只在有效次數 > 0 時放；顏色取 Motu 色票；減少動態時不放；不擋點擊。
-  - 寬螢幕（≥960px）表現｜獎勵並排，按鈕不用捲動就看得到。
-- **範圍外**：評等公式（`core/rewards.js`，不變量 1）；金幣／經驗數值；遊戲組版結算畫面（待其原始碼）。
-- **改動檔案**：`app/features/workout/workout.js`、`app/features/workout/workout.css`、`tests/workout-layout.test.js`
+- **設計要點**：按鈕 ≥44px；數據列不蓋住骨架腳部區域。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [x] 一眼看得到有效次數、達標率、金幣；評等一定有文字說明與升級條件（`.playwright-mcp/s13_result_1440.png`、`s13_result_390.png`、`s13_result_390_bottom.png`）
-  - [x] 顯示的達標率與評等永遠一致（0–40 下全組合對照 `core/rewards.js` 的 `grade`）
-  - [x] 有效次數 > 0 時放彩帶（`.playwright-mcp/s13_confetti_1440.png`），減少動態時不放
-  - [x] 0 下：標題改「這次沒有完成動作」、不打評等、達標率顯示「—」（`.playwright-mcp/s13_result_390_empty.png`）
-  - [x] 彩帶與飛行金幣在切頁、鍵盤按按鈕時一定被移除（實機：播放中 1 個 → 切到主頁後 0 個）
-- **測試策略**：`gradeInfo` 三種評等＋無動作邊界＋全組合一致性；模板結構（評等章結構、0 下不打評等、無「領取獎勵」按鈕、三張卡都在）；彩帶觸發條件、減少動態、不擋點擊、`rwClear` 清除 body 殘留、無寫死色碼。
-- **完成定義**：`npm test` 全綠（445 → 452）＋實機截圖，console 0 error＋slice-reviewer
+  - [ ] 1440／390 寬度下數據列、控制鈕、提示互不重疊，且不遮擋主角與阿肌
+- **測試策略**：`tests/workout-layout.test.js` 新增新版位結構斷言；實機兩種寬度截圖。
+- **完成定義**：`npm test` PASS＋截圖
 - **對外介面**：
-  - `workout.js` 新增 export：`gradeInfo(grade, validReps, invalidReps)` → `{grade, name, rate|null, hint}`（rate 無條件捨去）；`CONFETTI_VARS`（彩帶使用的 Motu 變數名）。
-  - 移除 `renderReward`、`resCell`、`topFaultLabel`；`rwClear()` 現在也會移除 body 上的 `.wk-coin-fly`／`.wk-confetti`。
-  - 結算頁 class：`.wk-sum`（取代 `.wk-result`、`.wk-rw`）；保留 id `wk-rw-num`、`wk-rw-island`、`wk-rw-goalfill`、`wk-rw-go`、`wk-rw-done`、`wk-again`。
-- **施工備註**：突變檢查 3 項都被抓到（達標率改回四捨五入、彩帶不看有效次數、rwClear 不清彩帶）。拿掉評等圓環後，`motu-skin.test.js` 的「至少掃到 8 個動畫選擇器」健全檢查掉到 7 —— 未調低門檻，改為評等章加上真正的蓋章彈出動畫（並列入減少動態區塊）。
-- **Circuit Breaker**：0 次（2 次測試失敗皆為測試字串範圍問題，非實作錯誤）。
-- **審查紀錄**：slice-reviewer 第 1 輪 BLOCK（彩帶 canvas 在切頁／鍵盤操作時可能殘留；Slice 13 條目缺驗收段落）→ 兩項已修，實機驗證通過。Slice 10–12 同輪 PASS。
-- **已知缺口**：`app/styles/lumina.css` 仍有 `.wk-grade-ring` 死選擇器（無作用，未清以免動到共用樣式檔）；結算頁模板依賴執行期 DOM，0 下／0 金幣只以原始碼檢查＋實機截圖驗證。
+- **依賴**：Slice 7
 - **平行組**：獨立
 
-### [x] Slice 14 — 🔴 深蹲正對鏡頭不計次（轉 45° 才計）
-- **來源**：2026-09-25 使用者實機回報（Slice 10 的計次問題實為此項）：「正面朝向時偵測不了，45 度角時卻偵測得到」。
-- **根因（已用真人資料重現）**：深度只看畫面上「髖 vs 膝」高低。正面蹲下時膝往前靠近鏡頭、鏡頭又高於膝，透視讓膝在畫面上偏低 → 3D 髖已低於膝、畫面上仍是髖在上。UI-PRMD 投影到筆電機位（1150mm）：正面只計到 10.3%（腳踝出框 0%）、45° 62.1%、側身 100%，與回報一致。
-- **修法**：加第二訊號「(髖相對站立的下降量 − 膝相對站立的下降量) ÷ 站立大腿長」（十二種機位×朝向 AUC 皆 1.000），與舊訊號取大；門檻 `DROP_GATE = 0.72`（比較 0.70／0.72／0.75／0.78 後，以低誤判優先選定）。
-- **範圍內**：`app/core/engine.js`（站立髖／膝高度與未正規化大腿長基準、`hipDrop`）、`app/core/exercises/squat.js`（`DROP_GATE`、`dropProgress`、判定取大）、驗證腳本（`vicon_to_mp.py` 加朝向參數、新增 `measure_squat_view.mjs`）、驗證文件、`EXPECTED.md`、真人資料測試夾具。
-- **範圍外**：其他三個動作；既有門檻數值（`GATE_DEPTH`、`DEPTH_NORM`、advisory 門檻）；企劃書數字改寫（需使用者決定）。
-- **改動檔案**：`app/core/engine.js`、`app/core/exercises/squat.js`、`tests/squat-view.test.js`（新增）、`tests/fixtures/squat_front_1150.json`（新增，UI-PRMD 公眾領域）、`docs/verification/scripts/vicon_to_mp.py`、`docs/verification/scripts/measure_squat_view.mjs`（新增）、`docs/verification/scripts/EXPECTED.md`、`docs/verification/scripts/README.md`、`docs/verification/深蹲朝向驗證.md`（新增）
+### [ ] Slice 9 — 結束訓練改由遊戲端發放金幣、經驗與碎片
+- **目標**：整合版結算的金幣、經驗、碎片真的寫進遊戲存檔，島嶼那邊立刻看得到。
+- **範圍內**：`ctx.game.settle(summary)`：`completionFromSession` → `reportWorkoutCompletion`、`payoutForWorkout` 取得顯示值、`fragmentsForWorkout`＋`rollWorkoutFragmentItem`＋`grantFragments` 發碎片 → 回傳 `awardQueue`；`workout.js` 結束時若有 `ctx.game` 則呼叫它（我方 `commitSession` 仍記錄訓練統計，但整合版不再自行加金幣）。
+- **範圍外**：領獎動畫（Slice 10）。
+- **改動檔案**：`motu-app/src/components/fitness/FitnessHost.tsx`、`motu-app/src/components/fitness/useFitnessSettle.ts`（新增）、`app/features/workout/workout.js`、`app/state/store.js`（`commitSession` 新增「不發金幣」選項，預設行為不變）、`tests/session-rewards.test.js`（新增案例）
+- **設計要點**：N/A ｜ 資料流
 - **UI Slice?**：NO
 - **驗收標準**：
-  - [x] 筆電機位 1150mm：正面 ≥90%、45° ≥90%、側身維持 100%（UI-PRMD 投影；實得 96.6%／100%／100%，腳踝出框同）
-  - [x] 明確半蹲（髖高於膝 ≥100mm）在 800／1150／1500mm 誤計 0%
-  - [x] 合成作弊變體新舊引擎計次逐項相同
-  - [x] 全身（或鏡頭）快速上下平移 0.1／0.2／0.3、走近鏡頭 20% 皆不計次（第一輪審查 BLOCK 項）
-  - [x] 回歸測試以真人夾具鎖住：正面 5 次深蹲 ≥4 次計入（修改前 0 次，前提測試證明舊訊號看不到）、5 次半蹲 0 次
-  - [x] 示範模式實機計次正常，console 0 error（20 秒：11 下有效、2 下半蹲被擋，與修改前相同）
-- **測試策略**：`tests/squat-view.test.js` 10 項（真人夾具前提／深蹲／半蹲、全身平移、走近、合成 clean／half／compensation × 26／30 幀、合成量級對照真人、基準前為 null、達標線對齊）。
-- **完成定義**：`npm test` 全綠（452 → 462）＋真人資料投影驗證＋示範模式實機＋slice-reviewer（動到判定核心，必審）
-- **對外介面**：`stableScale()` 回傳新增 `hipDrop`（髖相對膝的下降量，站立基準前為 null）、`frameHipY`、`frameKneeY`、`frameThighRaw`；`updateStandBaseline` 多三個參數；`squat.js` 新增 export `DROP_GATE`、`dropProgress(drop)`。
-- **施工備註**：突變檢查：拿掉「扣膝」→ 平移測試等 4 項失敗；拿掉新訊號 → 真人正面測試失敗；門檻放鬆 → 半蹲測試失敗。/tmp 的 UI-PRMD 資料已被清除，以 `fetch_data.py` 重新下載。夾具中 1 次壓線動作（髖低於膝 8mm）計不到，如實以 ≥4/5 斷言，不換樣本。
-- **對既有數字的影響（已揭露於驗證文件）**：理想機位特異度 96.5% → 84.8%（一致率 96.0% → 87.0%）；筆電機位一致率 87.0% → 95.5%（靈敏度 10.3% → 96.6%）。**企劃書引用的 96.0%／93.1%／96.5% 已不成立**，待使用者決定如何改寫。
-- **審查紀錄**：slice-reviewer 第 1 輪 BLOCK（只看髖的第一版可被全身平移騙到一次）→ 改為扣膝版、補平移回歸測試 → 第 2 輪 PASS（平移 maxDrop 精確為 0；鏡頭傾斜、半蹲加平移等組合皆未觸發；夾具非挑樣本；文件數字獨立重跑相符）。
-- **已知限制**：需先站直約 1 秒建立基準；鏡頭高於頭部（1500mm）正面 20.7%，幾乎計不到；地板機位（400mm）半蹲誤計 6–10%；未經真人鏡頭實測。
+  - [ ] 做完 10 下有效 → 島嶼 HUD 金幣、經驗增加量＝遊戲端公式；碎片進背包
+  - [ ] 示範模式／0 下 → 不發獎、不報錯
+  - [ ] 重複觸發結束（連點）只發一次（遊戲端去重＋前端鎖）
+  - [ ] `npm run test:workout-rewards` 仍 61/61
+- **測試策略**：`tests/session-rewards.test.js` — `commitSession({ grantCoins:false })` 不動錢包但記錄統計；`scripts/test-fitness-contract.ts` 補連點去重案例；實機驗證。
+- **完成定義**：`npm test`＋整合版測試＋`tsc --noEmit` PASS
+- **對外介面**：
+- **依賴**：Slice 2、Slice 5
 - **平行組**：獨立
+
+### [ ] Slice 10 — 做出逐項領獎動畫與飛入資源列
+- **目標**：按結束後依序跳出金幣、經驗、碎片的揭曉動畫，每項按任意鍵後飛到頂端資源列，最後出現「按下任意鍵以繼續」。
+- **範圍內**：新增 `ClaimSequence.tsx`（`ctx.game.claim`）：
+  - 揭曉：參考遊戲組 `DailyClaimReveal`（旋轉登場、閃光、光環、彩帶、數字重擊）；經驗用遊戲組經驗條樣式、碎片用 `FragmentShard`
+  - 飛入：參考 `DailyLoginPanel` 的飛幣，飛到頂端暫時滑入的資源列（金幣／經驗／碎片），抵達時數字滾動
+  - 輸入閘：動畫落定後才接受下一次輸入；點擊、觸控、鍵盤皆可；最後顯示半透明「按下任意鍵以繼續」
+  - 空佇列直接 resolve
+- **範圍外**：減少動畫降級細節（Slice 13）。
+- **改動檔案**：`motu-app/src/components/fitness/ClaimSequence.tsx`（新增）、`motu-app/src/components/fitness/claimMachine.ts`（新增，純狀態機）、`motu-app/scripts/test-fitness-claim.ts`（新增）、`motu-app/src/components/fitness/FitnessHost.tsx`、`app/features/workout/workout.js`
+- **設計要點**：遮罩用遊戲組 `ModalOverlay`；提示字深藍淡。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [ ] 三種獎勵依序出現、各自飛到正確欄位、數字跟著更新
+  - [ ] 動畫進行中連按不會跳過項目；最後按任意鍵進結算頁
+  - [ ] 只有金幣時只跳一次；0 下直接進結算
+- **測試策略**：`scripts/test-fitness-claim.ts` — 狀態機：揭曉→可領→飛行→下一項→結尾；飛行中輸入被忽略；空佇列直接結束。實機錄影／截圖。
+- **完成定義**：測試＋`tsc --noEmit` PASS＋截圖
+- **對外介面**：
+- **依賴**：Slice 9
+- **平行組**：獨立
+
+### [ ] Slice 11 — 結算頁拿掉金幣經驗並擴增左側表現數據
+- **目標**：結算頁專心呈現「做得怎麼樣」，獎勵已在領獎序列領過。
+- **範圍內**：`workout.js` 結算頁：整合版（有 `ctx.game`）移除金幣、經驗區塊與飛幣；左側達標率區擴增總時間、各組次數、最佳一組、錯誤類型分布（皆取自既有 summary）。舊版維持原結算頁。
+- **範圍外**：判定。
+- **改動檔案**：`app/features/workout/workout.js`、`app/features/workout/workout.css`、`tests/game-resource-card.test.js`（申報）、`tests/session-rewards.test.js`（新增案例）
+- **設計要點**：沿用現有卡片樣式；數據用圖示＋數字。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [ ] 整合版結算頁無金幣、經驗；左側顯示四項新增數據且數值正確
+  - [ ] 舊版結算頁不變
+- **測試策略**：模板函式測試：有／無 `game` 旗標兩種輸出；各組次數與最佳一組計算（含只做一組的邊界）。
+- **完成定義**：`npm test` PASS＋截圖
+- **對外介面**：
+- **依賴**：Slice 10
+- **平行組**：獨立
+
+### [ ] Slice 12 — 打磨健身頁新元素的視覺
+- **目標**：主角、阿肌背景、對話框、資源列、領獎畫面與遊戲端其他畫面看起來是同一個產品。
+- **範圍內**：間距、陰影、字重、角色取景與光線、背景配色細修；1440／1920／390 截圖逐一比對遊戲端畫面。
+- **範圍外**：動畫節奏（Slice 13）。
+- **改動檔案**：`motu-app/src/components/fitness/*.tsx`、`app/features/workout/workout.css`
+- **設計要點**：依「設計顧問輸入」；對比組合納入 `tests/contrast.test.js`。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [ ] 三種寬度截圖無破版；新增文字／底色組合對比合格
+- **測試策略**：`tests/contrast.test.js` 新增組合；截圖。
+- **完成定義**：`npm test`＋`tsc --noEmit` PASS＋截圖
+- **對外介面**：
+- **依賴**：Slice 11
+- **平行組**：獨立
+
+### [ ] Slice 13 — 補齊微互動、減少動畫模式與效能底線
+- **目標**：動畫順、會尊重「減少動畫」偏好，而且訓練中不拖慢骨架辨識。
+- **範圍內**：資源列滑入／收起、對話框進出場、`prefers-reduced-motion` 下停阿肌循環與彩帶、飛入改淡入；訓練中量測 fps，低於 24 時先暫停阿肌動畫、再降主角畫布解析度。
+- **範圍外**：新功能。
+- **改動檔案**：`motu-app/src/components/fitness/*.tsx`、`motu-app/src/components/fitness/perfGuard.ts`（新增）、`motu-app/scripts/test-fitness-perf.ts`（新增）
+- **設計要點**：150–300ms；按壓 `scale(.98)`。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [ ] 減少動畫開啟時無循環動畫；筆電訓練中 ≥ 24fps（實測數字寫回看板）
+- **測試策略**：`scripts/test-fitness-perf.ts` — 降級決策純函式（fps 門檻、遲滯避免來回切換）。
+- **完成定義**：測試＋`tsc --noEmit` PASS＋實測 fps
+- **對外介面**：
+- **依賴**：Slice 12
+- **平行組**：獨立
+
+---
+
+## 收尾總驗證（全部 Slice 完成後）
+- 我方 `npm test`、整合版 `tsc --noEmit`＋`vite build`＋`test:workout-rewards`＋`test:fitness`
+- 補做前一份看板（第二階段前段）的 Final Validation
+- 批次審未觸發即時審查的 Slice（本檔位為逐 Slice 審，預期無剩餘）
+- 驗收標準 REQUIREMENT 第 7 節逐條實機驗證＋企劃書用截圖

@@ -1,0 +1,103 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user progress, balance, and customization.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "level": { "type": "integer" },
+        "currentXp": { "type": "integer" },
+        "territoryLevel": { "type": "integer" },
+        "balanceGold": { "type": "integer" },
+        "equippedItems": { "type": "array", "items": { "type": "string" } },
+        "lastUpdated": { "type": "string", "format": "date-time" },
+        "interiorData": {
+          "type": "object",
+          "properties": {
+            "placements": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "instanceId": { "type": "string" },
+                  "itemId": { "type": "string" },
+                  "position": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+                  "rotation": { "type": "number" }
+                }
+              }
+            },
+            "unlockedRooms": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "required": ["userId", "displayName", "level", "currentXp", "balanceGold", "equippedItems"]
+    },
+    "Item": {
+      "title": "Shop Item",
+      "description": "Details of an item available in the shop.",
+      "type": "object",
+      "properties": {
+        "itemId": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string", "enum": ["outfit", "earring", "building"] },
+        "price": { "type": "integer" },
+        "modelPath": { "type": "string" },
+        "previewImage": { "type": "string" }
+      },
+      "required": ["itemId", "name", "category", "price", "modelPath"]
+    },
+    "WorkoutLog": {
+      "title": "Workout Record",
+      "description": "Log of a specific exercise session.",
+      "type": "object",
+      "properties": {
+        "logId": { "type": "string" },
+        "userId": { "type": "string" },
+        "type": { "type": "string" },
+        "duration": { "type": "integer" },
+        "counts": { "type": "integer" },
+        "calories": { "type": "number" },
+        "goldEarned": { "type": "integer" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["logId", "userId", "type", "duration", "counts", "calories", "goldEarned", "timestamp"]
+    },
+    "AppSettings": {
+      "title": "App Settings",
+      "description": "User-specific application settings.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "bgmVolume": { "type": "number" },
+        "isMuted": { "type": "boolean" },
+        "voiceGuideEnabled": { "type": "boolean" },
+        "warmupEnabled": { "type": "boolean" }
+      },
+      "required": ["userId", "bgmVolume", "isMuted", "voiceGuideEnabled", "warmupEnabled"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "General user profile data."
+    },
+    "users/{userId}/inventory/{itemId}": {
+      "schema": "Item",
+      "description": "Items owned by the user."
+    },
+    "users/{userId}/workout_logs/{logId}": {
+      "schema": "WorkoutLog",
+      "description": "History of workouts for the user."
+    },
+    "users/{userId}/settings/current": {
+      "schema": "AppSettings",
+      "description": "User's application preferences."
+    },
+    "shop_items/{itemId}": {
+      "schema": "Item",
+      "description": "Global catalog of items available for purchase."
+    }
+  }
+}

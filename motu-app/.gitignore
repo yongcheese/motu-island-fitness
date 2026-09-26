@@ -1,0 +1,14 @@
+node_modules/
+build/
+coverage/
+package-out/
+dist/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# AI source-bundle outputs are reproducible artifacts, not source files.
+project-source.zip
+project-full-source.md
+temp_ai_pack/

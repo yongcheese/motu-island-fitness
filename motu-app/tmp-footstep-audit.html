@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <title>Footstep surface audit</title>
+    <style>
+      body { margin: 0; font: 12px/1.6 ui-monospace, monospace; background: #101820; color: #d8e6e0; padding: 16px; }
+    </style>
+  </head>
+  <body>
+    <pre id="log">rendering…</pre>
+    <script>
+      window.addEventListener('error', (e) => { document.getElementById('log').textContent += '\nERROR: ' + (e.message || e.error); });
+      window.addEventListener('unhandledrejection', (e) => { document.getElementById('log').textContent += '\nREJECT: ' + e.reason; });
+    </script>
+    <script type="module" src="/tmp-footstep-audit.tsx"></script>
+  </body>
+</html>

@@ -2,11 +2,18 @@
 import { PoseLandmarker, FilesetResolver } from '../../vendor/mediapipe/vision_bundle.mjs';
 import { createSubjectTracker } from './subject.js';
 
-const WASM_DIR = './vendor/mediapipe/wasm';
-const MODEL = {
-  lite: './vendor/models/pose_landmarker_lite.task',
-  full: './vendor/models/pose_landmarker_full.task',
-};
+// 資產根目錄：舊版頁面就在專案根目錄，預設 ./vendor；整合版由宿主注入（合體第二階段整合 Slice 1）
+const DEFAULT_ASSET_ROOT = './vendor';
+export function poseAssetPaths(root = DEFAULT_ASSET_ROOT) {
+  const base = (root || DEFAULT_ASSET_ROOT).replace(/\/+$/, '');
+  return {
+    wasm: `${base}/mediapipe/wasm`,
+    model: {
+      lite: `${base}/models/pose_landmarker_lite.task`,
+      full: `${base}/models/pose_landmarker_full.task`,
+    },
+  };
+}
 
 // ---- One-Euro 濾波：抑制 landmark 抖動但保留快速動作（低延遲），大幅降低誤判 ----
 function alphaOf(cutoff, dt) { const tau = 1 / (2 * Math.PI * cutoff); return 1 / (1 + tau / dt); }
@@ -50,7 +57,8 @@ function makePoseSmoother({ minCutoff = 2.0, beta = 0.5, dCutoff = 1.0, visSmoot
 // 有人從背景走過時，偵測目標會在兩人之間跳動（實機回報的「骨架亂跳」）。
 // 改為同時偵測多人，再由 subject.js 鎖定其中一位。
 // 3 是成本與涵蓋的折衷：家中場景極少同時出現三人以上，而每多一人都要多跑一次後處理。
-export async function createPose({ model = 'full', numPoses = 3, delegate = 'GPU', smoothing = {}, subject = {} } = {}) {
+export async function createPose({ model = 'full', numPoses = 3, delegate = 'GPU', smoothing = {}, subject = {}, assetRoot } = {}) {
+  const { wasm: WASM_DIR, model: MODEL } = poseAssetPaths(assetRoot);
   const fileset = await FilesetResolver.forVisionTasks(WASM_DIR);
   const baseOpts = {
     runningMode: 'VIDEO', numPoses,

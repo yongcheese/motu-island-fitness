@@ -1,0 +1,3274 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Island resort palette — muted ocean teal + neutral white chrome tokens.
+     Keep new chrome (toolbars, nav, panels) on this family instead of
+     inventing another one-off color scheme per component. Flat cards with
+     a thin border, not saturated gradients/glass — the previous warm
+     amber + heavy glass combo read as gaudy. Full design system (radius/
+     shadow/font/state/z-index scales, shared component inventory) is
+     documented in src/components/UI/DESIGN_SYSTEM.md. */
+  --color-island-teal: #2A9D8F;
+  --color-island-teal-light: #5FBDAF;
+  --color-island-teal-dark: #1F7A70;
+  --color-island-navy: #264653;
+  --color-island-navy-soft: #4A6169;
+  --color-island-navy-dark: #1A2E35;  /* deeper ambient wash, e.g. BuildingInteriorView's non-build-mode backdrop — was a stray bg-[#1a2e35] before this token existed */
+  --color-island-cream: #FFFFFF;
+  --color-island-cream-2: #F8F6F1;
+  --color-island-line: #E1DED4;
+
+  /* Extended for the 2026-07 cozy-furniture-game UI pass (home/build/shop
+     surfaces). Keep new panels/cards/icons on this same family instead of
+     the old amber gradients + parchment/gilded-plaque look they replaced. */
+  --color-island-gold: #E8AA3E;   /* currency only, see feedback-ui-style-preference exception */
+  --color-island-coral: #E8836A;  /* danger / delete, muted alternative to rose/red */
+  --color-island-sand: #EFE9DC;   /* card inner surface / hover background */
+}
+
+/* =========================================================================
+   HUD LAYOUT SYSTEM — spacing tokens for the persistent floating chrome.
+   =========================================================================
+   Single source of truth for how far HUD chrome sits from the viewport edge
+   (`--hud-inset`) and how far stacked cards in one rail sit from each other
+   (`--hud-gap`). Every persistent HUD element is placed by the shared
+   CSS-Grid frame in src/components/UI/HudFrame.tsx and spaced by these
+   tokens instead of hand-tuned per-component `top-[Npx]`/`left-N` offsets —
+   which is what used to make elements drift into each other across
+   resolutions (e.g. SideButtons' old `top-[360px]`, tuned to TopBar's
+   height, overlapping it whenever TopBar grew). Change the edge inset /
+   inter-card gap here once and the whole HUD follows.
+
+   The frame's own padding is `max(var(--hud-inset), env(safe-area-inset-*))`
+   so notched / rounded-corner devices never clip corner chrome (index.html
+   opts in with `viewport-fit=cover`). */
+:root {
+  --hud-inset: 0.75rem; /* mobile — base viewport edge gap */
+  --hud-gap: 0.75rem;   /* gap between stacked cards within a rail */
+}
+@media (min-width: 640px)  { :root { --hud-inset: 0.875rem; --hud-gap: 0.75rem; } }  /* tablet  */
+@media (min-width: 1024px) { :root { --hud-inset: 1rem;     --hud-gap: 1rem;    } }  /* laptop  */
+@media (min-width: 1536px) { :root { --hud-inset: 1.5rem;   --hud-gap: 1.25rem; } }  /* desktop */
+
+/* =========================================================================
+   RESPONSIVE HUD SIZE SYSTEM — four device tiers, one token scale.
+   =========================================================================
+   The insets above say how far chrome sits from the edge. These say how big
+   the chrome itself is, and they step at the SAME four widths so the whole
+   HUD changes gear as one piece instead of each card picking its own
+   breakpoints (TopBar used to shrink at 1280 while --hud-inset grew at 1280
+   and the MiniMap grew at 640 — three components, three different ideas of
+   "small screen").
+
+   THE FOUR TIERS — the only widths any HUD sizing may branch on:
+
+     | tier    | range        | Tailwind variant | typical device         |
+     |---------|--------------|------------------|------------------------|
+     | mobile  | < 640px      | (unprefixed)     | phones                 |
+     | tablet  | 640-1023px   | `tablet:`        | tablets, split windows |
+     | laptop  | 1024-1535px  | `laptop:`        | 1366x768 … 1440x900    |
+     | desktop | >= 1536px    | `desktop:`       | 1080p+ monitors        |
+
+   The `tablet:` / `laptop:` / `desktop:` variants are declared below and are
+   min-width, exactly like Tailwind's own — so `text-x laptop:text-y` still
+   applies `y` on desktop. They exist so HUD code names the DEVICE TIER it
+   means; `sm:`/`md:`/`lg:`/`xl:` stay available for in-panel layout tweaks
+   that are about content fitting, not about device class.
+
+   WIDTH IS SIZE, POINTER IS TOUCH. These tiers decide how BIG a control is;
+   they never decide whether it is touch-operated. That is `pointer: coarse`
+   (hooks/useIsTouchDevice.ts) — a 1180px tablet in landscape lands in the
+   `laptop` tier and still needs 44px targets, which is what --hud-tap and
+   `.hud-hit` below are for. The JS mirror of this table lives in
+   hooks/useHudTier.ts and is checked against this file by
+   `npm run audit:hud-scale`.
+
+   HOW TO USE IT. Size a HUD card from these tokens instead of writing
+   per-component media queries: padding/gaps from --hud-card-*, glyphs from
+   --hud-icon (via `.hud-icon`), copy from --hud-text-* (via `.hud-text-title`
+   / `.hud-text-meta`), and the card's own width from --hud-card-w, which is
+   deliberately `max-content` on the two small tiers — a compact card is as
+   wide as its one row of content, a big one holds a fixed column — with
+   --hud-card-max-w as the standing guarantee that neither can run off the
+   viewport. */
+:root {
+  /* --- tier: mobile (base) ------------------------------------------ */
+  --hud-card-pad:   0.5rem;     /*  8px - card's own padding             */
+  --hud-card-gap:   0.375rem;   /*  6px - between sections in a card     */
+  --hud-row-gap:    0.1875rem;  /*  3px - label to the bar under it      */
+  --hud-chip-gap:   0.375rem;   /*  6px - between inline chips           */
+  --hud-stat-pad:   0.375rem;   /*  6px - inner surface holding the bars */
+  --hud-avatar:     2rem;       /* 32px - porthole outer diameter        */
+  --hud-icon:       0.75rem;    /* 12px - inline glyph                   */
+  --hud-bar-h:      0.375rem;   /*  6px - progress bar thickness         */
+  --hud-card-w:     max-content;/* card width: as wide as its own row    */
+  --hud-name-max-w: 3.75rem;    /* 60px - name truncates past this       */
+  --hud-text-title: 0.75rem;    /* 12px - name, primary numbers          */
+  --hud-text-meta:  0.625rem;   /* 10px - labels, badges (never below)   */
+  /* Minimum comfortable touch target. NOT tiered — a finger is the same
+     size on every screen; only `.hud-hit` (pointer: coarse) applies it. */
+  --hud-tap:        2.75rem;    /* 44px */
+  /* Hard ceiling so a card can never run off-screen or swallow the view,
+     however long a player's display name is. */
+  --hud-card-max-w: min(20rem, calc(100vw - var(--hud-inset) * 2 - 1rem));
+}
+@media (min-width: 640px) {  /* --- tier: tablet --- */
+  :root {
+    --hud-card-pad:   0.5rem;      /*  8px */
+    --hud-card-gap:   0.375rem;    /*  6px */
+    --hud-chip-gap:   0.5rem;      /*  8px */
+    --hud-stat-pad:   0.5rem;      /*  8px */
+    --hud-avatar:     2.25rem;     /* 36px */
+    --hud-icon:       0.8125rem;   /* 13px */
+    --hud-name-max-w: 5.5rem;      /* 88px */
+    --hud-text-title: 0.8125rem;   /* 13px */
+  }
+}
+@media (min-width: 1024px) { /* --- tier: laptop --- */
+  :root {
+    --hud-card-pad:   0.625rem;    /* 10px */
+    --hud-card-gap:   0.5rem;      /*  8px */
+    --hud-row-gap:    0.25rem;     /*  4px */
+    --hud-stat-pad:   0.5rem;      /*  8px */
+    --hud-avatar:     2.75rem;     /* 44px */
+    --hud-card-w:     12rem;       /* 192px - fixed column */
+    --hud-name-max-w: 7rem;        /* 112px */
+  }
+}
+@media (min-width: 1536px) { /* --- tier: desktop --- */
+  :root {
+    --hud-card-pad:   0.75rem;     /* 12px */
+    --hud-card-gap:   0.625rem;    /* 10px */
+    --hud-chip-gap:   0.625rem;    /* 10px */
+    --hud-stat-pad:   0.625rem;    /* 10px */
+    --hud-avatar:     3.25rem;     /* 52px */
+    --hud-icon:       0.875rem;    /* 14px */
+    --hud-bar-h:      0.5rem;      /*  8px */
+    --hud-card-w:     13.5rem;     /* 216px */
+    --hud-name-max-w: 8.5rem;      /* 136px */
+    --hud-text-title: 0.875rem;    /* 14px */
+    --hud-text-meta:  0.6875rem;   /* 11px */
+  }
+}
+
+/* The three device-tier variants. Declared next to the table they belong to
+   so a reader never has to guess which px value `laptop:` means. */
+@custom-variant tablet  (@media (width >= 640px));
+@custom-variant laptop  (@media (width >= 1024px));
+@custom-variant desktop (@media (width >= 1536px));
+
+/* `short:` — the HUD's only HEIGHT breakpoint.
+
+   Every other breakpoint in this project is a width one, because that is what
+   decides how much sits side by side. Bottom-anchored mode chrome has the
+   opposite problem: a panel that stacks a toolbar, a header, a category row and
+   a card rail (BuildModeOverlay's 建築規劃) is ~660px tall no matter how wide
+   the window is, so on a 1366x768 laptop — or a 1080p one at 125%/150% Windows
+   scaling — it is TALLER than the viewport. A bottom-anchored stack that
+   overflows overflows upwards, which silently ate the toolbar off the top of
+   the screen with no scrollbar to get it back.
+
+   So: tighten the paddings, gaps and card size once the window gets short,
+   rather than letting the tallest panel decide whether its own controls are
+   reachable. 800px is where 建築規劃's full-size layout stops fitting inside
+   the HUD insets. Panels using this must ALSO cap themselves (`max-h-full`) and
+   scroll their body — this variant buys room, it can't guarantee it. */
+@custom-variant short (@media (height <= 800px));
+
+/* BuildingInteriorView draws its own header card ("我的溫馨小窩" / "佈置模式")
+   at the top-left of the interior view. It is NOT one of HudFrame's regions —
+   it belongs to the view, not the persistent HUD — so HUD chrome in the
+   left-rail region has to step around it, which is exactly the "one element
+   encodes another's height" coupling the tokens above exist to prevent.
+   These two tokens are the single place that card's top offset and height are
+   stated: the card itself is positioned/sized from them, and everything that
+   must clear it (MiniMap's rail offset, AngelGuide's keep-out) measures from
+   them. Change the card's padding or icon size and you change it here once.
+   Breakpoint is 640px to match the card's own `sm:` styles. */
+:root {
+  --interior-header-top: 1rem;  /* the card's distance from the viewport top */
+  --interior-header-h: 3.5rem;  /* p-2 + a 40px icon tile */
+}
+@media (min-width: 640px) {
+  :root {
+    --interior-header-top: 2rem;
+    --interior-header-h: 5.5rem; /* p-4 + a 56px icon tile */
+  }
+}
+
+/* =========================================================================
+   MINIMAP — one size token for the whole instrument.
+   =========================================================================
+   `--minimap-w` is the outside width of the wheel bezel; everything else about
+   the map is derived from it (the map window is a fixed fraction of the bezel,
+   MiniMapFrame.tsx) or from `--minimap-h`, which adds the hanging nameplate.
+   Stated here rather than inside the component for the same reason as
+   --interior-header-*: other chrome has to step around this card — AngelGuide's
+   keep-out is measured off these two tokens — and "one element hardcodes
+   another's size" is exactly what the HUD tokens exist to prevent. It used to
+   be a pair of hand-tuned figures (`pl-[11.25rem]`, `pt-[17rem]`) that could
+   only rot the next time the map was resized.
+
+   The map does NOT need these values in JS: it is a follow-camera over a plan
+   drawn at a fixed world scale, so it simply shows whatever its window is big
+   enough for. Resizing here is the whole responsive story — nothing measures,
+   nothing re-lays-out. */
+:root {
+  --minimap-w: 11.5rem;                          /* 184px — phones */
+  --minimap-h: calc(var(--minimap-w) + 1.25rem); /* + the nameplate's overhang */
+}
+/* Steps on the shared device tiers (see "RESPONSIVE HUD SIZE SYSTEM" above),
+   not on breakpoints of its own — the map used to jump to its largest size at
+   1280px, i.e. on a laptop, which is the tier that can least afford the
+   screen area. It now grows only on a genuine desktop. */
+@media (min-width: 640px)  { :root { --minimap-w: 13.5rem; } } /* tablet  — 216px */
+@media (min-width: 1024px) { :root { --minimap-w: 14.5rem; } } /* laptop  — 232px */
+@media (min-width: 1536px) { :root { --minimap-w: 16rem; } }   /* desktop — 256px */
+
+/* =========================================================================
+   GLOBAL Z-INDEX LAYER SYSTEM — single source of truth for the whole app.
+   =========================================================================
+   Six conceptual layers, low to high. Every `position: fixed/absolute`
+   element with a z-index MUST use one of these classes (or a documented
+   sub-tier of one) instead of inventing a raw `z-[N]` value or comparing
+   two different views' numbers by feel. Plain classes, not @theme --z-*
+   tokens: Tailwind v4's `z` utility is a fixed static utility, not one of
+   the theme-driven namespaces (unlike `--color-*`), so arbitrary --z-*
+   theme keys generate no CSS.
+
+   1. Background   (0)   — the passive 3D scene. Nothing interactive lives
+                           here; it never needs to out-rank anything else.
+   2. Game View    (10)  — the ONE current full-screen view's own content
+                           (Settings/Shop/Fitness/Tracker/DressingRoom/
+                           BuildingInteriorView/AuthScreen/BuildModeOverlay).
+                           `currentView` is a single enum value, so these
+                           are mutually exclusive and never compare against
+                           each other — only "below Background? no. below
+                           HUD? yes" matters, so they all share one number.
+   3. HUD          (20-28) — persistent, always-visible chrome that survives
+                           across every Game View (toolbar, nav, top bar,
+                           mobile touch controls). Sub-tiers exist ONLY to
+                           order HUD pieces against each other; nothing
+                           outside HUD should ever need to compare against
+                           a sub-value directly.
+   4. Floating Panel (30) — a dialog/drawer that BELONGS to a specific Game
+                           View but must visually beat the persistent HUD
+                           while open (a build-mode toolbar, a furniture
+                           drawer, an account panel, an emote tray). THE
+                           RULE THAT MATTERS: a Floating Panel must never be
+                           a DOM descendant of its Game View's own
+                           z-game-view wrapper, because nesting traps a
+                           child's z-index below wherever its stacking-
+                           context-creating parent landed — no z-index
+                           number written on the child can escape that. If
+                           a floating panel is ever found "trapped" behind
+                           HUD again, the fix is to portal it out to
+                           document.body (see BuildingInteriorView.tsx's
+                           `PORTAL_ROOT` usage for the pattern), NOT to
+                           raise its parent Game View's whole z-index —
+                           that was the exact bug that caused MiniMap to be
+                           invisible inside the house (BuildingInteriorView
+                           was raised to beat HUD, which also lifted its own
+                           plain background/canvas above HUD as a side
+                           effect). Every view's blocking "are you sure?"
+                           style dialogs use z-modal instead (see 6).
+   5. Toast        (40)  — short-lived, non-blocking notifications.
+   6. Modal        (50)  — blocking, must-acknowledge dialogs (confirm
+                           purchase, confirm delete, login bonus, account
+                           panel). Kept at 1000, not 50, as a large safety
+                           margin so nothing can ever accidentally end up
+                           between "the highest real layer" and "modal" by
+                           a stray +10.
+   7. Loading      (9999) — boot/transition screen. Always absolute top.
+
+   Sub-tier note: within a shared Game View's own content there can be an
+   internal, self-contained mini z-scale (e.g. SettingsView's own back
+   button above its own scroll body) — that's fine and stays on small raw
+   values local to that view, since it never needs to compare against
+   anything outside itself. Only cross-view/cross-layer comparisons need a
+   class from this table. */
+@layer utilities {
+  .z-background     { z-index: 0; }
+  .z-game-view      { z-index: 10; }
+
+  /* The shared HUD grid frame (src/components/UI/HudFrame.tsx). It is
+     `position: fixed`, so it forms ONE stacking context that sits above the
+     Game View band and below Floating Panels / Toasts / Modals. All the
+     persistent corner chrome lives inside it, and the `.z-hud-*` tiers below
+     now order those pieces *within* the frame as a local sub-scale (a
+     descendant's z-index can't leak past the frame's context anyway). The
+     numbers are unchanged so the relative order is exactly as before; only
+     their scope moved from "root siblings" to "inside the frame". Elements
+     that must out-rank the frame stay OUTSIDE it as root siblings on their
+     own tier: #floating-panel-root (z-floating-panel), corner Toasts
+     (z-toast), modals (z-modal), LoadingScreen (z-loading), and
+     MobileControls' own full-bleed touch layers (z-hud-touch/controls,
+     which must stay below the frame's interactive chrome — the frame is
+     mounted after MobileControls in App.tsx's DOM so it wins the tie). */
+  .z-hud-frame      { z-index: 20; }
+
+  .z-hud-touch      { z-index: 20; } /* MobileControls touch-capture layer */
+  .z-hud-controls   { z-index: 22; } /* MobileControls joystick/action-button visuals */
+  .z-hud-toolbar    { z-index: 24; } /* SideButtons, ZoomControl, ControlsHint, MiniMap, InteractionPrompt, BuildModeOverlay */
+  .z-hud-navbar     { z-index: 26; } /* NavBar, emote tray trigger */
+  .z-hud-topbar     { z-index: 28; } /* TopBar, WeatherToast, PettingMiniGame, AuthScreen */
+
+  .z-floating-panel { z-index: 30; }
+  .z-toast          { z-index: 40; }
+  .z-modal          { z-index: 1000; }
+
+  /* 管理員測試主控台 (components/UI/admin/). Its own tier because it is the one
+     surface that must float over a GAME VIEW's own local sub-scale: ShopView,
+     LimitedShopView and friends are z-game-view wrappers whose insides run a
+     private z-[60]/[70]/[80] ladder, and a console pinned at z-toast (40) would
+     disappear behind the very screen it is there to test. 900 clears all of
+     those and the WeatherWidget's z-[100], while staying BELOW z-modal so a
+     confirm dialog, a purchase sheet or the reveal still wins — a QA panel that
+     could cover a blocking dialog is a QA panel that can trap the tester.
+     Rendered only while 管理員測試模式 is on; nothing on this tier exists for a
+     normal player. */
+  .z-admin-console  { z-index: 900; }
+
+  /* The 史詩/神話 purchase reveal (components/UI/RarityReveal.tsx). It exists
+     as its own tier because it is the one thing in the game that must cover a
+     MODAL: it plays after a purchase is confirmed, while PurchaseDialog is
+     still on screen, and the dialog is the very thing it is revealing past.
+     A local `z-[1001]` would have said the same number and none of that, and
+     would have been invisible to anyone reading this table for what can sit
+     above a modal. Still below LoadingScreen — a reload interrupts everything,
+     celebrations included. */
+  .z-reveal         { z-index: 1500; }
+
+  .z-loading        { z-index: 9999; }
+}
+
+/* --- 管理員測試主控台的版面 ---------------------------------------------
+
+   RWD is a change of SHAPE, not a scaled-down copy of the desktop panel.
+
+   Phone (< 640px)      Bottom sheet. A 320px side panel on a 390px-wide screen
+                        is not a side panel, it is a full-screen modal with a
+                        sliver of game showing — the exact thing this console was
+                        built to stop being. A sheet capped at 72vh keeps the top
+                        of the screen (where the character and the profile card
+                        are) permanently visible.
+   Tablet / landscape   Side panel, min(19rem, 46vw). The vw term is what stops a
+   phone (>= 640px)     640px-wide viewport handing half its width to the panel.
+   Laptop (>= 1024px)   21rem — ~27% of a 1280px screen, so the game keeps ~73%.
+   Desktop (>= 1536px)  25rem, which is the same proportion on a bigger screen
+                        rather than the same pixel width squeezed.
+
+   Insets are the HUD's own tokens, so the panel lines up with the rest of the
+   chrome and never clips on a notched device. */
+/* The 【管理員測試】 handle in the views HudFrame is not mounted for. Inset by the HUD's own edge
+   token rather than flush against the viewport, so it lines up with the zoom dial and the 幸運轉盤
+   it sits beside in the views that DO have a frame — one shape, one distance from the edge,
+   everywhere. (An earlier version cancelled the frame's padding with a negative margin to sit
+   flush; that expression did not resolve to the frame's own padding on every breakpoint — it came
+   out 16px against a 12px padding on the mobile tier — and a handle 4px off the edge is a worse
+   outcome than one that matches the rest of the chrome.) */
+.admin-console-handle-floating {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  right: max(var(--hud-inset), env(safe-area-inset-right));
+}
+
+.admin-console-panel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: min(72vh, 40rem);
+  border-radius: 1.75rem 1.75rem 0 0;
+}
+
+@media (min-width: 640px) {
+  .admin-console-panel {
+    left: auto;
+    top: max(var(--hud-inset), env(safe-area-inset-top));
+    bottom: max(var(--hud-inset), env(safe-area-inset-bottom));
+    right: max(var(--hud-inset), env(safe-area-inset-right));
+    width: min(19rem, 46vw);
+    max-height: none;
+    border-radius: 1.75rem;
+  }
+}
+
+@media (min-width: 1024px) { .admin-console-panel { width: 21rem; } }
+@media (min-width: 1536px) { .admin-console-panel { width: 25rem; } }
+
+/* Custom Thin Scrollbar */
+@layer base {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.2);
+  }
+
+  /* For Firefox */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+  }
+}
+
+@layer base {
+  body {
+    @apply bg-sky-500 overflow-hidden text-white;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* The React mount point, given a real full-viewport box.
+
+     It has no children in normal flow — App's outermost div is `fixed inset-0`
+     — so by default this element is ZERO PIXELS TALL, and that is a live trap
+     rather than a tidiness problem. Any `transform`, `filter` or `perspective`
+     put on #root makes it the containing block for every absolutely- and
+     fixed-positioned descendant, and at that instant every `inset-0` layer in
+     the app (App's own root, the 3D scene, a full-screen view, every modal and
+     the reveal itself) resolves against a 0-height box and collapses into a
+     strip. What the player sees is the whole interface vanishing and this
+     file's `bg-sky-500` body filling the screen.
+
+     That is not hypothetical: it is exactly what 神話's screen shake did (see
+     `.rarity-shake`, added to #root by RarityReveal.tsx). Buying the 鳳凰 —
+     the only 神話 item in the catalog — dimmed the room, span the item in, and
+     then flashed a solid blue screen for the 0.56s the shake ran.
+
+     Sizing the box here fixes the whole class of bug at its source, and keeps
+     the shake doing what it was written to do: with a box this size, a
+     transformed #root still moves its fixed children (the room shakes) but
+     they still measure the viewport (nothing collapses). Anything that wants
+     to transform the whole app in future is safe by default. */
+  #root {
+    height: 100dvh;
+  }
+
+  /* Keyboard-navigation focus ring. `:focus-visible` only fires for
+     keyboard/assistive-tech focus (not mouse/touch clicks), so this is safe
+     to apply globally without changing how anything looks for pointer
+     users — it just gives keyboard users something to see, which nothing
+     in this app currently provides on its own. */
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid var(--color-island-teal);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+@layer utilities {
+  /* Full-screen scroll-view page insets — comfortable base padding that ALSO
+     clears device safe areas (notch, home indicator, rounded corners) so a
+     view's content never hides under system UI on phones/tablets. Shared by
+     the full-page scroll views (Settings/Tracker/Fitness picker/Shop) so they
+     stop each hardcoding their own `pt-12 pb-24 px-6`. */
+  .page-shell-y {
+    padding-top: calc(3rem + env(safe-area-inset-top));
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+  }
+  .page-shell-x {
+    padding-left: max(1.5rem, env(safe-area-inset-left));
+    padding-right: max(1.5rem, env(safe-area-inset-right));
+  }
+  /* A fixed top-right control (e.g. a view's close button) that stays clear
+     of the notch / rounded corner. */
+  .corner-safe-tr {
+    top: max(1.5rem, env(safe-area-inset-top));
+    right: max(1.5rem, env(safe-area-inset-right));
+  }
+
+  /* RANGE SLIDER — the shared volume/level control (Slider in DesignKit.tsx).
+
+     A thin track is the look we want; a thin ELEMENT is not. A range input hit-tests against its
+     own border box, and the thumb's overflow is painted, not grabbable — so styling the control
+     itself `h-1` left the player aiming at a 4-pixel-tall strip to start a drag. The element is a
+     touch-sized 1.75rem here and the 4px track is drawn INSIDE it by the track pseudo-element, so
+     the control looks the same and can actually be taken hold of, including with a thumb.
+
+     `touch-action: none` is the touch half of the same fix: without it the first vertical
+     component of a drag is claimed by the page as a scroll and the gesture is cancelled out from
+     under the slider. The control is 28px tall inside a scrollable settings panel, so it has to
+     claim its own gesture rather than share it. */
+  .range-slider {
+    height: 1.75rem;
+    background: transparent;
+    touch-action: none;
+  }
+  .range-slider::-webkit-slider-runnable-track {
+    height: 0.25rem;
+    border-radius: 9999px;
+    background: var(--color-island-line);
+  }
+  .range-slider::-moz-range-track {
+    height: 0.25rem;
+    border-radius: 9999px;
+    background: var(--color-island-line);
+  }
+  /* Re-centred by hand because `appearance: none` drops the browser's own centring: the thumb is
+     positioned from the TOP of the track, so half of it hangs below without this. */
+  .range-slider::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 1.05rem;
+    height: 1.05rem;
+    margin-top: -0.4rem;
+    border-radius: 9999px;
+    background: var(--color-island-teal);
+    border: 2px solid #fff;
+    box-shadow: 0 2px 6px rgba(38, 70, 83, 0.22);
+    cursor: grab;
+  }
+  .range-slider::-moz-range-thumb {
+    width: 1.05rem;
+    height: 1.05rem;
+    border-radius: 9999px;
+    background: var(--color-island-teal);
+    border: 2px solid #fff;
+    box-shadow: 0 2px 6px rgba(38, 70, 83, 0.22);
+    cursor: grab;
+    border-width: 2px;
+  }
+  .range-slider:active::-webkit-slider-thumb { cursor: grabbing; }
+  .range-slider:active::-moz-range-thumb { cursor: grabbing; }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .custom-scrollbar-brown::-webkit-scrollbar {
+    width: 8px;
+  }
+  .custom-scrollbar-brown::-webkit-scrollbar-track {
+    background: rgba(139, 90, 43, 0.05);
+    border-radius: 10px;
+  }
+  .custom-scrollbar-brown::-webkit-scrollbar-thumb {
+    background: rgba(139, 90, 43, 0.35);
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  .custom-scrollbar-brown::-webkit-scrollbar-thumb:hover {
+    background: rgba(139, 90, 43, 0.55);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  /* Teal-on-cream scrollbar for light card surfaces (e.g. BuildModeOverlay's
+     building-item strip, and that panel's own body once a short window makes it
+     scroll) — a token-based, reusable replacement for what used to be an inline
+     <style> tag with !important overrides hand-rolled in that one component.
+     Sized on both axes so the same class works whichever way its element
+     scrolls; `.custom-scrollbar` is the dark-surface one and its white thumb is
+     invisible on cream. */
+  .custom-scrollbar-teal::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+  }
+  .custom-scrollbar-teal::-webkit-scrollbar-track {
+    background: var(--color-island-cream-2);
+    border-radius: 9999px;
+  }
+  .custom-scrollbar-teal::-webkit-scrollbar-thumb {
+    background: var(--color-island-teal);
+    border-radius: 9999px;
+    border: 1px solid var(--color-island-cream-2);
+  }
+  .custom-scrollbar-teal::-webkit-scrollbar-thumb:hover {
+    background: var(--color-island-teal-dark);
+  }
+
+  /* "Dock & Signpost" HUD motif (2026-07 pass) — the persistent HUD chrome
+     stopped reading as generic rounded-rectangle cards and started reading
+     as physical objects a player would find standing on the island: a
+     boarding-pass ticket, a signpost, a ship's porthole. Shape carries the
+     personality, not color — these stay on the existing island-teal/navy/
+     cream/line tokens above, no new hues. See DesignKit.tsx's SignpostTag
+     and PortholeFrame, which consume these classes. */
+
+  /* Clipped ticket-stub corner — used on TopBar / AccountPanel headers.
+
+     A CLIPPED ELEMENT CANNOT CARRY ITS OWN SHADOW. `clip-path` clips the
+     element's entire painted output, and a `box-shadow` is part of that
+     output — so `class="dock-notch shadow-[...]"` silently renders NO shadow
+     at all, leaving a hard cut edge where the card meets the 3D scene. That
+     read as the "black edge / stray shadow" artifact across the HUD: every
+     notched card (TopBar, AccountPanel, the interior header, the NavBar
+     plank, every SignpostTag) paired a clip-path with a shadow that never
+     drew. Putting the shadow on the same element as a `filter` does not fix
+     it either — filters are applied BEFORE clipping, so the blur gets cut
+     too.
+
+     Use `.notch-shadow*` on a WRAPPER instead (below). Never re-add a
+     `shadow-*` to an element that also clips. */
+  .dock-notch {
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+  }
+
+  /* Shadow for any clipped silhouette (`.dock-notch`, SignpostTag's arrow /
+     hanging-plank shapes, the NavBar dock plank).
+
+     Goes on the clipped element's PARENT, where the filter is applied to the
+     child's already-clipped rendering — so the shadow traces the cut edge
+     (the chamfer, the arrow point) instead of the original rectangle. This is
+     the only way to get a shadow onto a clipped shape; see the note above.
+
+     Tiers mirror the navy-tinted box-shadow scale in DESIGN_SYSTEM.md:
+     `-sm` for HUD chrome sitting on the scene, `-lg` for panels/modals that
+     float above other UI. Keep the blur a little tighter than the box-shadow
+     it replaces — drop-shadow traces the silhouette rather than a rectangle,
+     so the same numbers read heavier. */
+  .notch-shadow-sm {
+    filter: drop-shadow(0 3px 6px rgba(38, 70, 83, 0.12));
+  }
+  .notch-shadow {
+    filter: drop-shadow(0 5px 10px rgba(38, 70, 83, 0.14));
+  }
+  .notch-shadow-lg {
+    filter: drop-shadow(0 12px 22px rgba(38, 70, 83, 0.20));
+  }
+  /* Teal variant, for a clipped element on a teal surface (an active
+     SignpostTag) — matches the teal shadow family in DESIGN_SYSTEM.md. */
+  .notch-shadow-teal {
+    filter: drop-shadow(0 4px 9px rgba(42, 157, 143, 0.34));
+  }
+  /* Shadow gutter for a HUD region that has to be a scroll container.
+
+     `overflow-y: auto` computes `overflow-x` to `auto` as well, so such a
+     region clips its cards on BOTH axes at its own content box — and a card's
+     shadow, ring and any deliberate negative margin are all painted outside
+     that box. That is what sliced the bottom off the MiniMap's card (its
+     `0 14px 34px -8px` shadow was cut to a hard horizontal line, which reads
+     as the card itself being cropped) and shaved the left edge the card
+     deliberately tucks into the corner with `-ml-*`.
+
+     This reserves a transparent gutter inside the scroll box and cancels it
+     again with an equal negative margin, so the region occupies exactly the
+     same place on screen while its children have room to paint outside
+     themselves. Sized off the largest shadow any rail card uses (MiniMap's,
+     ~40px of spill) plus a little slack.
+
+     This is deliberately NOT a MiniMap special case: every card in a scrolling
+     rail, now and later, gets its shadow back from the same rule. Pop-outs
+     that must escape the region entirely (a tool panel, a dropdown) are still
+     a different problem with a different answer — AnchoredPopover. */
+  .hud-scroll-gutter {
+    --hud-gutter: 2.75rem;
+    padding: var(--hud-gutter);
+    margin: calc(var(--hud-gutter) * -1);
+  }
+
+  /* ---------------------------------------------------------------------
+     RESPONSIVE HUD SIZE SYSTEM — the utility half.
+     ---------------------------------------------------------------------
+     The tokens (:root, top of this file) hold the four-tier scale; these
+     three classes are how a component spends them without every element
+     growing an `text-[length:var(--hud-text-title)]` arbitrary value.
+
+     Why classes and not Tailwind arbitrary values: an icon needs BOTH the
+     CSS box and the SVG's own width/height overridden (lucide writes them as
+     presentation attributes), and a token-driven font size wants its
+     line-height moved with it. Both are two declarations, which is a class. */
+
+  /* Inline glyph inside HUD chrome. CSS width/height beat lucide's
+     `size` attribute, so keep passing `size` as the pre-CSS fallback only —
+     same arrangement SideButtons already uses for its vh-scaled tags. */
+  .hud-icon {
+    width: var(--hud-icon);
+    height: var(--hud-icon);
+    flex-shrink: 0;
+  }
+
+  /* The two rungs of the HUD type scale. `title` is what a player reads at a
+     glance (name, primary numbers); `meta` is everything supporting it
+     (labels, badges, secondary figures). There is deliberately no third,
+     smaller rung: --hud-text-meta bottoms out at 10px, which is the floor
+     this HUD is allowed to use. */
+  .hud-text-title {
+    font-size: var(--hud-text-title);
+    line-height: 1.15;
+  }
+  .hud-text-meta {
+    font-size: var(--hud-text-meta);
+    line-height: 1.1;
+  }
+
+  /* Touch-target floor for a small HUD control.
+
+     A shrunken HUD is only usable if the FINGER target does not shrink with
+     it — a 32px avatar on a phone is a perfectly legible picture and an
+     unreliable button. This grows the hit area to --hud-tap (44px) with an
+     overlay pseudo-element, so nothing about the layout moves; the control
+     keeps its drawn size and gains reach. Gated on `pointer: coarse` because
+     on a mouse the same overlay would claim hover/clicks from whatever sits
+     within 6px of the control. Needs a positioned host, which the class
+     itself provides. */
+  .hud-hit {
+    position: relative;
+  }
+  @media (pointer: coarse) {
+    .hud-hit::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: max(100%, var(--hud-tap));
+      height: max(100%, var(--hud-tap));
+      transform: translate(-50%, -50%);
+    }
+  }
+
+  /* Hover step-up, written as real CSS rather than a `hover:notch-shadow`
+     class: these are hand-authored utilities, not registered Tailwind ones,
+     so Tailwind cannot generate variants for them and `hover:notch-shadow`
+     would silently emit nothing. */
+  .notch-shadow-hoverable {
+    filter: drop-shadow(0 3px 6px rgba(38, 70, 83, 0.12));
+    transition: filter 300ms ease-out;
+  }
+  .notch-shadow-hoverable:hover {
+    filter: drop-shadow(0 7px 13px rgba(38, 70, 83, 0.18));
+  }
+
+  /* Stitched divider line, replaces a plain solid border-top between
+     sections that used to just be a flat rule. */
+  .rope-stitch {
+    height: 2px;
+    background-image: repeating-linear-gradient(
+      90deg,
+      var(--color-island-navy-soft) 0 6px,
+      transparent 6px 11px
+    );
+    opacity: 0.3;
+  }
+
+  /* Vertical signpost pole rendered behind a column of SignpostTag buttons
+     (SideButtons) so they read as one mounted object instead of separate
+     floating tiles. Parent must be `relative`; buttons need `relative z-10`
+     to sit in front of this (z-0). */
+  .signpost-post {
+    position: absolute;
+    left: 50%;
+    top: -14px;
+    bottom: -14px;
+    width: 6px;
+    transform: translateX(-50%);
+    background: linear-gradient(180deg, var(--color-island-navy-soft), var(--color-island-navy));
+    border-radius: 999px;
+    z-index: 0;
+  }
+
+  /* MINIMAP TRANSFORMS — the follow-and-face mechanism, as four custom
+     properties written once per frame by MiniMapViewport.tsx.
+
+     --mm-tx      \ how far the plan is slid so the player sits on the window's
+     --mm-ty      / centre
+     --mm-map     how far the plan is turned, from the CAMERA's heading
+     --mm-facing  how far the player's arrow is turned, from the CHARACTER's
+
+     The map's rotation and the arrow's are two systems, and this is where that
+     separation is actually enforced: `.minimap-plan` and `.minimap-facing` are
+     SIBLINGS, never nested, so no amount of map rotation can reach the arrow.
+     (Parenting them would be the classic bug — the arrow would silently pick up
+     the map's angle on top of its own and point somewhere neither system asked
+     for.) Anything that *should* turn with the map — a room, a world-anchored
+     NPC pin — is drawn inside the plan and gets it for free instead.
+
+     ORDER MATTERS on .minimap-plan: `rotate(...) translate(...)` translates
+     first and then rotates the result, and the element is a 0x0 box parked at
+     the window's centre, so its transform-origin IS that centre — which the
+     translate has just put the player's own position on. The map therefore
+     spins about the player rather than about the middle of the house.
+
+     Deliberately NOT transitioned: the smoothing is done in JS (smoothAngleDeg,
+     frame-rate independent and wrapped the short way round the circle). A CSS
+     transition on top would fight it, and would turn the 360°→0° wrap into a
+     full spin. */
+  .minimap-plan {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 0;
+    height: 0;
+    transform: rotate(var(--mm-map, 0deg)) translate(var(--mm-tx, 0px), var(--mm-ty, 0px));
+    will-change: transform;
+  }
+
+  /* Keeps a thing drawn INSIDE the rotating plan readable — glyphs, room names,
+     the compass letter. Cancels exactly the map's own rotation, so the element
+     stays anchored where the map put it but never lies on its side.
+
+     Pivots on the element's own box (`fill-box`, i.e. its bbox for SVG and its
+     content box for HTML), NOT the shared viewBox: each of these sits at its
+     own spot in a plan-wide coordinate space, so any common origin would swing
+     them around the house instead of turning them in place. Note this is the
+     opposite choice from .minimap-facing below, for the opposite reason — read
+     both before adding a third. */
+  .minimap-upright {
+    transform-box: fill-box;
+    transform-origin: 50% 50%;
+    transform: rotate(calc(var(--mm-map, 0deg) * -1));
+  }
+  /* `0 0` is load-bearing, and `50% 50%` is a trap here.
+
+     An SVG element's transform-origin defaults to `50% 50%` resolved against
+     the *viewBox*, and a percentage resolves against the viewBox's SIZE
+     measured from user-space (0,0) — it does NOT account for a viewBox whose
+     min-x/min-y are negative. The player marker is authored on
+     `viewBox="-36 -36 72 72"`, so `50% 50%` pivots on user-space (36,36) — a
+     corner well outside the artwork — and the arrow swings itself clean out of
+     its own 72px box and disappears the moment it rotates.
+
+     Every marker is authored around its own origin pointing straight up (see
+     MiniMapMarker.tsx), so `0 0` IS the marker's centre, in every one of them,
+     with no per-marker arithmetic. `fill-box` is wrong here for a second
+     reason: the artwork's bbox is not centred on the pivot (the view cone
+     extends well above the arrowhead), so pivoting on it would make the arrow
+     orbit rather than turn on the spot. */
+  .minimap-facing {
+    transform-box: view-box;
+    transform-origin: 0 0;
+    transform: rotate(var(--mm-facing, 0deg));
+  }
+
+  /* Circular window-frame bezel for instrument-style HUD pieces
+     (ZoomControl, avatar portraits) — layered rings instead of a plain
+     border, like a ship porthole. (MiniMap used this too until it became a
+     square floor-plan card — see MiniMap.tsx.) */
+  .porthole-ring {
+    box-shadow:
+      0 0 0 3px var(--color-island-cream),
+      0 0 0 5px var(--color-island-line),
+      0 8px 20px rgba(38, 70, 83, 0.18);
+  }
+
+  /* Shop / cozy-panel card system (2026-07 pass) — flat cream cards with a
+     thin line border and a soft navy-tinted shadow, teal on hover/selection.
+     Replaces the old dark-glass + gilded-parchment shop styling. */
+  .store-card {
+    @apply bg-white rounded-[2rem] p-4 flex flex-col gap-3 transition-all duration-300 border border-island-line hover:border-island-teal-light shadow-[0_2px_10px_rgba(38,70,83,0.05)] hover:shadow-[0_10px_24px_rgba(38,70,83,0.1)] hover:-translate-y-1 active:scale-[0.98] cursor-pointer relative overflow-hidden text-left;
+  }
+
+  /* =====================================================================
+     稀有度 (RARITY) — the shop's wordless "this one is special" treatment.
+     =====================================================================
+     Palette lives in src/constants/rarity.ts and arrives as the
+     `--rarity-*` custom properties `rarityStyleVars()` writes on the card;
+     only the shapes and the timing are here, so re-tuning a tier is a hex
+     edit in one table and never a second copy of this gradient maths.
+
+     MUST come after `.store-card` above. Both are single-class selectors in
+     this same layer, and `.store-card` @applies its own border-colour and
+     box-shadow (including a `:hover` step), so which one wins is decided by
+     source order, not specificity. `.rarity-card:hover` is spelled out for
+     the same reason — a bare `.rarity-card` loses to `.store-card`'s
+     compound hover selector no matter where it sits.
+
+     Every catalog item declares a `rarity`, so these rules apply to every
+     card in the shop. What keeps that from being wallpaper is the per-tier
+     layer budget in constants/rarity.ts: 普通 — about three quarters of the
+     catalog — spends none of it, so its card is a plate in a hairline ring
+     and nothing else.
+
+     The treatment is built as an OBJECT — an enamel plate recessed into a
+     turned metal bezel — and not as a tinted panel with effects thrown on
+     top. That follows "Making chrome feel expensive" above, whose two
+     recorded failures were making a thing heavier and re-tinting the same
+     shape; a coloured wash plus rays and sparkles is the second failure
+     exactly. Every premium cue below is therefore construction: a graded
+     metal ring, a plate sunk by its own inset shadow with a lit bottom lip,
+     a sunray grain in the glaze, and light that moves slowly across it.
+
+     Two shadow tiers, never one mid-size blur — same rule as the toolbar. */
+  .rarity-card {
+    /* The card's own turned edge — the same lit-top-left / shadowed-bottom-right
+       ramp the well's bezel is cut from, at roughly a third of its strength.
+       The card is a ~320px rectangle and the well is a ~150px disc-in-a-frame;
+       carrying the bezel's contrast up to this size stops reading as a mounted
+       plate and starts reading as a bevelled 1998 button.
+
+       Held in a custom property so the shadow list below and its `:hover` twin
+       are each written once, and so 普通 can blank it to a no-op shadow without
+       either rule growing a second copy of the four outer shadows. */
+    --rarity-card-ramp:
+      inset 0 1px 0 rgba(255, 255, 255, 0.72),
+      inset 1px 0 0 rgba(255, 255, 255, 0.34),
+      inset -1px 0 0 rgba(38, 70, 83, 0.055),
+      inset 0 -1px 0 rgba(38, 70, 83, 0.08);
+    /* The two dials the card-scale ladder turns (see the per-tier rules below):
+       how deep the tier's colour pools at the foot of the card, and whether the
+       paper is engraved. Defaults are 稀有's — the first rung that draws
+       anything at all. */
+    --rarity-card-pool: 14%;
+    --rarity-card-grain: none;
+    border-color: var(--rarity-edge);
+    box-shadow:
+      var(--rarity-card-ramp),
+      /* the tier's own hairline ring, kept thin — a fat flat ring reads as a sticker */
+      0 0 0 2px var(--rarity-halo),
+      /* tier 1: tight contact shadow, what sits the card ON the page */
+      0 1px 2px rgba(38, 70, 83, 0.10),
+      0 4px 10px -2px rgba(38, 70, 83, 0.10),
+      /* tier 2: a wide, soft, coloured bloom, what lifts it OFF the page */
+      0 18px 36px -12px var(--rarity-halo);
+  }
+
+  .rarity-card:hover {
+    border-color: var(--rarity-edge);
+    box-shadow:
+      var(--rarity-card-ramp),
+      0 0 0 2px var(--rarity-halo),
+      0 1px 2px rgba(38, 70, 83, 0.12),
+      0 8px 18px -4px rgba(38, 70, 83, 0.14),
+      0 28px 52px -14px var(--rarity-halo);
+  }
+
+  /* =====================================================================
+     稀有度 · 整張卡 (2026-09-08) — the tier stops being a frame around a white
+     card and becomes the card.
+     =====================================================================
+     Until this pass a graded card was a coloured hairline, a coloured bloom and
+     one lit enamel plate at the top; everything under the plate — name, chips,
+     description, price, button — sat on the same white paper a 普通 card sits
+     on. So two thirds of the rectangle said nothing about the tier, and the
+     grade read as a sticker applied to a card rather than as a property of it.
+
+     The construction, and it is the same rule the plate follows (「change the
+     construction, not the colour」 above): the card is a MOUNTED PLATE. Tinted
+     paper, cut from the tier's own stone, with the lit plate at its head and a
+     hairline mat ruled inside the frame. Every cue below is a piece of that
+     object — none of them is the coloured wash with effects thrown on top that
+     this section's second recorded failure warns about.
+
+     Where the light comes from is the thing that keeps it coherent: the well is
+     the light source (see `.rarity-field`), so the paper is brightest directly
+     under it and the tier's colour pools at the foot of the card where the
+     light has fallen away. Turn that story around — pool at the top, bloom at
+     the bottom — and the card immediately reads as two unrelated gradients.
+
+     The ladder is the same shape as the aura's: 普通 draws NOTHING here (it
+     keeps its white paper and its hairline, which is what makes it the floor),
+     and each rung above earns another piece of the object rather than a louder
+     version of the last one. See the four rules below, in order.
+
+     The alphas are white and navy over the tier's own four values, exactly as
+     the plate's are, so a new tier still costs four hexes and no gradient
+     maths. `color-mix()` is what lets the saturated `--rarity-field-core` be
+     used at a fraction of its strength without a fifth swatch existing purely
+     to be its faded twin. */
+
+  /* 稀有 and up — the paper.
+
+     Five layers, front to back: the engraved grain (史詩+, blank here), a
+     corner vignette so the sheet falls away at its edges the way the plate
+     does, a white bloom directly under the well, the tier's colour pooling at
+     the foot, and the flat tinted stock underneath it all.
+
+     `--rarity-field-top` is safe to use at full strength as paper — every
+     tier's is a near-white (#EDF6E4 / #EFE7FA / #FCE8E7), and island-navy body
+     copy on any of them clears contrast comfortably. `--rarity-field-core` is
+     NOT: it is a jewel tone, and a card whose lower half is 稀有's #BCDCA0 is
+     a green card, not a card in green paper. That is exactly how the first cut
+     of this rule rendered — the pool started at 54% and ran to 26/46%, and 史詩
+     and 神話 came out as a lavender card and a pink card with a shop card drawn
+     on them. So the pool is held to the bottom quarter and to 14-28%: it is a
+     plinth the card stands on, not a wash the card is dyed in.
+
+     The white bloom sits at 50% — directly UNDER the well rather than behind
+     it, which is where it was first put and where the plate hides it
+     completely. Under is also where it earns its keep twice: it is the light
+     spilling off the plate AND the reason the name and the description sit on
+     the palest part of the sheet. */
+  .rarity-card:not(.rarity-common) {
+    background-image:
+      var(--rarity-card-grain),
+      radial-gradient(150% 108% at 50% 36%, transparent 44%, rgba(38, 70, 83, 0.05) 100%),
+      radial-gradient(124% 34% at 50% 50%, rgba(255, 255, 255, 0.72) 0%, transparent 76%),
+      linear-gradient(180deg, transparent 68%, color-mix(in srgb, var(--rarity-field-core) var(--rarity-card-pool), transparent) 100%),
+      linear-gradient(var(--rarity-field-top), var(--rarity-field-top));
+  }
+
+  /* 稀有 and up — the mat.
+
+     A hairline ruled 7px inside the frame, which is the single cheapest thing
+     that makes a rectangle read as MOUNTED rather than merely outlined; it is
+     what a framed print, a certificate and a museum label all have and what a
+     bordered div does not. It lands in the card's own 16px padding, so it never
+     crosses a word of copy, and it is `pointer-events: none` because it covers
+     the whole clickable card.
+
+     Drawn at 26% of the tier's edge rather than at full strength: the outer
+     border is the tier's statement and a second line of equal weight fights it
+     for the same job. The mat is the quieter of the two rules, always. */
+  .rarity-card:not(.rarity-common)::before {
+    content: '';
+    position: absolute;
+    inset: 7px;
+    /* the card's 1.75rem less the 7px it is set in by — a mat that kept the
+       full radius would bow away from the frame at the corners */
+    border-radius: calc(1.75rem - 7px);
+    border: 1px solid color-mix(in srgb, var(--rarity-edge) 26%, transparent);
+    pointer-events: none;
+  }
+
+  /* 史詩 and up — the paper is engraved.
+
+     A ruled hatch, not the plate's radial grain, and the difference is the
+     surface rather than the tier: the well is a machined dial, so its finish
+     turns about a centre; the card is a printed sheet, so its finish is ruled
+     straight across, the way a banknote or a share certificate is. Running the
+     plate's 60-spoke fan out to card size would put a visible starburst behind
+     the description and the price, which is the gacha look this whole section
+     is built to avoid.
+
+     Navy rather than white — the inverse of the plate's rule and for the same
+     reason. The plate can carry white marks because its field is saturated; the
+     paper cannot, because it is a near-white, so its grain has to be cut INTO
+     it rather than laid ON it.
+
+     0.028 over a 5px pitch, and both numbers are a second cut: 0.04 over 7px
+     stopped being a finish and became visible diagonal stripes lying across the
+     description. The test is the one the plate's grain is held to — you should
+     notice that the paper has a texture, and never be able to count its lines.
+     史詩 also deepens the plinth a little over 稀有's, so the rung reads as one
+     step and not as 「稀有 plus a pattern」. */
+  .rarity-card.rarity-epic,
+  .rarity-card.rarity-mythic {
+    --rarity-card-grain: repeating-linear-gradient(
+      52deg,
+      rgba(38, 70, 83, 0.028) 0 1px,
+      transparent 1px 5px
+    );
+    --rarity-card-pool: 19%;
+  }
+
+  /* 史詩 and up — a highlight travelling the frame.
+
+     The card-scale twin of `.rarity-metal`, which crawls the well's bezel for
+     exactly the same two tiers, and masked to an 8px band around the perimeter
+     so it stays ON the frame. A sweep across the whole card would pass over the
+     name, the description and the price, and a white band crossing body copy
+     reads as a loading shimmer — the one thing a finished object must never
+     look like.
+
+     26s, against the bezel's 22s and the glaze's 9s. Three highlights on one
+     card must never travel together; coprime-ish periods are what keep the
+     three from lining up into a pulse.
+
+     It moves by `background-position` rather than by `transform` because the
+     mask belongs to the element: translating the element would drag the mask
+     off the frame with it, so the gradient travels inside a mask that holds
+     still.
+
+     The band is NOT the bezel's plain white one, and that is the same
+     inversion the paper's engraving makes. `overflow: hidden` clips to the
+     padding box, so this ring rides the pale paper just inside the border and
+     never the saturated border itself — and a white sweep over a near-white
+     sheet is invisible, which is exactly how the first cut rendered (the mask
+     was right; there was simply nothing to see). So the highlight is cut as a
+     real specular instead: a white core with the tier's own colour trailing it,
+     and it is the coloured half that does the reading. */
+  .rarity-card.rarity-epic::after,
+  .rarity-card.rarity-mythic::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    padding: 8px;
+    border-radius: inherit;
+    pointer-events: none;
+    background-image: linear-gradient(
+      112deg,
+      transparent 36%,
+      rgba(255, 255, 255, 0.95) 46%,
+      color-mix(in srgb, var(--rarity-edge) 50%, transparent) 55%,
+      transparent 64%
+    );
+    background-size: 280% 100%;
+    background-repeat: no-repeat;
+    -webkit-mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
+    -webkit-mask-clip: content-box, border-box;
+    -webkit-mask-composite: xor;
+    mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
+    mask-clip: content-box, border-box;
+    mask-composite: exclude;
+    opacity: 0;
+    animation: rarity-card-sheen 26s ease-in-out infinite;
+  }
+
+  @keyframes rarity-card-sheen {
+    0%, 74%  { background-position: -70% 0; opacity: 0; }
+    82%, 92% { opacity: 0.85; }
+    100%     { background-position: 170% 0; opacity: 0; }
+  }
+
+  /* 神話 only — the deepest pool, a double rule, and the mat drifting in hue.
+
+     All three are the same three moves the tier already makes on the plate, one
+     scale up: more of the tier's colour, one more piece of construction, and
+     the one animated hue in the game. The drift is the SAME keyframes and the
+     same 12s as `.rarity-mythic .rarity-bezel`, so the card's mat and the
+     plate's bezel travel together — two lines on one object turning through the
+     same red at different phases would read as a bug.
+
+     `filter` is scoped to `::before` for the reason it is scoped to the bezel:
+     it applies to an element and everything inside it, and the mat has no
+     inside. Put it a level up and it hue-rotates the artwork, the name and the
+     price along with the line. */
+  .rarity-card.rarity-mythic {
+    --rarity-card-pool: 28%;
+  }
+
+  .rarity-card.rarity-mythic::before {
+    /* the second rule of the double frame, ruled 4px inside the mat */
+    outline: 1px solid color-mix(in srgb, var(--rarity-edge) 14%, transparent);
+    outline-offset: -4px;
+    animation: rarity-iris 12s linear infinite;
+  }
+
+  /* 普通 keeps its white paper, its hairline and nothing else — no ramp, no
+     mat, no engraving. It is the floor the other three are measured from, and a
+     floor that draws even a little of the treatment turns the rung above it
+     into a shade. Spelled as a blanked ramp plus the `:not()` guards above
+     rather than as an `unset`, so there is exactly one place to look for what
+     普通 does not get. */
+  .rarity-card.rarity-common {
+    --rarity-card-ramp: 0 0 rgba(0, 0, 0, 0);
+  }
+
+  /* The thumbnail form of a tier: border colour and a hint of halo, and NONE
+     of the aura.
+
+     Used by every surface that shows an owned item at small size — the
+     collection list, the build rail, the furniture drawer, the dressing room.
+     Buying something and watching its rarity disappear the moment it lands in
+     your inventory says the tier was a price tag rather than a property of the
+     object, so the tier has to survive the purchase; what does not survive is
+     the five-layer treatment. At 44-64px the 60-line grain collapses into
+     moiré and the sparkles land on top of the artwork instead of around it
+     (DESIGN_SYSTEM.md's density note is the same failure at a different
+     scale). A coloured edge is the part of the treatment that still reads at
+     thumbnail size, so it is the only part that gets drawn.
+
+     One shadow tier here, not two: these tiles sit in scrolling lists, and the
+     wide coloured bloom that lifts a shop card off the page turns a list into
+     a row of glowing lozenges. */
+  .rarity-chip {
+    border-color: var(--rarity-edge);
+    box-shadow:
+      0 0 0 1px var(--rarity-halo),
+      0 6px 16px -10px var(--rarity-halo);
+  }
+
+  /* The well's own 1px border becomes the bezel's dark outer line, with the
+     graded metal of `.rarity-bezel` turning inwards from it. */
+  .rarity-well {
+    border-color: var(--rarity-edge);
+  }
+
+  /* The bezel: a ring of turned metal. The plate covers all but its outer
+     1.5px, so only the ring is ever seen.
+
+     The light-to-dark ramp is plain white and near-black alphas over the
+     tier's own `--rarity-edge`, which is why a new tier needs no extra
+     palette entries — every tier is the same object cut from a different
+     stone. Lit from the top-left and shadowed at the bottom-right, matching
+     the light direction the rest of the card's shadows already imply. */
+  .rarity-bezel {
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(
+        152deg,
+        rgba(255, 255, 255, 0.92) 0%,
+        rgba(255, 255, 255, 0.25) 32%,
+        rgba(10, 20, 30, 0.10) 64%,
+        rgba(10, 20, 30, 0.30) 100%
+      ),
+      var(--rarity-edge);
+  }
+
+  /* The enamel plate the animal stands on, set 1.5px inside the bezel.
+
+     `border-radius` is the well's `rounded-2xl` (16px) less its 1px border
+     and the 1.5px of bezel it sits inside — a plate that kept the full 16px
+     would bulge past the ring at the corners.
+
+     Four backgrounds, front to back: a soft specular on the glaze, a corner
+     vignette, the pool of tier colour the animal stands in, then the flat
+     base. The vignette is what stops the plate reading as a flat sticker —
+     it gives the corners somewhere to fall away to. */
+  .rarity-field {
+    position: absolute;
+    inset: 1.5px;
+    border-radius: 13.5px;
+    background:
+      radial-gradient(66% 52% at 21% 6%, rgba(255, 255, 255, 0.42) 0%, transparent 62%),
+      radial-gradient(125% 92% at 50% 112%, transparent 38%, rgba(38, 70, 83, 0.13) 100%),
+      radial-gradient(118% 86% at 50% 108%, var(--rarity-field-core) 0%, var(--rarity-field-top) 74%),
+      var(--rarity-field-top);
+    /* Sunk, not painted on: pressed-in top edge, lit lower lip — the same
+       carved-groove construction as the build toolbar's track. */
+    box-shadow:
+      inset 0 2px 5px rgba(38, 70, 83, 0.16),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.7);
+  }
+
+  /* 普通 is the one tier whose plate is NOT recessed: a flat panel with a
+     hairline, no pressed top edge and no lit lower lip. The recess is a
+     premium cue, so the floor of the ladder does not get to have it — that is
+     the difference between "this is the bottom rung" and "this is a cheaper
+     jewel". Everything above it inherits the carved plate above. */
+  .rarity-common .rarity-field {
+    box-shadow: inset 0 0 0 1px rgba(38, 70, 83, 0.05);
+  }
+
+  /* Sunray grain under the glaze — the brushed radial finish of a watch dial,
+     not a starburst. The difference is entirely density: the first pass used
+     24 fat spokes, which is the visual signature of a gacha pull screen. At 60
+     fine lines it stops reading as "rays" and starts reading as a machined
+     surface, which is the whole point.
+
+     Masked to an annulus. The centre MUST be cut out: that is where the lines
+     converge to sub-pixel width and turn into moiré mush, and it is also where
+     the animal stands.
+
+     Uses the individual `rotate` property, not `transform`: `translate` is
+     already carrying the centring here, and the two compose (translate then
+     rotate, about the element's own centre) instead of overwriting each
+     other the way two `transform` declarations would. */
+  .rarity-rays {
+    position: absolute;
+    left: 50%;
+    top: 56%;
+    width: 210%;
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    background: repeating-conic-gradient(
+      from 0deg,
+      var(--rarity-shine) 0deg 1.1deg,
+      transparent 1.1deg 6deg
+    );
+    -webkit-mask-image: radial-gradient(closest-side, transparent 9%, rgba(0, 0, 0, 0.85) 32%, rgba(0, 0, 0, 0.45) 55%, transparent 78%);
+    mask-image: radial-gradient(closest-side, transparent 9%, rgba(0, 0, 0, 0.85) 32%, rgba(0, 0, 0, 0.45) 55%, transparent 78%);
+    opacity: 0.26;
+    /* 90s, not 30s. Premium objects are still; this should never be caught
+       moving, only noticed to have moved. */
+    animation: rarity-rays-spin 90s linear infinite;
+  }
+
+  @keyframes rarity-rays-spin {
+    to { rotate: 360deg; }
+  }
+
+  /* Four-point sparkles. Positioned and staggered from RarityAura.tsx so the
+     scatter is data rather than four more rules here.
+
+     The glow is deliberately `--rarity-edge` and not `--rarity-shine`: a white
+     star with a white halo over a pale field is invisible, which is exactly how
+     the first pass rendered. Drawing the halo in the tier's own mid-tone puts a
+     darker ring under the white core, so the star gets an edge to read against
+     and still reads as light rather than as a smudge. Two stacked drop-shadows
+     — a tight one for the outline, a wide one for the bloom.
+
+     Thin arms (46.5/53.5, not 43/57) and a long dark interval: each star is lit
+     for about a second in every seven, so with four staggered stars roughly one
+     is alight at a time. A field of stars all pulsing together is the cheap
+     look this is avoiding. */
+  .rarity-spark {
+    position: absolute;
+    background: var(--rarity-shine);
+    clip-path: polygon(50% 0%, 53.5% 46.5%, 100% 50%, 53.5% 53.5%, 50% 100%, 46.5% 53.5%, 0% 50%, 46.5% 46.5%);
+    filter:
+      drop-shadow(0 0 1px var(--rarity-edge))
+      drop-shadow(0 0 5px var(--rarity-edge));
+    opacity: 0;
+    animation: rarity-twinkle 6.8s ease-in-out infinite;
+  }
+
+  /* No pop. The first pass scaled 0.35 → 1, which snaps; a jewel catching the
+     light changes brightness far more than it changes size. */
+  @keyframes rarity-twinkle {
+    0%, 100% { opacity: 0; scale: 0.72; }
+    7%       { opacity: 0.95; scale: 1; }
+    16%      { opacity: 0; scale: 0.8; }
+  }
+
+  /* One slow specular pass across the glaze, holding still for most of the
+     cycle so it reads as light moving over lacquer rather than as a loading
+     shimmer. Inset negatively on both axes so it enters and leaves off-card.
+
+     Broad and weak (a 12%-wide band at 0.55) on purpose — a narrow bright
+     streak is a plastic highlight; a wide soft one is a polished surface.
+
+     The band's strength is the element's `opacity` at the peak of the sweep,
+     not an alpha baked into the gradient — the animation already owns opacity
+     to fade the glint in and out, so putting the strength there keeps it in
+     one place and lets the gradient stay a plain two-stop use of the token. */
+  .rarity-shine {
+    position: absolute;
+    inset: -25% -60%;
+    background: linear-gradient(
+      104deg,
+      transparent 44%,
+      var(--rarity-shine) 50%,
+      transparent 56%
+    );
+    opacity: 0;
+    animation: rarity-shine-sweep 9s ease-in-out infinite;
+  }
+
+  @keyframes rarity-shine-sweep {
+    0%, 62%  { transform: translateX(-72%); opacity: 0; }
+    68%, 92% { opacity: 0.55; }
+    100%     { transform: translateX(72%); opacity: 0; }
+  }
+
+  /* The half-strength grain. Same 60 lines, same mask, half the opacity — a
+     rung below the full finish has to look like LESS OF the same object, never
+     like a coarser version of it. Thickening the spokes to make a tier read
+     louder is the rejected gacha pass; see the density note above.
+
+     UNUSED since the ladder came down to four tiers (constants/rarity.ts):
+     this was 優秀's, the rung that sat between 普通 and 稀有. Kept, with its
+     `layers.rays: 0.5` budget value, because it is the right treatment for a
+     rung inserted there later and re-deriving it would mean re-deriving the
+     paragraph above too. */
+  .rarity-rays-half {
+    opacity: 0.13;
+  }
+
+  /* 史詩 and above: a second specular, this one crawling along the bezel
+     rather than across the glaze. It was 傳說's alone until that tier merged
+     down into 史詩, and it moved with the items rather than being retired —
+     the rung directly below 神話 has to draw more than the middle of the
+     ladder does. 22s against the sweep's 9s, so the two never
+     travel together and the card never looks like it is loading. Same
+     philosophy as the grain's 90s turn — noticed to have moved, not caught
+     moving. */
+  .rarity-metal {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      118deg,
+      transparent 40%,
+      rgba(255, 255, 255, 0.85) 50%,
+      transparent 60%
+    );
+    opacity: 0;
+    animation: rarity-metal-flow 22s ease-in-out infinite;
+  }
+
+  @keyframes rarity-metal-flow {
+    0%, 70%  { transform: translateX(-60%); opacity: 0; }
+    80%, 90% { opacity: 0.32; }
+    100%     { transform: translateX(60%); opacity: 0; }
+  }
+
+  /* 神話 only: the one moving hue in the game, and half the reason this tier
+     is safely distinct from coral's 危險 despite now being a red itself — a
+     static swatch that close could be misread, a colour that drifts cannot.
+     (The other half is value: this red is a deep crimson, coral is a pale
+     salmon. See constants/rarity.ts.) 12s for a full there-and-back.
+
+     The rotation is NEGATIVE, and that is not a taste call. From the old
+     magenta base (~332°) turning +46° travelled toward red, which is where
+     this tier has now moved to; turning +46° from red (~357°) instead walks
+     the bezel straight through coral (~13°) and parks it on island-gold
+     (~40°), the 金幣 colour. So the drift was flipped to run the other way —
+     red → crimson → magenta, back across the swatch this tier used to be.
+
+     Scoped to `.rarity-bezel` and nothing else ON PURPOSE. `filter` applies to
+     an element and everything inside it, so putting this any higher up would
+     hue-rotate the animal standing on the plate (and, on a card, its name and
+     price too). The bezel is behind the plate, so only the ring shifts. */
+  .rarity-mythic .rarity-bezel {
+    animation: rarity-iris 12s linear infinite;
+  }
+
+  @keyframes rarity-iris {
+    0%, 100% { filter: hue-rotate(0deg); }
+    50%      { filter: hue-rotate(-46deg); }
+  }
+
+  /* The tier still has to be readable when motion is turned down, so the
+     field, the rays and the sparkles all stay — they just stop moving. Only
+     the sweep is dropped outright: a glint that never travels is a stray
+     diagonal band across the artwork. */
+  @media (prefers-reduced-motion: reduce) {
+    .rarity-rays { animation: none; }
+    .rarity-spark { animation: none; opacity: 0.9; scale: 1; }
+    .rarity-shine { display: none; }
+    /* Same rule for the two tier-specific passes: a travelling highlight that
+       cannot travel is just a diagonal band lying across the artwork, so the
+       bezel's crawl is dropped outright rather than frozen. The hue drift
+       stops on its own base colour, which is the swatch in rarity.ts. */
+    .rarity-metal { display: none; }
+    .rarity-mythic .rarity-bezel { animation: none; }
+    /* Card scale, same two calls: the frame's travelling highlight is dropped
+       outright (a sheen frozen mid-frame is a white smear lying across one
+       corner of the card), and the mat's hue drift stops on the tier's own
+       swatch. Everything static — the tinted paper, the pool, the engraving,
+       the mat and the double rule — stays, because that is what carries the
+       tier when nothing is allowed to move. */
+    .rarity-card::after { display: none; }
+    .rarity-card.rarity-mythic::before { animation: none; }
+  }
+
+  /* =====================================================================
+     稀有度揭曉 (RARITY REVEAL) — 史詩/神話 purchases only, the top two of the
+     four rungs.
+     =====================================================================
+     Structure and z-tier live in components/UI/RarityReveal.tsx; this is the
+     choreography. Deliberately the loudest thing in the game, and deliberately
+     unreachable by ~91% of the catalog: the quiet of every other purchase is
+     what this is spending. If buying a 600g budgie also flashed the screen,
+     this would mean nothing.
+
+     Runs on ModalOverlay's own scrim (so the fade-in vocabulary matches every
+     other modal) with the layers below on top of it.
+
+     ---------------------------------------------------------------------
+     THE TIMELINE. Every delay in this block is a row of it, and the one row
+     everything else is measured from is the SETTLE at 5500ms — the instant
+     the item stops turning and faces front. constants/rarityFx.ts exports
+     that number as REVEAL_SETTLE_MS and hangs the confetti, the haptics and
+     the shake off it; if you move `.rarity-reveal-spin`'s duration you must
+     move that constant with it or the celebration comes apart from the thing
+     it is celebrating.
+
+          0ms  screen dims, one short white flash — the 收束
+          0ms  the item begins turning in from far away, in silhouette, at a
+               fifth of its size, under a whoosh that slows with it
+        250ms  rays start bleeding in behind it
+      ~2750ms  it is still small (0.62) and still black — the swell that takes
+               it to full size is the second half of the track, not the first
+      ~3410ms  colour rises into the silhouette as it slows, and the whoosh
+               starts RETREATING — it ramps down from here and reaches
+               silence exactly on the settle, because a thing you can
+               already see does not need a sound telling you it is turning
+       5500ms  SETTLE. Everything blooms at once: flash, ground halo,
+               energy rings, the tier's gradient, confetti, haptics
+       5620ms  the item starts breathing (待機動作), and keeps at it
+       5750ms  name, then 類型, then the greeting, then the tags —
+               one every ~150ms, each on its own soft bounce
+       6800ms  「輕觸繼續」 appears and the overlay becomes tappable
+       9000ms  the reveal reports itself finished
+       9400ms  the layer has finished fading and is unmounted
+
+     The ARRIVAL is 5500ms of that, and it is the only part that has ever
+     changed: 1500 → 3000 → 4500 → 7500 → 5500. The first three moves were the
+     turn being asked to be more watchable; the last is the first CUT this
+     number has ever taken — 7.5s overshot, and 「音效可以短個兩秒」 took it back.
+     Everything after the settle keeps the gap from the settle it always had, so
+     the copy still lands on the same beats and the player still gets the same
+     ~3.5s to read it. The turn COUNT moves with it every time
+     (constants/rarityFx.ts) — changing the track's length at a fixed count
+     quietly changes the SPEED instead, which is never what was asked.
+
+     A reveal that runs over nine seconds has to be skippable, which is why
+     the hint at 6800ms exists — see RarityReveal.tsx on why it deliberately
+     does NOT appear before the copy has landed. */
+
+  /* The whole reveal's envelope, on ModalOverlay itself.
+
+     It exists because the reveal ends by UNMOUNTING: when the last frame has
+     played it calls back, the purchase dialog closes and this layer is removed
+     from the tree with it. Without an envelope the removal is a hard cut from a
+     darkened screen straight to the shop. Fading the layer out over the final
+     8% means everything is already invisible by the time it is unmounted, so
+     the cut has nothing to show.
+
+     Overriding ModalOverlay's motion-driven opacity is deliberate and legal:
+     CSS animations win over inline styles in the cascade. The first 8% here
+     performs the same fade-in the motion preset would have. */
+  .rarity-reveal-layer {
+    animation: rarity-reveal-layer 9.4s linear forwards;
+  }
+
+  /* Percentages, not seconds — so they are re-cut whenever the total changes.
+     These hold the same ABSOLUTE fade lengths the 5.4s version had (~205ms in,
+     ~375ms out); left at 1.8%/96.7% the shorter total would have shrunk both. */
+  @keyframes rarity-reveal-layer {
+    0%          { opacity: 0; }
+    2.2%, 96%   { opacity: 1; }
+    100%        { opacity: 0; }
+  }
+
+  /* The extra depth under the flash. background-COLOR, never the `background`
+     shorthand: a shorthand is not an interpolatable property, so animating it
+     in a keyframe silently does nothing at all and the screen never darkens.
+     Cost an hour the first time; it fails without an error anywhere. */
+  .rarity-reveal-dim {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(12, 9, 15, 0);
+    /* Fast: the black has to be fully down before the silhouette is big enough
+       to be looked at, or the shape resolves against a room that is still
+       fading. */
+    animation: rarity-reveal-dim 0.32s ease-out forwards;
+  }
+
+  /* Taken all the way to 0.95 — very nearly opaque — and that is doing two jobs.
+
+     **It buries the blue.** ModalOverlay paints `bg-island-navy/45`, and
+     island-navy is #264653: a dark BLUE. The reveal renders on one of those
+     scrims and the purchase dialog it covers is sitting on a second, so two
+     coats of translucent navy over a cream shop is what the screen actually
+     was during the spin — a blue wash, not a dark one. Nothing here can win
+     that in the cascade (a Tailwind utility out-ranks this file's layer
+     whatever the specificity), so it is beaten by opacity instead: at 0.95 the
+     navy contributes 5% of the pixel and is gone.
+
+     **And a silhouette is only a silhouette against something dark.** The
+     whole opening beat is a black shape turning in from nothing, which needs
+     a ground with no colour in it at all. Every earlier value — 0.5, then
+     0.62 — left enough of the room showing that the black shape read as an
+     icon which had failed to load. */
+  @keyframes rarity-reveal-dim {
+    from { background-color: rgba(12, 9, 15, 0); }
+    to   { background-color: rgba(12, 9, 15, 0.95); }
+  }
+
+  /* 光芒的圓心 — where every radial layer below is aimed.
+
+     `--reveal-focus` is a pixel offset from the middle of the screen to the middle of the ITEM,
+     measured and published by RarityReveal.tsx. It is negative: the stage is a column with the
+     item on top and its name, kind, greeting and tags underneath, and it is the whole COLUMN that
+     gets centred, so the item itself rides about half the copy's height above centre — ~110px on
+     a phone, and it shifts whenever a line wraps.
+
+     These layers each used to carry their own hand-picked percentage instead (the rays 50%, the
+     rings and the settle flash 44%, the gradient 46%), which aimed the light at a point BELOW the
+     thing it is meant to be coming off —「商品有點偏光芒中間的上方」. There is now one focal
+     point and it is measured, not guessed. **Do not give any of them a percentage of their own
+     again**; a layer that looks off is the focus being wrong for all of them.
+
+     The `0px` fallback is the first frame only, before the measurement lands — and the item's
+     ground light, its plate and its rim are inside the stage, so they were never affected by any
+     of this and still need no offset. */
+
+  /* 「背景切換成符合其稀有度的動態漸層」 — the tier's own colour welling up
+     behind the item at the settle, not at the start.
+
+     Held back deliberately: for the first 1.4s the screen is dark and neutral
+     so that the silhouette is the only thing being read, and the colour
+     arriving WITH the stop is what makes the stop feel like an event rather
+     than a background that was always there. The drift afterwards is 14s for a
+     single pass — slow enough to be felt rather than watched, which is the
+     same rule the 神話 bezel's hue is tuned by.
+
+     A square 200vmax wide and centred, NOT `inset: -20%`. It rotates, and a
+     rectangle that only overhangs the viewport a little brings its own corners
+     into shot as it turns — which showed up as hard diagonal seams cutting
+     across the screen. A square this size has no corner that can reach the
+     viewport at any angle. */
+  .rarity-reveal-backdrop {
+    position: absolute;
+    left: 50%;
+    top: calc(50% + var(--reveal-focus, 0px));
+    width: 200vmax;
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    opacity: 0;
+    background:
+      radial-gradient(closest-side, var(--rarity-field-core) 0%, transparent 32%),
+      conic-gradient(from 210deg,
+        transparent 0deg,
+        var(--rarity-edge) 90deg,
+        transparent 180deg,
+        var(--rarity-field-core) 280deg,
+        transparent 360deg);
+    animation:
+      rarity-reveal-backdrop 1s ease-out 5.35s forwards,
+      rarity-reveal-drift 14s linear 5.35s infinite;
+  }
+
+  /* Raised from 0.28 now that it sits on a near-black dim rather than on a
+     half-lit room. The same 0.28 that looked muddy over the old ground reads
+     as a third of nothing over this one. */
+  @keyframes rarity-reveal-backdrop {
+    from { opacity: 0; }
+    to   { opacity: 0.4; }
+  }
+
+  @keyframes rarity-reveal-drift {
+    from { rotate: 0deg; }
+    to   { rotate: 360deg; }
+  }
+
+  /* The white flash. Short and asymmetric — up in 12% of its life, down over
+     the rest — because a flash that fades IN is a lightbulb, not a flash. */
+  .rarity-reveal-flash {
+    position: absolute;
+    inset: 0;
+    background: #FFFFFF;
+    opacity: 0;
+    animation: rarity-reveal-flash 0.5s ease-out forwards;
+  }
+
+  @keyframes rarity-reveal-flash {
+    0%   { opacity: 0; }
+    12%  { opacity: 0.92; }
+    100% { opacity: 0; }
+  }
+
+  /* The second flash, on the settle. Softer than the opening one (0.55 against
+     0.92) and tinted with the tier rather than white, because the two are doing
+     different jobs: the first is a shutter closing on the shop, this one is
+     light coming OFF the thing that just stopped. A second full-strength white
+     flash here reads as the animation restarting. */
+  .rarity-reveal-burst {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(closest-side at 50% calc(50% + var(--reveal-focus, 0px)), #FFFFFF 0%, var(--rarity-field-core) 45%, transparent 78%);
+    opacity: 0;
+    animation: rarity-reveal-burst 0.55s ease-out 5.46s forwards;
+  }
+
+  @keyframes rarity-reveal-burst {
+    0%   { opacity: 0; transform: scale(0.6); }
+    18%  { opacity: 0.55; }
+    100% { opacity: 0; transform: scale(1.25); }
+  }
+
+  /* 能量環 — two rings pushed out of the item as it stops, the second a beat
+     behind the first so it reads as a pulse travelling outwards rather than as
+     one ring that got thicker. Sized in vmin so they clear the plinth on a
+     phone and still stay on screen on a desktop. */
+  .rarity-reveal-ring {
+    position: absolute;
+    left: 50%;
+    top: calc(50% + var(--reveal-focus, 0px));
+    width: 34vmin;
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    border-radius: 50%;
+    border: 2px solid var(--rarity-edge);
+    box-shadow: 0 0 24px var(--rarity-halo), inset 0 0 24px var(--rarity-halo);
+    opacity: 0;
+    animation: rarity-reveal-ring 0.95s cubic-bezier(0.1, 0.7, 0.2, 1) 5.48s forwards;
+  }
+
+  /* The second ring, 160ms behind the first — a settle-anchored delay like every
+     other one in this block, and it has to be re-derived with them. It was left
+     at 4.64s across the move to a 7.5s arrival, which fired it 2.8s BEFORE the
+     stop it is meant to be part of. */
+  .rarity-reveal-ring-2 {
+    animation-delay: 5.64s;
+    border-width: 1px;
+  }
+
+  @keyframes rarity-reveal-ring {
+    0%   { opacity: 0; scale: 0.25; }
+    20%  { opacity: 0.85; }
+    100% { opacity: 0; scale: 2.1; }
+  }
+
+  /* Light thrown off the item. Same repeating-conic construction as the card's
+     grain but coarser and much larger, because this one IS meant to read as a
+     burst rather than as a machined surface — the card is an object, this is
+     an event.
+
+     The mask stops the rays well inside the viewport (opaque at 15%, gone by
+     42%). Rays that reach the corners stop reading as light coming off the
+     item and start reading as fog over the whole page.
+
+     `rotate`/`scale` as individual properties, not `transform`: `translate`
+     is already carrying the centring, and the individual properties compose
+     with it instead of overwriting it. */
+  .rarity-reveal-rays {
+    position: absolute;
+    left: 50%;
+    top: calc(50% + var(--reveal-focus, 0px));
+    width: 190vmax;
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    background: repeating-conic-gradient(
+      from 0deg,
+      rgba(255, 255, 255, 0.85) 0deg 1.4deg,
+      transparent 1.4deg 7deg
+    );
+    -webkit-mask-image: radial-gradient(closest-side, transparent 3%, rgba(0, 0, 0, 0.9) 15%, transparent 42%);
+    mask-image: radial-gradient(closest-side, transparent 3%, rgba(0, 0, 0, 0.9) 15%, transparent 42%);
+    opacity: 0;
+    animation: rarity-reveal-rays 7.6s ease-out 0.25s forwards;
+  }
+
+  /* Two-stage, because the reveal has two moments instead of one. The rays
+     bleed in at a low 0.2 while the item is still turning — that is the 「柔和
+     放射光」 the spin happens inside, and it must stay under the silhouette
+     rather than competing with it — then flare to 0.42 exactly on the settle
+     and fall away over the rest. They keep turning throughout at a constant
+     rate, so the flare reads as the light getting brighter, not as it starting
+     over.
+
+     The flare's stop is (SETTLE − this animation's 250ms offset) / 7.6s =
+     69%, and it has to be RE-DERIVED every time the arrival changes length.
+     It was left at 35% across two of those and had drifted almost two seconds
+     early — the light was peaking over an item that was still turning, and was
+     already dimming by the time it landed. If you move the settle, do this
+     division again — and the two stops before it as well: they hold their own
+     ABSOLUTE lead on the flare (the rise is over ~1.1s in, the low plateau ends
+     ~0.5s before it), because they describe the light, not a fraction of a track. */
+  @keyframes rarity-reveal-rays {
+    0%    { opacity: 0; rotate: 0deg; scale: 0.4; }
+    11.4% { opacity: 0.2; }
+    62%   { opacity: 0.2; }
+    69%   { opacity: 0.42; scale: 0.86; }
+    100%  { opacity: 0; rotate: 30deg; scale: 1.1; }
+  }
+
+  /* The stage: everything that belongs to the item, and the 鏡頭推近.
+
+     The push-in is a scale on this wrapper rather than on the item itself, so
+     the copy underneath is carried in by the same move — a camera that pushes
+     in on the pet while its name sits at a fixed size is not a camera, it is
+     the pet getting bigger. It settles at 1 and stays: the shot arrives and
+     then holds, because everything after the settle is meant to be READ.
+
+     It carries a `perspective` too, but that one is NOT what the turn uses —
+     see `.rarity-reveal-pivot` below, which is the fix for why the turn spent
+     so long not looking like one. This value is kept because the push-in and
+     anything else 3D on this element's own children should share the depth. */
+  .rarity-reveal-stage {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    max-width: min(340px, 86vw);
+    perspective: 900px;
+    opacity: 0;
+    animation:
+      rarity-reveal-appear 0.3s ease-out forwards,
+      rarity-reveal-push 5.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  @keyframes rarity-reveal-appear {
+    to { opacity: 1; }
+  }
+
+  @keyframes rarity-reveal-push {
+    0%   { transform: scale(0.9); }
+    100% { transform: scale(1); }
+  }
+
+  /* The wrapper the turn actually hangs from, and the reason it now reads as a
+     turn at all.
+
+     `perspective` only applies to an element's DIRECT children. The stage has
+     carried `perspective: 900px` since the beginning, but the spinning element
+     is its GRANDCHILD — the item and its ground share a positioned wrapper —
+     and that wrapper, having no `transform-style: preserve-3d`, flattens
+     everything under it. So the perspective never reached the rotation: what
+     was on screen for every version of this reveal was a rotateY rendered
+     orthographically, which is not a spin, it is a horizontal SQUASH. Hence
+     「看不出來在轉」, and hence a turn count raised three times trying to fix a
+     problem that was never about speed.
+
+     760px rather than the stage's 900px: closer is more foreshortening, and
+     against a 248px plinth this is where the near edge visibly swings toward
+     the viewer — the frame stops being a rectangle that narrows and becomes a
+     trapezoid that turns — without going fish-eye. */
+  .rarity-reveal-pivot {
+    position: relative;
+    perspective: 760px;
+  }
+
+  /* The turn. 「輕快啟動 → 平順減速 → 正面停住」, with the bounce at the end.
+
+     ABOUT Y — 陀螺: the item stands upright and spins about its own vertical
+     axis, like a figurine on a turntable. Not `rotate`, which spins it in the
+     picture plane like a pinwheel; that was tried and rejected as 「像逆時針
+     或順時針」, the wrong motion entirely.
+
+     The known cost of Y on flat art is the edge-on frame: twice per revolution
+     a flat plane is one pixel wide and effectively gone. **Speed is what pays
+     for it.** At the slow end those blank moments read as the item blinking
+     out and returning bigger — which is what 「不是直接出現」 was complaining
+     about — but spun fast the same frames read as exactly what they are, a
+     solid thing turning edge-on. That is why the turn counts below are what
+     they are, and why lowering them without also shortening the track brings
+     the flicker back.
+
+     Two things beyond the axis make it read as a top rather than a squash:
+     the stage's `perspective: 900px` (a Y rotation with no vanishing point is
+     just a horizontal scale) and `transform-style: preserve-3d` here.
+
+     **How many turns is per-tier**, read from `--reveal-turns` (set inline by
+     RarityReveal off constants/rarityFx.ts): 史詩 turns six times and 神話
+     nine. (It was 6 / 7 / 9 while 傳說 sat between them.) It is the one part of
+     the choreography that grades, and it grades on the same principle as
+     everything else in that table — the tier is expressed by how much is
+     spent, not by a different colour of the same amount. Both settle at the
+     same instant, so a rarer item is not a longer wait; it is a faster whirl
+     slowing into the same stop.
+
+     More than one turn whatever the tier, because a single rotation at this
+     duration is slow enough to be watched all the way round, and what should
+     be a flourish becomes a lazy susan. That is doubly true now the track is
+     3s rather than 1.5s: at one turn it would be a full half-minute-per-
+     revolution crawl. The turn COUNTS were deliberately left alone when the
+     duration doubled — halving the angular speed is exactly what "let me see
+     it arrive" asks for, and it keeps the tier grading (3/4/5) intact.
+
+     Starting at 0.12 scale puts it far enough away that the turn is nearly
+     over before there is anything to see, so the detail arrives only once it
+     is almost still — which is the whole trick of the 「由小至大旋轉登場」. It
+     started at 0.26 and that was not small enough to read as arriving from a
+     distance; it read as a card that was already there and grew a bit.
+
+     The `var()` carries a fallback (3) because the whole `transform` is
+     dropped if the custom property fails to resolve — and a dropped transform
+     here means no scale either, so the item would simply be sitting at full
+     size from frame one rather than merely not spinning.
+
+     Per-keyframe timing functions, because the brief asks for three different
+     motions in one gesture and a single curve cannot express them:
+
+       0 → 73%   cubic-bezier(0.06, 0.72, 0.24, 1) — the quick launch and the
+                 long smooth decay out of it. Nearly all the turn is spent here.
+       73 → 88%  the overshoot swinging back past front, easing IN so it reads
+                 as weight carrying it through rather than as a second push.
+       88 → 100% the settle onto front, easing out to nothing.
+
+     The overshoot is deliberately asymmetric — +26deg past front, then -8deg
+     back — because a symmetric bounce reads as a spring, and this is a thing
+     with mass coming to rest. About Y these angles cost only a little
+     foreshortening; the in-plane experiment had to run at half of them,
+     because the same numbers there leave the item visibly crooked rather than
+     carrying momentum. Opacity is a SEPARATE animation on the stage
+     above rather than a keyframe here: mixing a 0.3s fade into a 4.5s
+     transform track means the fade inherits the transform's easing and the
+     item ghosts in over half a second.
+
+     The keyframe stops are PERCENTAGES, so lengthening the track stretched the
+     whole gesture — launch, decay, overshoot and settle — in proportion. That
+     is the intent: the ask was for the arrival to take longer, not for a fast
+     spin followed by a pause. */
+  .rarity-reveal-spin {
+    transform-style: preserve-3d;
+    animation: rarity-reveal-spin 5.5s forwards;
+  }
+
+  /* ROTATION ONLY. The scale that used to share these keyframes now lives on
+     `.rarity-reveal-grow`, a wrapper inside this element, and the split is the
+     whole reason the growth reads: the two moves want OPPOSITE curves. The turn
+     is front-loaded (a hard launch, then a long decay into the stop); the swell
+     has to be back-loaded (small and far away for most of the track, then a
+     rush toward the viewer). One keyframe list means one timing function, and
+     the turn's curve won — which is why the item used to reach nearly full size
+     in the first fifth of the arrival and then simply sit there rotating. Two
+     elements, two curves, one composed transform. */
+  @keyframes rarity-reveal-spin {
+    0% {
+      transform: rotateY(calc(var(--reveal-turns, 5) * -360deg));
+      animation-timing-function: cubic-bezier(0.06, 0.72, 0.24, 1);
+    }
+    /* 73%: it was 74% originally, 80% while the track was 7.5s, and is back to
+       about 74% now the track is 5.5s. These stops are percentages, so the tail
+       after the overshoot moves with the track — which is exactly what must NOT
+       happen here. The bounce wants to stay about a second and a half whatever
+       the track is (73% of 5.5s leaves 1.49s, as 80% of 7.5s left 1.5s); every
+       second added to or taken from the arrival belongs to the approach, not to
+       an item that has already got here rocking into place for longer. */
+    73% {
+      transform: rotateY(26deg);
+      animation-timing-function: cubic-bezier(0.42, 0, 0.3, 1);
+    }
+    88% {
+      transform: rotateY(-8deg);
+      animation-timing-function: ease-out;
+    }
+    100% {
+      transform: rotateY(0deg);
+    }
+  }
+
+  /* 由小變大 — the approach, on its own element so it can have its own curve.
+
+     0.22 → 1.16, a five-fold swell, and WHERE it is spent matters more than how
+     big the ratio is. At the halfway mark the item is still only about half its
+     final size, so the growth is something the player watches HAPPEN rather
+     than something that is over before they have focused on it. That is what
+     「由小變大更明顯」 asks for: not a smaller start, but a change that is still
+     visibly changing all the way to the stop.
+
+     The opening value has been up and down and this is the settled reasoning:
+
+       0.12  the original, on a track where growth finished in the first fifth.
+       0.08  chasing a bigger ratio. 「不要小到使用者分不出來」 — at 0.08 the
+             132px icon is an 11px smudge, and a smudge has no shape to
+             recognise, no rotation you can see and nothing to grow FROM. The
+             ratio looked better in the keyframes and the animation looked worse.
+       0.22  now. ~29px: small enough to read as far away, big enough that the
+             silhouette is a bird and its turn is legible from the first second.
+
+     The lesson is that the opening frame is not the drama, it is the PREMISE —
+     it has to establish what is arriving. Distance is sold by the rim-light and
+     the dark around it, not by making the thing too small to identify. */
+
+     The peak (1.16) and the two frames after it are the same bounce the turn
+     makes, at the same stops: 73% / 88% / 100% here and there. They must stay
+     in step. The overshoot toward the viewer and the overshoot past front are
+     one gesture, and drift between them reads as a wobble. */
+  .rarity-reveal-grow {
+    animation: rarity-reveal-grow 5.5s forwards;
+  }
+
+  @keyframes rarity-reveal-grow {
+    0% {
+      transform: scale(0.22);
+      /* Slow to leave on purpose: a distant thing gets closer slowly, and then
+         all at once. */
+      animation-timing-function: cubic-bezier(0.5, 0, 0.85, 0.45);
+    }
+    50% {
+      transform: scale(0.62);
+      animation-timing-function: cubic-bezier(0.55, 0, 0.3, 1);
+    }
+    73% {
+      transform: scale(1.16);
+      animation-timing-function: cubic-bezier(0.42, 0, 0.3, 1);
+    }
+    88% {
+      transform: scale(0.97);
+      animation-timing-function: ease-out;
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  /* The plinth is the shop card's own well at presentation size, carrying the
+     same `.rarity-*` layers — so what the player is shown is literally the
+     card they were looking at, enlarged, and not a second piece of art that
+     happens to be the same colour.
+
+     The border starts transparent and arrives with the colour: during the
+     silhouette phase a lit tier-coloured frame around a black shape gives the
+     shape away before it is meant to be given away. */
+  .rarity-reveal-plinth {
+    position: relative;
+    overflow: hidden;
+    border-radius: 22px;
+    border: 2px solid transparent;
+    animation:
+      rarity-reveal-edge 5.5s ease-out forwards,
+      rarity-reveal-idle 3.4s ease-in-out 5.62s infinite;
+  }
+
+  @keyframes rarity-reveal-edge {
+    0%, 62% { border-color: transparent; }
+    100%    { border-color: var(--rarity-edge); }
+  }
+
+  /* 待機動作 — the breathing, once it has arrived. ±5px and a 1.5% swell over
+     3.4s, which is under the threshold at which motion pulls the eye: the
+     player is reading the copy by now and this is meant to keep the thing
+     alive in the corner of their vision, not to take their attention back.
+     Species-specific idles (a wag, a blink) belong to the 3D companion in
+     Three/Pets.tsx — this plinth holds a flat SVG icon and cannot pose it, so
+     what it does is breathe. */
+  @keyframes rarity-reveal-idle {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50%      { transform: translateY(-5px) scale(1.015); }
+  }
+
+  /* The tier's plate, held back while the silhouette reads.
+
+     This is the aura wrapper and not the plinth itself, which matters: the
+     icon inside must NOT be faded with it (a translucent silhouette is a
+     smudge), so the darkening is applied to the layer behind the icon rather
+     than to their common parent. */
+  .rarity-reveal-plate {
+    position: absolute;
+    inset: 0;
+    animation: rarity-reveal-plate 5.5s ease-out forwards;
+  }
+
+  /* Fully OFF for the first 58%, not the 0.07 it used to hold. A plate at 7%
+     is still a faint rectangle on screen, and a faint rectangle behind a black
+     shape is a card with something on it — which is precisely what these
+     opening frames must not be. Nothing is on screen but the shape. */
+  @keyframes rarity-reveal-plate {
+    0%, 58% { opacity: 0; }
+    100%    { opacity: 1; }
+  }
+
+  /* 剪影與輪廓光 → the item itself.
+
+     `brightness(0)` crushes the icon to a flat black shape whatever its own
+     colours are, and the `drop-shadow` after it in the filter chain is the rim
+     light — filters apply in order, so the glow is drawn from the already-black
+     shape and comes out in the tier's colour rather than in the pet's.
+
+     It stays black for the first 62% — the whole of the fast part of the turn —
+     and resolves over the next 31%, landing at 5115ms against a settle at
+     5500ms. Both ends of that are deliberate. It holds because the black
+     spinning shape IS the beat, and an item that starts colouring up at a
+     third of the way through is a coloured item for most of its entrance. And
+     it finishes BEFORE the bounce, because the point of the bounce is that you
+     are watching the thing you now own come to rest — a silhouette still
+     resolving at the settle puts the reveal's two biggest moments in the same
+     instant, fighting. */
+  .rarity-reveal-silhouette {
+    position: relative;
+    animation: rarity-reveal-silhouette 5.5s ease-out forwards;
+  }
+
+  @keyframes rarity-reveal-silhouette {
+    0% {
+      filter: brightness(0) drop-shadow(0 0 8px var(--rarity-edge));
+    }
+    62% {
+      filter: brightness(0) drop-shadow(0 0 26px var(--rarity-shine));
+    }
+    93%, 100% {
+      filter: brightness(1) drop-shadow(0 4px 10px rgba(38, 70, 83, 0.25));
+    }
+  }
+
+  /* 腳下的光環. Two layers doing two jobs: `pool` is the soft pad of light the
+     item comes to rest ON and it stays for the rest of the reveal, `halo` is
+     the single ring that spreads out of the impact and is gone in a second.
+     Flattened hard (aspect 4.5:1) so both read as light lying on a floor
+     rather than as a circle floating behind the item. */
+  .rarity-reveal-ground {
+    position: absolute;
+    left: 50%;
+    bottom: -14px;
+    width: 240px;
+    aspect-ratio: 4.5;
+    translate: -50% 0;
+    pointer-events: none;
+  }
+
+  .rarity-reveal-pool {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, var(--rarity-field-core) 0%, var(--rarity-halo) 45%, transparent 75%);
+    opacity: 0;
+    animation: rarity-reveal-pool 0.7s ease-out 5.42s forwards;
+  }
+
+  @keyframes rarity-reveal-pool {
+    from { opacity: 0; scale: 0.5 1; }
+    to   { opacity: 0.7; scale: 1 1; }
+  }
+
+  /* Drawn as a soft band in a gradient rather than as a `border`, which is what
+     it was first. A 2px solid ring flattened to this aspect is a crisp white
+     ellipse with a hard edge on both sides, and a hard edge is a physical rim —
+     it read as a plastic hoop the pet was standing inside rather than as light
+     spreading across a floor. A gradient band has no edge to give it away, and
+     the blur takes the last of it. */
+  .rarity-reveal-halo {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(closest-side,
+      transparent 52%,
+      var(--rarity-shine) 72%,
+      var(--rarity-field-core) 84%,
+      transparent 96%);
+    filter: blur(3px);
+    opacity: 0;
+    animation: rarity-reveal-halo 1.2s cubic-bezier(0.1, 0.7, 0.2, 1) 5.46s forwards;
+  }
+
+  @keyframes rarity-reveal-halo {
+    0%   { opacity: 0; scale: 0.2 1; }
+    18%  { opacity: 0.8; }
+    100% { opacity: 0; scale: 1.9 1.4; }
+  }
+
+  /* The copy, one line at a time.
+
+     Each line carries the same 0.52s bounce and differs only in its delay,
+     which RarityReveal sets inline — the stagger is data (which line is third)
+     and not four near-identical rules. `backwards` is what holds a line
+     invisible during its delay; without it every line is fully drawn at frame
+     one and then jumps.
+
+     The overshoot in the curve is small (1.12) and the travel is 12px. This is
+     the calm end of the reveal: the fireworks have gone off and what is left
+     is meant to be readable. */
+  .rarity-reveal-line {
+    animation: rarity-reveal-line 0.52s cubic-bezier(0.2, 0.9, 0.3, 1.12) backwards;
+  }
+
+  @keyframes rarity-reveal-line {
+    0%   { opacity: 0; transform: translateY(12px) scale(0.94); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* 「輕觸繼續」. Fades in only after the last tag has landed — offered earlier
+     it would be an invitation to skip the thing the player just paid for, and
+     a reveal nobody watches once is a reveal that should not have been built.
+     From here the overlay accepts a tap; see RarityReveal.tsx. */
+  .rarity-reveal-hint {
+    /* `both`, not `backwards`: the end value (0.55) is not the element's own
+       opacity, so it has to be held after the animation finishes as well as
+       before it starts. */
+    animation: rarity-reveal-hint 0.6s ease-out 6.8s both;
+  }
+
+  @keyframes rarity-reveal-hint {
+    from { opacity: 0; }
+    to   { opacity: 0.55; }
+  }
+
+  /* 神話 only: ±4px for two cycles. Small on purpose — a shake big enough to
+     be described as a shake is a bug report about the page jumping. */
+  .rarity-shake {
+    animation: rarity-shake 0.28s cubic-bezier(0.36, 0.07, 0.19, 0.97) 2;
+  }
+
+  /* Every frame carries `scale(1.015)` alongside its offset, and that is not
+     part of the motion — it is what keeps the shake from showing the wall
+     behind the app. The room is a full-viewport layer over a body painted
+     `bg-sky-500`, so sliding it 4px left uncovers a 4px strip of hard blue
+     down the edge for the length of the shake. Overscaling by 1.5% (≈12px on a
+     phone, more on a desktop) means the layer always overfills the viewport by
+     more than the largest offset, so there is nothing to uncover. The scale is
+     held CONSTANT across the keyframes so it reads as nothing at all — a pulse
+     in it would be a zoom, and this is a knock. */
+  @keyframes rarity-shake {
+    0%, 100% { transform: translate(0, 0) scale(1.015); }
+    20%      { transform: translate(-4px, 2px) scale(1.015); }
+    40%      { transform: translate(4px, -2px) scale(1.015); }
+    60%      { transform: translate(-3px, -2px) scale(1.015); }
+    80%      { transform: translate(3px, 2px) scale(1.015); }
+  }
+
+  /* Reduced motion: the reveal still HAPPENS — it is the feedback for a
+     purchase and silently skipping it would read as the buy having failed —
+     but nothing travels, nothing spins and nothing flashes.
+
+     What survives is the STRUCTURE: the screen still dims, the item still
+     arrives in the middle, the copy still appears in order, and the tier's
+     gradient is still there (held still). A player who has asked for less
+     motion gets the same information in the same order, which is the whole
+     point — the reveal's job is to introduce a companion, and only the
+     flourish around that job is motion.
+
+     The spin is the one that MUST be cancelled rather than softened: three
+     full rotations is exactly the vestibular trigger this media query exists
+     for. It is replaced by a plain fade, and the silhouette resolves in place
+     without the rim-light pulse.
+
+     Every duration and delay below is unchanged, so the copy still lands on
+     the same beats and RarityReveal's completion callback still fires when it
+     always did. */
+  @media (prefers-reduced-motion: reduce) {
+    .rarity-reveal-flash,
+    .rarity-reveal-burst,
+    .rarity-reveal-rays { animation: none; opacity: 0.22; }
+    .rarity-reveal-ring { animation: none; opacity: 0; }
+    .rarity-reveal-backdrop { animation: rarity-reveal-backdrop 1s ease-out 5.35s forwards; }
+    .rarity-reveal-stage { animation: rarity-reveal-appear 0.3s ease-out forwards; }
+    /* Both halves of the arrival go: no turn, and no rush toward the viewer
+       either — a five-fold swell is as vestibular as the rotation is. */
+    .rarity-reveal-spin { animation: none; }
+    .rarity-reveal-grow { animation: none; }
+    .rarity-reveal-plinth { animation: rarity-reveal-edge 5.05s ease-out forwards; }
+    .rarity-reveal-silhouette { animation: rarity-reveal-unveil 5.25s ease-out forwards; }
+    .rarity-reveal-halo { animation: none; opacity: 0; }
+    .rarity-reveal-line { animation-name: rarity-reveal-unveil; }
+    .rarity-shake { animation: none; }
+  }
+
+  /* The stand-in for anything that would otherwise travel. Also the
+     reduced-motion form of a copy line, which is why it ends at opacity 1
+     rather than at a held value. */
+  @keyframes rarity-reveal-unveil {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  .confirm-buy-btn {
+    @apply w-full py-4 rounded-2xl font-black text-white transition-all text-base shadow-[0_10px_24px_rgba(42,157,143,0.35)] flex items-center justify-center gap-2 active:scale-[0.98];
+    background: linear-gradient(135deg, var(--color-island-teal) 0%, var(--color-island-teal-dark) 100%);
+  }
+
+  /* Floor Previews */
+  .floor-oak-preview {
+    background:
+      linear-gradient(90deg, #78350f 1px, transparent 1px) 0 0 / 40px 100%,
+      linear-gradient(#451a03 1px, transparent 1px) 0 0 / 100% 10px,
+      #78350f;
+    background-blend-mode: overlay;
+  }
+
+  .floor-tile-preview {
+    background-image:
+      linear-gradient(90deg, #cbd5e1 1px, transparent 1px),
+      linear-gradient(#cbd5e1 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-color: #f8fafc;
+  }
+
+  .floor-concrete-preview {
+    background-color: #475569;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(0,0,0,0.1) 1%, transparent 0),
+      radial-gradient(circle at 70% 80%, rgba(255,255,255,0.05) 1%, transparent 0);
+    background-size: 40px 40px;
+  }
+
+  .floor-pattern-preview {
+    background-color: #334155;
+    background-image:
+      linear-gradient(45deg, #475569 25%, transparent 25%),
+      linear-gradient(-45deg, #475569 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #475569 75%),
+      linear-gradient(-45deg, transparent 75%, #475569 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+  }
+
+  .floor-marble-preview {
+    background:
+      linear-gradient(135deg, rgba(0,0,0,0.02) 25%, transparent 25%) -50px 0,
+      linear-gradient(225deg, rgba(0,0,0,0.02) 25%, transparent 25%) -50px 0,
+      linear-gradient(315deg, rgba(0,0,0,0.02) 25%, transparent 25%),
+      linear-gradient(45deg, rgba(0,0,0,0.02) 25%, transparent 25%);
+    background-size: 100px 100px;
+    background-color: #f1f5f9;
+  }
+}
+
+
+@layer components {
+  /* =======================================================================
+     每日登入獎勵 — the claim celebration (components/UI/DailyLoginPanel.tsx)
+     =======================================================================
+     One second, entirely inside the card that was just claimed, and quiet on
+     purpose: the loud moment in this game is a 神話 purchase reveal, and a
+     reward the player collects every day must not spend anything like the
+     same amount. Nothing flashes, nothing shakes, nothing leaves the card.
+
+     Four parts on one clock — the card lifts and settles, a few coins drift
+     out, the amount floats up, and the tick drops into place. */
+
+  /* The lift. Up 6px, then a soft settle — a card acknowledging a tap, not a
+     card jumping. */
+  .daily-claim-pop {
+    animation: daily-claim-pop 0.62s cubic-bezier(0.22, 1, 0.28, 1);
+  }
+
+  @keyframes daily-claim-pop {
+    0%   { transform: translateY(0) scale(1); }
+    32%  { transform: translateY(-6px) scale(1.035); }
+    100% { transform: translateY(0) scale(1); }
+  }
+
+  /* The coins. Six of them, fanned by index (`--i` is set per element) so they
+     leave along different paths without six sets of keyframes — the same trick
+     the reveal's rings use for their offset. They start behind the numbers and
+     never travel outside the card's own footprint. */
+  .daily-claim-coin {
+    position: absolute;
+    left: 50%;
+    top: 40%;
+    pointer-events: none;
+    opacity: 0;
+    /* -35deg to +35deg across the six, so the fan opens upward. */
+    --angle: calc((var(--i) - 2.5) * 14deg);
+    animation: daily-claim-coin 0.9s ease-out forwards;
+    animation-delay: calc(var(--i) * 28ms);
+  }
+
+  @keyframes daily-claim-coin {
+    0%   { opacity: 0; transform: translate(-50%, -50%) rotate(var(--angle)) translateY(0) scale(0.6); }
+    18%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-46px) scale(1); }
+  }
+
+  /* The amount, floating off the card. Gold, heavy, and gone before the player
+     has to decide whether to read it twice. */
+  .daily-claim-float {
+    position: absolute;
+    left: 50%;
+    top: 8%;
+    translate: -50% 0;
+    pointer-events: none;
+    font-weight: 900;
+    font-size: 1.05rem;
+    color: #C98A24;
+    text-shadow: 0 2px 8px rgba(255, 255, 255, 0.9);
+    opacity: 0;
+    animation: daily-claim-float 1s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+  }
+
+  @keyframes daily-claim-float {
+    0%   { opacity: 0; transform: translateY(4px) scale(0.9); }
+    22%  { opacity: 1; transform: translateY(-8px) scale(1); }
+    72%  { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-34px) scale(1); }
+  }
+
+  /* The tick, dropping in. Overshoots by a hair on the way down so it lands
+     rather than appears. */
+  .daily-claim-check {
+    animation: daily-claim-check 0.5s cubic-bezier(0.2, 1.5, 0.4, 1) 0.28s backwards;
+  }
+
+  @keyframes daily-claim-check {
+    0%   { opacity: 0; transform: translateY(-9px) scale(0.5); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* 金幣入袋 — the coins travelling from the claimed card to the wallet chip.
+     Positions come from the component, which measures both ends at claim time
+     (see useCoinFlight); everything here is the motion between them.
+
+     `--x`/`--y` are where the coin starts in the board's own coordinates and
+     `--dx`/`--dy` the vector to the wallet. Keeping the delta separate from the
+     origin is what lets one keyframe serve a coin flying up-right on a desktop
+     and one flying almost straight up on a phone.
+
+     The 34% waypoint is a LIFT, not a curve for its own sake: coins that travel
+     in a straight line read as sliding, and this is meant to read as thrown. It
+     is applied as a fraction of the trip rather than a fixed offset so a short
+     hop on a narrow screen arcs proportionally instead of looping. */
+  .daily-coin-fly {
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: none;
+    z-index: 2;
+    opacity: 0;
+    animation: daily-coin-fly 0.64s cubic-bezier(0.36, 0.02, 0.2, 1) forwards;
+    animation-delay: calc(var(--i) * 55ms);
+  }
+
+  @keyframes daily-coin-fly {
+    0% {
+      opacity: 0;
+      transform: translate(var(--x), var(--y)) scale(0.45);
+    }
+    14% {
+      opacity: 1;
+      transform: translate(var(--x), calc(var(--y) - 10px)) scale(1.08);
+    }
+    34% {
+      transform:
+        translate(calc(var(--x) + var(--dx) * 0.34), calc(var(--y) + var(--dy) * 0.34 - 22px))
+        scale(1);
+    }
+    88% { opacity: 1; }
+    /* Lands SMALL. A coin that arrives full size sits on top of the wallet as a
+       coin; shrinking into it is what reads as going in. */
+    100% {
+      opacity: 0;
+      transform: translate(calc(var(--x) + var(--dx)), calc(var(--y) + var(--dy))) scale(0.3);
+    }
+  }
+
+  /* The wallet taking the money. One short swell with the gold ring flashing
+     around it — the counter is already ticking up on its own (useCountUp), and
+     this is only what tells the eye WHERE to look while it does. */
+  .daily-wallet-hit {
+    animation: daily-wallet-hit 0.42s cubic-bezier(0.22, 1.4, 0.36, 1);
+  }
+
+  @keyframes daily-wallet-hit {
+    0%   { transform: scale(1); filter: drop-shadow(0 0 0 rgba(232, 170, 62, 0)); }
+    38%  { transform: scale(1.14); filter: drop-shadow(0 0 12px rgba(232, 170, 62, 0.75)); }
+    100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(232, 170, 62, 0)); }
+  }
+
+  /* 本輪大獎's halo. A single soft radial behind the card's content, sized to
+     stay inside the card — light coming off the prize, not a second card. */
+  .daily-grand-glow {
+    position: absolute;
+    inset: -14%;
+    border-radius: inherit;
+    pointer-events: none;
+    background: radial-gradient(closest-side, rgba(243, 197, 102, 0.42), transparent 72%);
+  }
+
+  /* Reduced motion: the claim still REPORTS itself — the tick appears, the
+     amount is readable, the balance still updates — but nothing travels. A
+     silent claim would read as the button having failed. */
+  @media (prefers-reduced-motion: reduce) {
+    .daily-claim-pop,
+    .daily-claim-check {
+      animation: none;
+    }
+
+    .daily-claim-coin {
+      display: none;
+    }
+
+    /* The flight is travel by definition, so it does not happen. The wallet
+       still flashes: with the coins gone it is the only thing left that says
+       the money went THERE, and a flash is not motion. */
+    .daily-coin-fly {
+      display: none;
+    }
+
+    .daily-wallet-hit {
+      animation: daily-wallet-hit-still 0.42s linear;
+    }
+
+    @keyframes daily-wallet-hit-still {
+      0%, 100% { filter: drop-shadow(0 0 0 rgba(232, 170, 62, 0)); }
+      38%      { filter: drop-shadow(0 0 12px rgba(232, 170, 62, 0.75)); }
+    }
+
+    .daily-claim-float {
+      animation: daily-claim-float-still 1s linear forwards;
+    }
+
+    @keyframes daily-claim-float-still {
+      0%, 80% { opacity: 1; transform: translateY(-10px); }
+      100%    { opacity: 0; transform: translateY(-10px); }
+    }
+  }
+}
+
+
+@layer components {
+  /* =======================================================================
+     每日登入 領取揭曉 — the full-screen claim moment
+     (components/UI/DailyClaimReveal.tsx)
+     =======================================================================
+     The purchase reveal's vocabulary played on gold, at a third of its
+     length. `.rarity-reveal-*` above is the model for every layer here and
+     the reasoning written over each of those rules applies to its twin — the
+     near-opaque dim, the flash that fades OUT rather than in, the rings as a
+     pulse rather than a thicker ring, the rays masked well inside the
+     viewport. What differs is the clock: everything blooms at 900ms rather
+     than 4500ms, and the arrival is over in well under two seconds.
+
+     Not shared with those rules, deliberately. They are graded by 稀有度 and
+     read their colours from `--rarity-*` custom properties set per tier; this
+     one is always gold and always the same, and folding it in would mean a
+     tier variable for "the currency" plus a second timeline inside keyframes
+     that already carry one. Two short timelines beat one that branches.
+
+     THE TIMELINE (ms from the start; REVEAL_SETTLE_MS is 900):
+       0     the screen drops to dark, rays bleed in
+       0-900 the coin turns in from far away, decelerating
+       900   THE STOP — flash, bloom, three rings, sparks, confetti, sound,
+             haptic, 大獎's screen shake, and the label
+       1010  the amount slams in
+       1120  金幣已入袋
+       1300  a tap is accepted and 結束 appears
+       ...   the stage HOLDS here — the coin breathes, the amount stays up —
+             until the player presses 結束 or taps the backdrop
+       +280  faded out; the board takes over, pays into the wallet, and the
+             每日登入獎勵 panel closes itself behind it */
+
+  /* The whole layer's fade, overriding ModalOverlay's motion-driven opacity —
+     legal, and for the same reason `.rarity-reveal-layer` does it: a CSS
+     animation wins over an inline style.
+
+     Fades IN and then holds. It used to be one 3.15s animation that faded the
+     layer back out at the end, which is what made the reveal dismiss itself;
+     the moment now ends when the player presses 結束 (DailyClaimReveal.tsx),
+     and `.is-exiting` is that press. Two animations rather than one so the
+     hold has no duration to run out of. */
+  .daily-reveal-layer {
+    animation: daily-reveal-layer-in 0.22s linear both;
+  }
+
+  .daily-reveal-layer.is-exiting {
+    animation: daily-reveal-layer-out 0.28s linear forwards;
+  }
+
+  @keyframes daily-reveal-layer-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  @keyframes daily-reveal-layer-out {
+    from { opacity: 1; }
+    to   { opacity: 0; }
+  }
+
+  /* The dark. background-COLOR and never the `background` shorthand — a
+     shorthand is not interpolatable and animating it in a keyframe silently
+     does nothing (see `.rarity-reveal-dim`, where that cost an hour).
+
+     Warmer and one notch lighter than the purchase reveal's near-black: there
+     is no silhouette to resolve here, the coin is legible from the first
+     frame, and 0.9 of a brown-black keeps the moment reading as lamplight on
+     metal rather than as the lights going out. */
+  .daily-reveal-dim {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(14, 10, 8, 0);
+    animation: daily-reveal-dim 0.28s ease-out forwards;
+  }
+
+  @keyframes daily-reveal-dim {
+    from { background-color: rgba(14, 10, 8, 0); }
+    to   { background-color: rgba(14, 10, 8, 0.9); }
+  }
+
+  /* Light thrown off the shard. Same repeating-conic construction as the
+     purchase reveal's rays, and masked so they die well inside
+     the viewport — rays that reach the corners stop reading as light off the
+     coin and start reading as fog over the page.
+
+     Two-stage on purpose: a low bleed while the coin is still turning (this
+     is the space it turns INSIDE, and it must stay under the coin rather than
+     compete with it), then a flare exactly on the stop at 31% of the span. */
+  .daily-reveal-rays {
+    position: absolute;
+    left: 50%;
+    top: 42%;
+    width: 190vmax;
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    background: repeating-conic-gradient(
+      from 0deg,
+      rgba(198, 237, 229, 0.9) 0deg 1.6deg,
+      transparent 1.6deg 8deg
+    );
+    -webkit-mask-image: radial-gradient(closest-side, transparent 3%, rgba(0, 0, 0, 0.9) 14%, transparent 40%);
+    mask-image: radial-gradient(closest-side, transparent 3%, rgba(0, 0, 0, 0.9) 14%, transparent 40%);
+    opacity: 0;
+    animation: daily-reveal-rays 2.6s ease-out 0.1s forwards;
+  }
+
+  @keyframes daily-reveal-rays {
+    0%   { opacity: 0; rotate: 0deg; scale: 0.4; }
+    16%  { opacity: 0.16; }
+    28%  { opacity: 0.18; scale: 0.82; }
+    31%  { opacity: 0.46; scale: 0.94; }
+    100% { opacity: 0; rotate: 26deg; scale: 1.16; }
+  }
+
+  /* The flash, on the stop. Up in a tenth of its life and down over the rest,
+     because a flash that fades IN is a lightbulb. */
+  .daily-reveal-flash {
+    position: absolute;
+    inset: 0;
+    background: #FFFFFF;
+    opacity: 0;
+    animation: daily-reveal-flash 0.45s ease-out 0.9s both;
+  }
+
+  @keyframes daily-reveal-flash {
+    0%   { opacity: 0; }
+    10%  { opacity: 0.85; }
+    100% { opacity: 0; }
+  }
+
+  /* The bloom under it: tinted rather than white, because the two are doing
+     different jobs — the flash is the shutter, this is light coming OFF the
+     shard that just landed.
+
+     Teal, not gold. Every colour in this reveal follows the CURRENCY it is
+     celebrating, and the daily round pays 碎片 (see DailyClaimReveal.tsx and
+     constants/dailyLogin.ts). island-gold stays reserved for 金幣. */
+  .daily-reveal-burst {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(closest-side at 50% 42%, #FFFFFF 0%, #7FCFC3 42%, rgba(42, 157, 143, 0) 76%);
+    opacity: 0;
+    animation: daily-reveal-burst 0.6s ease-out 0.9s both;
+  }
+
+  @keyframes daily-reveal-burst {
+    0%   { opacity: 0; transform: scale(0.55); }
+    18%  { opacity: 0.6; }
+    100% { opacity: 0; transform: scale(1.35); }
+  }
+
+  /* 能量環 — three, each a beat behind the last, so it reads as a pulse
+     travelling outwards rather than as one ring that got thicker. Three
+     rather than the purchase reveal's two: this is the one place the daily
+     claim is allowed to be the louder of the pair, and rings are cheap.
+     Sized in vmin so they clear the coin on a phone and stay on screen on a
+     desktop. */
+  .daily-reveal-ring {
+    position: absolute;
+    left: 50%;
+    top: 42%;
+    width: 30vmin;
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    border-radius: 50%;
+    border: 2px solid #7FCFC3;
+    box-shadow: 0 0 26px rgba(127, 207, 195, 0.55), inset 0 0 26px rgba(127, 207, 195, 0.45);
+    opacity: 0;
+    animation: daily-reveal-ring 0.9s cubic-bezier(0.1, 0.7, 0.2, 1) 0.92s forwards;
+  }
+
+  .daily-reveal-ring-2 {
+    animation-delay: 1.06s;
+    border-width: 1px;
+  }
+
+  .daily-reveal-ring-3 {
+    animation-delay: 1.2s;
+    border-width: 1px;
+    border-color: rgba(234, 251, 247, 0.75);
+  }
+
+  @keyframes daily-reveal-ring {
+    0%   { opacity: 0; scale: 0.22; }
+    20%  { opacity: 0.9; }
+    100% { opacity: 0; scale: 2.3; }
+  }
+
+  /* The stage: everything that belongs to the coin and its copy.
+
+     `perspective` is what makes the turn below a turn — the coin rotates
+     about its own vertical axis, and without a vanishing point a Y rotation
+     on a flat element is not a rotation at all, it is a horizontal squash.
+     900px matches the purchase reveal's, and against a 180px coin it is close
+     enough that the near edge visibly swings toward the viewer. */
+  .daily-reveal-stage {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.4rem;
+    perspective: 900px;
+  }
+
+  /* The pool of light the coin lands in, behind everything it lights. */
+  .daily-reveal-glow {
+    position: absolute;
+    width: 460px;
+    max-width: 92vw;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    pointer-events: none;
+    background: radial-gradient(closest-side, rgba(127, 207, 195, 0.5), rgba(42, 157, 143, 0.14) 45%, transparent 72%);
+    opacity: 0;
+    animation: daily-reveal-glow 1.1s ease-out 0.86s forwards;
+  }
+
+  @keyframes daily-reveal-glow {
+    0%   { opacity: 0; transform: scale(0.5); }
+    30%  { opacity: 1; transform: scale(1.06); }
+    100% { opacity: 0.72; transform: scale(1); }
+  }
+
+  /* 硬幣進場 — from far away, turning, and decelerating into a bounce.
+
+     The turn count is a custom property (`--reveal-turns`, set per day by the
+     component) so 大獎 spinning harder is a number at the call site and not a
+     second copy of these keyframes. It is spent on the way IN: by 72% the
+     coin is nearly face-on and only the last few degrees are left, which is
+     what makes the stop feel like something arriving rather than like an
+     animation running out.
+
+     The overshoot at 72% and the dip at 86% are the whole trick. A coin that
+     eases to exactly 1.0 lands like a value being set; one that goes past its
+     size and comes back has weight. */
+  .daily-reveal-spin {
+    transform-origin: center;
+    animation: daily-reveal-spin 0.9s cubic-bezier(0.16, 0.84, 0.24, 1) both;
+  }
+
+  @keyframes daily-reveal-spin {
+    0% {
+      opacity: 0;
+      transform: translateY(-16vh) scale(0.1) rotateY(calc(var(--reveal-turns, 3) * -360deg));
+    }
+    14%  { opacity: 1; }
+    72%  { transform: translateY(0) scale(1.2) rotateY(-26deg); }
+    86%  { transform: translateY(0) scale(0.93) rotateY(7deg); }
+    100% { opacity: 1; transform: translateY(0) scale(1) rotateY(0deg); }
+  }
+
+  /* Once it has landed it breathes, so the two seconds the copy is being read
+     are not two seconds of a still image. Clipped to its own circle because
+     the shine below sweeps across it and must not leave the coin. */
+  .daily-reveal-coin {
+    position: relative;
+    display: block;
+    border-radius: 50%;
+    overflow: hidden;
+    animation: daily-reveal-breathe 2.4s ease-in-out 1s infinite;
+  }
+
+  @keyframes daily-reveal-breathe {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50%      { transform: translateY(-7px) scale(1.03); }
+  }
+
+  /* The shine crossing the face on the stop — the one mark that says this is
+     metal and not a gold-coloured disc. */
+  .daily-reveal-shine {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(100deg, transparent 38%, rgba(255, 255, 255, 0.85) 50%, transparent 62%);
+    opacity: 0;
+    animation: daily-reveal-shine 0.75s ease-out 0.92s forwards;
+  }
+
+  @keyframes daily-reveal-shine {
+    0%   { opacity: 0; transform: translateX(-130%); }
+    25%  { opacity: 1; }
+    100% { opacity: 0; transform: translateX(130%); }
+  }
+
+  /* 火花 — eight, thrown outward as the coin lands. Fanned by index (`--i` is
+     set per element) so eight paths cost one set of keyframes, the same trick
+     the card's little coins use. */
+  .daily-reveal-spark {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    pointer-events: none;
+    background: radial-gradient(circle, #EAFBF7 0%, #7FCFC3 52%, rgba(127, 207, 195, 0) 72%);
+    --angle: calc(var(--i) * 45deg);
+    opacity: 0;
+    animation: daily-reveal-spark 0.85s cubic-bezier(0.15, 0.7, 0.3, 1) calc(900ms + var(--i) * 18ms) forwards;
+  }
+
+  @keyframes daily-reveal-spark {
+    0%   { opacity: 0; transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-40px) scale(0.4); }
+    22%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--angle)) translateY(-200px) scale(1.15); }
+  }
+
+  /* The amount. The headline, and the reason the screen went dark — so it is
+     the biggest thing on it, struck with a hard lower edge rather than a
+     flat fill, and it arrives out of focus and slams into place.
+
+     `filter` carries the blur alone; the glow is text-shadow rather than a
+     drop-shadow so the two are not fighting over the same property mid
+     animation. */
+  .daily-reveal-amount {
+    font-size: clamp(3.2rem, 13vw, 5.4rem);
+    font-weight: 900;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: #EAFBF7;
+    text-shadow:
+      0 3px 0 #1F7A6E,
+      0 5px 0 #155F56,
+      0 0 26px rgba(127, 207, 195, 0.85),
+      0 10px 34px rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    animation: daily-reveal-amount 0.62s cubic-bezier(0.2, 1.5, 0.35, 1) both;
+  }
+
+  /* The gold cut of it. The round pays several different KINDS of thing now
+     (constants/dailyLogin.ts) and the number has to be lit by the same light
+     as the mark above it — a teal-shadowed +15 under a gold coin is the
+     currency confusion §22 is about, written in the largest type on screen.
+     Only the colours differ; the animation and the geometry are shared. */
+  .daily-reveal-amount-gold {
+    color: #FFF7E2;
+    text-shadow:
+      0 3px 0 #B87C1C,
+      0 5px 0 #8A5C12,
+      0 0 26px rgba(242, 194, 96, 0.85),
+      0 10px 34px rgba(0, 0, 0, 0.55);
+  }
+
+  @keyframes daily-reveal-amount {
+    0%   { opacity: 0; transform: scale(2.6); filter: blur(12px); }
+    40%  { opacity: 1; }
+    72%  { transform: scale(0.94); filter: blur(0); }
+    100% { opacity: 1; transform: scale(1); filter: blur(0); }
+  }
+
+  /* The copy either side of it. One animation, started at a different time per
+     line — the stagger is data and lives in the component. */
+  .daily-reveal-line {
+    opacity: 0;
+    animation: daily-reveal-line 0.5s ease-out both;
+  }
+
+  @keyframes daily-reveal-line {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* The way out, offered only once there is something to leave — before the
+     amount has landed there is nothing to dismiss, and a skip offered at the
+     first frame is an invitation to dismiss the thing the player came back
+     for. Two animations: it fades in once, then breathes. */
+  .daily-reveal-hint {
+    opacity: 0;
+    animation:
+      daily-reveal-line 0.5s ease-out 1.8s both,
+      daily-reveal-hint 2s ease-in-out 2.3s infinite;
+  }
+
+  @keyframes daily-reveal-hint {
+    0%, 100% { opacity: 0.85; }
+    50%      { opacity: 0.35; }
+  }
+
+  /* Reduced motion: the claim still REPORTS itself at full size — the coin,
+     the amount and the copy all appear and hold, so the moment is still a
+     moment — but nothing travels, spins, flares or sweeps. The confetti opts
+     itself out in the component (`disableForReducedMotion`). */
+  @media (prefers-reduced-motion: reduce) {
+    .daily-reveal-rays,
+    .daily-reveal-flash,
+    .daily-reveal-burst { animation: none; opacity: 0.18; }
+
+    .daily-reveal-ring,
+    .daily-reveal-spark,
+    .daily-reveal-shine { animation: none; opacity: 0; }
+
+    .daily-reveal-glow { animation: daily-reveal-line 0.4s ease-out both; }
+
+    .daily-reveal-spin,
+    .daily-reveal-coin { animation: none; }
+
+    /* The number still arrives — it just arrives by appearing. */
+    .daily-reveal-amount { animation: daily-reveal-line 0.4s ease-out both; }
+  }
+}
+
+
+@layer components {
+  /* =======================================================================
+     商品碎片 — 稜鏡 (components/UI/FragmentProgress.tsx)
+     =======================================================================
+     The fragment track used to be one flat teal bar. Teal was the right
+     FAMILY — a fragment is earned, not spent, so it must never wear the gold
+     that means currency — but one flat colour said nothing except "a bar",
+     and the one thing a fragment stack has to say is 「我走了多遠」.
+
+     So the bar is a PRISM: a shard of glass splits light, and this one splits
+     it further the more of it there is. The ramp below runs teal → 水藍 →
+     violet → 珊瑚, anchored on --color-island-teal at 0% and landing on the
+     existing --color-island-coral at 100%, so it is a new gradient inside the
+     island palette rather than a seventh colour scheme.
+
+     THE MECHANIC — the ramp is painted across the whole TRACK and then
+     clipped to the fill, not stretched to fit it. A stack at 30% shows the
+     teal-to-sky third of the ramp and nothing else; only a full 200/200 has
+     the violet and the coral in it. The colour is therefore a second reading
+     of the same number: 「越接近集滿，越繽紛」. Stretching the ramp to the
+     fill would make every stack look identical and cost the feature the only
+     thing the colour was bought for. `.fragment-ink` is sized by the
+     component (see FragmentBar) for exactly this reason. */
+  :root {
+    --fragment-1: #2A9D8F; /* = --color-island-teal, the anchor */
+    --fragment-2: #35C6B4;
+    --fragment-3: #4FB9E8;
+    --fragment-4: #8E8CEB;
+    --fragment-5: #CE84D8;
+    --fragment-6: #E8836A; /* = --color-island-coral */
+    --fragment-ramp: linear-gradient(
+      90deg,
+      var(--fragment-1) 0%,
+      var(--fragment-2) 22%,
+      var(--fragment-3) 44%,
+      var(--fragment-4) 64%,
+      var(--fragment-5) 82%,
+      var(--fragment-6) 100%
+    );
+  }
+
+  /* The empty track. Carries a whisper of the same ramp (4%) so an untouched
+     bar still belongs to the coloured one it will become, plus an inset
+     hairline so the fill reads as sitting INSIDE a channel rather than as a
+     stripe painted on the card. */
+  .fragment-track {
+    position: relative;
+    overflow: hidden;
+    border-radius: 999px;
+    background-color: #E7E3DA;
+    background-image: linear-gradient(
+      90deg,
+      rgba(42, 157, 143, 0.10),
+      rgba(79, 185, 232, 0.08) 45%,
+      rgba(206, 132, 216, 0.08) 78%,
+      rgba(232, 131, 106, 0.10)
+    );
+    box-shadow: inset 0 1px 2px rgba(38, 70, 83, 0.10);
+  }
+
+  /* The clip. Width is the progress, and it is the ONLY thing that animates
+     when a workout pays out — the ink underneath does not move, so the hues
+     already earned stay exactly where they were and the bar grows into new
+     colour instead of resliding through it. */
+  .fragment-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    overflow: hidden;
+    border-radius: 999px;
+    transition: width 600ms cubic-bezier(0.22, 1, 0.28, 1);
+  }
+
+  /* The ramp itself, stretched to the TRACK by an inline width (100/pct×100%)
+     and then clipped by the fill above. */
+  .fragment-ink {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background-image: var(--fragment-ramp);
+    background-size: 100% 100%;
+  }
+
+  /* 折光 — one gloss travelling the bar, the thing that makes it read as
+     glass rather than as paint. Slow (3.4s) and low-contrast on purpose: this
+     sits under every card on the shelf, and a shelf of racing bars is a
+     shelf nobody can read a price off. */
+  .fragment-sheen {
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(
+      104deg,
+      rgba(255, 255, 255, 0) 38%,
+      rgba(255, 255, 255, 0.85) 50%,
+      rgba(255, 255, 255, 0) 62%
+    );
+    background-size: 260% 100%;
+    background-repeat: no-repeat;
+    opacity: 0.55;
+    animation: fragment-sheen 3.4s ease-in-out infinite;
+  }
+
+  @keyframes fragment-sheen {
+    0%   { background-position: -60% 0; }
+    55%  { background-position: 160% 0; }
+    100% { background-position: 160% 0; }
+  }
+
+  /* Quarter marks. They turn 「74 / 200」 into a shape the eye can judge
+     without reading the number, and they are the reason the bar can afford to
+     be short. Dark rather than white so they are legible on the pale empty
+     half as well as on the lit one. */
+  .fragment-notch {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(38, 70, 83, 0.16);
+  }
+
+  /* 集滿. The stack is full, the whole ramp is showing, and the bar says so
+     by lighting the card around it — the halo is violet-to-coral (the END of
+     the ramp) rather than teal, so 「可解鎖」 is the far end of the same
+     journey and not a different state colour. */
+  .fragment-ready {
+    box-shadow:
+      inset 0 1px 2px rgba(38, 70, 83, 0.10),
+      0 0 0 1px rgba(142, 140, 235, 0.35),
+      0 4px 14px -4px rgba(206, 132, 216, 0.65);
+    animation: fragment-ready-pulse 2.6s ease-in-out infinite;
+  }
+
+  @keyframes fragment-ready-pulse {
+    0%, 100% {
+      box-shadow:
+        inset 0 1px 2px rgba(38, 70, 83, 0.10),
+        0 0 0 1px rgba(142, 140, 235, 0.30),
+        0 4px 12px -5px rgba(206, 132, 216, 0.45);
+    }
+    50% {
+      box-shadow:
+        inset 0 1px 2px rgba(38, 70, 83, 0.10),
+        0 0 0 1px rgba(206, 132, 216, 0.55),
+        0 6px 18px -4px rgba(232, 131, 106, 0.70);
+    }
+  }
+
+  /* The block the meter sits in on a shop card — a tinted well so 「另一條
+     路」 reads as its own offer next to the gold price, instead of as two
+     more lines of card copy. Kept at 7% because it is behind text. */
+  .fragment-well {
+    border-radius: 0.9rem;
+    border: 1px solid rgba(142, 140, 235, 0.20);
+    background-image: linear-gradient(
+      135deg,
+      rgba(42, 157, 143, 0.09) 0%,
+      rgba(79, 185, 232, 0.07) 45%,
+      rgba(206, 132, 216, 0.07) 72%,
+      rgba(232, 131, 106, 0.09) 100%
+    );
+  }
+
+  .fragment-well-ready {
+    border-color: rgba(206, 132, 216, 0.42);
+    background-image: linear-gradient(
+      135deg,
+      rgba(42, 157, 143, 0.14) 0%,
+      rgba(79, 185, 232, 0.12) 45%,
+      rgba(206, 132, 216, 0.14) 72%,
+      rgba(232, 131, 106, 0.16) 100%
+    );
+  }
+
+  /* The count, written in the ramp itself. Only ever used on 集滿 and on the
+     +N of a fresh grant: gradient text is thinner to read than solid navy, so
+     it is spent on the two numbers that are an announcement rather than on
+     every number on the shelf. */
+  .fragment-ramp-text {
+    background-image: var(--fragment-ramp);
+    background-size: 140% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* The shard mark when its stack is full. */
+  .fragment-shard-lit {
+    filter: drop-shadow(0 0 3px rgba(142, 140, 235, 0.65));
+  }
+
+  /* Reduced motion: the bar keeps every colour — the ramp IS the readout and
+     removing it would remove information — and only the two things that move
+     stop. */
+  @media (prefers-reduced-motion: reduce) {
+    .fragment-fill { transition: none; }
+    .fragment-sheen { animation: none; opacity: 0.25; background-position: 40% 0; }
+    .fragment-ready { animation: none; }
+  }
+}
+
+@layer components {
+  /* ════════════════════════════════════════════════════════════════════════
+     幸運轉盤 —— 讓機台活起來的那幾件事
+     (components/UI/LuckyWheel.tsx)
+
+     The face was never the problem: ten wedges, ten prizes, honest odds. What
+     it lacked was the CABINET. A prize wheel in the world is a lit object —
+     bulbs round the rim, a ticker being hit, a turned knob in the middle, and
+     light thrown on the wall behind it — and none of that is on the wedges.
+     Everything in this block is the machine around the drawing, and every rule
+     obeys the same two constraints:
+
+       1. **Nothing here is information.** A player who never notices one pixel
+          of it still reads the same ten prizes and the same odds. So it may be
+          cut entirely by prefers-reduced-motion, at the bottom, without taking
+          anything with it.
+       2. **Nothing here is gold.** island-gold is 金幣 (see the token), and ten
+          glowing discs round the rim of a PRIZE wheel would read as a payout
+          before they read as decoration. The bulbs are lamplight — a filament
+          warm, sat in a white socket, and visibly going out again.
+     ════════════════════════════════════════════════════════════════════════ */
+
+  /* The pool of light the cabinet stands in. Sized off the wheel's own box and
+     pushed out past it, so the panel has a centre even before anything moves. */
+  .wheel-stage::before {
+    content: '';
+    position: absolute;
+    inset: -16%;
+    border-radius: 9999px;
+    background: radial-gradient(
+      circle,
+      rgba(42, 157, 143, 0.15) 0%,
+      rgba(42, 157, 143, 0.06) 44%,
+      rgba(42, 157, 143, 0) 70%
+    );
+    pointer-events: none;
+  }
+
+  /* The ray fan behind the wheel.
+
+     Masked to a RING that starts outside the bezel (the wheel's outer lip lands
+     at ~38% of this element's radius; the mask opens at 44%), because rays that
+     reach under the face would be a pattern showing through the prizes instead
+     of light coming off the machine. 78s is deliberately at the edge of
+     noticing: this runs the whole time the panel is open, and anything faster
+     turns a prize table into a screensaver. The spin state is the exception —
+     see .wheel-rays-fast. */
+  .wheel-rays {
+    position: absolute;
+    inset: -15%;
+    border-radius: 9999px;
+    pointer-events: none;
+    background: repeating-conic-gradient(
+      from 0deg,
+      rgba(42, 157, 143, 0.17) 0deg 7deg,
+      rgba(42, 157, 143, 0) 7deg 18deg
+    );
+    -webkit-mask-image: radial-gradient(circle, transparent 44%, #000 58%, transparent 92%);
+    mask-image: radial-gradient(circle, transparent 44%, #000 58%, transparent 92%);
+    animation: wheel-rays-turn 78s linear infinite;
+  }
+
+  /* While a spin is running. It is the one thing in the panel that says 「正在
+     轉」 without being the wheel — which matters, because the wheel is the thing
+     the player is trying to read, and a result you are watching for should not
+     be the only place the state is written. */
+  .wheel-rays-fast {
+    animation-duration: 9s;
+  }
+
+  @keyframes wheel-rays-turn {
+    to { transform: rotate(360deg); }
+  }
+
+  /* One bulb's lit layer — the halo and the hot filament, both under the same
+     class so they light and die together. The chase is ONE animation given a
+     NEGATIVE delay per index (LuckyWheel.tsx computes it): ten bulbs each
+     starting a tenth of a cycle into the same loop is a light running around
+     the rim, where ten separate timings would be ten things blinking. */
+  .wheel-bulb {
+    animation: wheel-bulb-chase 2.6s ease-in-out infinite;
+  }
+
+  /* A spin quadruples the marquee. Same chase, same order — a fairground turns
+     its lights up when the wheel is moving, not on a different pattern. */
+  .wheel-lit .wheel-bulb {
+    animation-duration: 0.62s;
+  }
+
+  /* Long dark, short bright: a bulb that is on half the time reads as ten bulbs
+     flickering. The 38% step is the filament cooling rather than snapping off. */
+  @keyframes wheel-bulb-chase {
+    0%, 100% { opacity: 0.12; }
+    12%      { opacity: 1; }
+    38%      { opacity: 0.22; }
+  }
+
+  /* The winning wedge, outlined in light. Flares, then keeps two thirds of it —
+     the wedge stays marked while the prize card is being read, and the mark is
+     an OUTLINE so the prize itself is never covered by its own announcement. */
+  .wheel-wedge-win {
+    animation: wheel-wedge-win 1.5s cubic-bezier(0.16, 0.9, 0.3, 1) forwards;
+    filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.9));
+  }
+
+  @keyframes wheel-wedge-win {
+    0%   { opacity: 0; }
+    14%  { opacity: 1; }
+    100% { opacity: 0.62; }
+  }
+
+  /* ── The hub, as a turned knob ─────────────────────────────────────────────
+     It was a flat teal disc with a cream border: the correct token, and no
+     object. This is the Toolbar lesson from DESIGN_SYSTEM.md applied to a round
+     control — 「change the construction, not the colour」. It is the same teal.
+
+       · the conic gradient is the knurl catching light on four sides, which is
+         what a metal knob does and a painted one does not;
+       · inset 0 2px 0 white is the crown, inset 0 -5px 10px navy the undercut;
+       · the two 0-blur rings are the collar it is seated in, so the knob has a
+         white lip against whatever wedge happens to be behind it. */
+  .wheel-hub {
+    background:
+      radial-gradient(circle at 34% 26%, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 56%),
+      conic-gradient(
+        from 210deg,
+        #2A9D8F 0deg,
+        #45BCAC 34deg,
+        #2A9D8F 72deg,
+        #1F7A70 110deg,
+        #2A9D8F 150deg,
+        #45BCAC 190deg,
+        #2A9D8F 228deg,
+        #1F7A70 268deg,
+        #2A9D8F 306deg,
+        #45BCAC 340deg,
+        #2A9D8F 360deg
+      );
+    box-shadow:
+      0 0 0 3px var(--color-island-cream),
+      0 0 0 4.5px var(--color-island-line),
+      inset 0 2px 0 rgba(255, 255, 255, 0.45),
+      inset 0 -5px 10px rgba(26, 46, 53, 0.30),
+      0 8px 20px rgba(38, 70, 83, 0.34);
+  }
+
+  .wheel-hub:hover {
+    filter: brightness(1.07);
+  }
+
+  /* 抽獎券不足. Same knob, unplated — sand instead of teal, and the drop shadow
+     pulled in so it sits DOWN in its collar rather than standing proud of it.
+     Still a knob, so the control has not changed shape under the player; it has
+     just gone cold. */
+  .wheel-hub-off {
+    background:
+      radial-gradient(circle at 34% 26%, rgba(255, 255, 255, 0.75) 0%, rgba(255, 255, 255, 0) 58%),
+      conic-gradient(
+        from 210deg,
+        #EFE9DC 0deg,
+        #F8F6F1 60deg,
+        #E3DCCA 140deg,
+        #F8F6F1 220deg,
+        #E3DCCA 300deg,
+        #EFE9DC 360deg
+      );
+    box-shadow:
+      0 0 0 3px var(--color-island-cream),
+      0 0 0 4.5px var(--color-island-line),
+      inset 0 2px 0 rgba(255, 255, 255, 0.7),
+      inset 0 -4px 9px rgba(38, 70, 83, 0.14),
+      0 3px 10px rgba(38, 70, 83, 0.16);
+  }
+
+  /* A ring breathing off the knob whenever a spin is affordable. The launcher
+     out on the island already does this at 2.4s (its animate-ping halo), and
+     this is the same promise repeated where the player's hand actually is. */
+  .wheel-hub-ready::after {
+    content: '';
+    position: absolute;
+    inset: -11%;
+    border-radius: 9999px;
+    border: 2px solid rgba(42, 157, 143, 0.45);
+    animation: wheel-hub-breathe 2.9s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  @keyframes wheel-hub-breathe {
+    0%, 100% { opacity: 0.14; transform: scale(0.97); }
+    50%      { opacity: 0.85; transform: scale(1.06); }
+  }
+
+  /* Every one of these is decoration by construction, so reduced motion simply
+     stops them where they look settled rather than hiding them: the marquee is
+     left ON (a dark bulb reads as a broken one), the fan is left parked, and the
+     winning wedge keeps the outline it would have ended on. Nothing a player
+     needs in order to read the wheel lives in this block. */
+  @media (prefers-reduced-motion: reduce) {
+    .wheel-rays { animation: none; }
+    .wheel-bulb { animation: none; opacity: 0.7; }
+    .wheel-hub-ready::after { animation: none; opacity: 0.45; }
+    .wheel-wedge-win { animation: none; opacity: 0.62; }
+  }
+}

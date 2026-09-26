@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <title>Posture preview</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #e8eef2; }
+      #root { width: 100vw; height: 100vh; }
+      #label { position: fixed; top: 10px; left: 12px; color: #16323f; font: 600 15px system-ui; z-index: 9; }
+      pre { position: fixed; bottom: 0; left: 0; color: #b91c1c; font: 12px monospace; z-index: 9; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="label"></div>
+    <pre id="err"></pre>
+    <script>
+      const show = (m) => { document.getElementById('err').textContent += m + '\n'; };
+      window.addEventListener('error', (e) => show('ERROR: ' + (e.message || e.error) + ' @ ' + e.filename));
+      window.addEventListener('unhandledrejection', (e) => show('REJECT: ' + e.reason));
+    </script>
+    <script type="module" src="/tmp-posture-preview.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,8 @@
+#!/bin/sh
+# Version-controlled pre-commit hook. Reached via core.hooksPath, which scripts/setup-hooks.mjs
+# points at this directory on `npm install` - .git/hooks itself is not version controlled, so a
+# hook that lived only there would protect one machine and none of the others.
+#
+# Kept to a wrapper on purpose: the check is a normal node script, so it can also be run by hand
+# (`npm run check:conflicts`) and in CI, rather than being reachable only through a commit.
+exec node scripts/check-conflict-markers.mjs --staged

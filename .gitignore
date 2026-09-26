@@ -8,3 +8,8 @@ __pycache__/
 # 驗證資料集（第三方授權，不納入版本控制）
 /tmp/vdata/
 docs/verification/scripts/data/
+
+# 整合版（遊戲組原始碼工作複本）：套件、建置產物、金鑰不進版控（motu-app/.gitignore 亦有排除，此處明列）
+motu-app/node_modules/
+motu-app/dist/
+motu-app/.env

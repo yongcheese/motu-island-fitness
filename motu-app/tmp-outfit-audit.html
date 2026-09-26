@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <title>Outfit combo audit</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #eef2ee; overflow: hidden; }
+      #root { position: fixed; inset: 0; }
+      #overlay { position: fixed; inset: 0; pointer-events: none; display: flex; align-items: center; justify-content: center; }
+      #grid { display: grid; }
+      .cell { position: relative; }
+      .cap { position: absolute; left: 0; right: 0; bottom: 2px; text-align: center;
+             font: 11px/1.25 "Microsoft JhengHei", system-ui, sans-serif; color: #17303c; }
+      pre { position: fixed; top: 0; left: 0; color: #b91c1c; font: 12px monospace; z-index: 9; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="overlay"><div id="grid"></div></div>
+    <pre id="err"></pre>
+    <script>
+      const show = (m) => { document.getElementById('err').textContent += m + '\n'; };
+      window.addEventListener('error', (e) => show('ERROR: ' + (e.message || e.error) + ' @ ' + e.filename));
+      window.addEventListener('unhandledrejection', (e) => show('REJECT: ' + e.reason));
+    </script>
+    <script type="module" src="/tmp-outfit-audit.tsx"></script>
+  </body>
+</html>

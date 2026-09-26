@@ -1,0 +1,459 @@
+// The live ruleset for this project — see docs/FIRESTORE_RULES.md.
+//
+// EDITING THIS FILE CHANGES NOTHING UNTIL IT IS DEPLOYED. It is deployed by
+// `npx firebase-tools deploy --only firestore:rules`, which reads firebase.json
+// and targets the project's NAMED database (not `(default)`). CI does not do it.
+//
+// This file having drifted ahead of what was actually deployed is what made
+// establishing a player's Home impossible: the `home` field was permitted here
+// and rejected in production, so the first-run house placement failed on every
+// attempt and its tutorial — whose condition is "no home yet" — asked forever.
+// Any new UserProfile field needs BOTH a clause in isValidUser and an entry in
+// the update whitelist below, and then a deploy.
+//
+// 2026-08-31 — 寵物照護 added NO new field, on purpose. Its state lives at `islandState.pet.care`,
+// inside a map already validated here as 「a map」, so the feature writes correctly against a ruleset
+// deployed before it existed. Its one new write shape (a feed: `inventory` + `islandState` together)
+// is spelled out in its own clause below, but the fallback whitelist already covered it — so this
+// edit is documentation rather than a gate, and nothing about 寵物 is waiting on a deploy.
+//
+// 2026-08-29 — `utilityCards` (功能卡) and `limitedShop` (限時商店 purchase records) are the two
+// newest such fields. Each has a shape clause in isValidUser and appears in the update whitelist
+// below: `utilityCards` in six clauses, because six writes can touch it (a card grant, a card use,
+// a limited-shop purchase, and the three payout paths that may spend a use-based card's charge),
+// and `limitedShop` in the purchase clause and the catch-all. If cards are being bought and the
+// count never moves, THIS FILE NOT BEING DEPLOYED is the first thing to check.
+//
+// 2026-08-25 — `wallet` (碎片, and every currency added after it) is the newest such field. It has
+// a shape clause in isValidUser and appears in five update clauses below, because five different
+// writes touch it: a purchase, a daily-login claim, 摸摸寵物, a standalone reward grant, and the
+// catch-all. If 碎片 are being granted and the balance never moves, THIS FILE NOT BEING DEPLOYED
+// is the first thing to check — see docs/FIRESTORE_RULES.md for what that failure looks like from
+// the player's side (it is not a rejected write; it is a blank save).
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Entity Validations ---
+    function isValidUser(data) {
+      return data.userId == request.auth.uid
+        && data.displayName is string && data.displayName.size() <= 100
+        && data.level is number && data.level >= 1 && data.level <= 1000
+        && data.balanceGold is number && data.balanceGold >= 0
+        // 錢包 — every currency that is NOT 金幣 (src/constants/currency.ts). One nested map, for
+        // the reason `islandState` and `workoutRewards` are one: it is ONE clause here and ONE
+        // whitelist entry below, so adding a third currency later is a row in CURRENCY_SPECS
+        // rather than another rules deploy.
+        //
+        // 金幣 deliberately stayed at the top level as `balanceGold`. It is required
+        // unconditionally by this function, the daily-login server increments it inside a
+        // transaction, and every save in the wild carries it — moving it would be a migration of
+        // the one number a player would notice going missing.
+        //
+        // Validated for SHAPE and floor, not for amount: what a player is OWED is decided by the
+        // reward service and (for 每日登入) by the server, and rules cannot re-derive that. What
+        // they can do is refuse a negative balance and a non-number, which is what stops a
+        // hand-crafted write from minting or from corrupting the field for every later increment.
+        && (!("wallet" in data) || (
+          data.wallet is map
+          && (!("fragments" in data.wallet) || (
+            data.wallet.fragments is number && data.wallet.fragments >= 0
+          ))
+        ))
+        && (!("currentXp" in data) || (data.currentXp is number && data.currentXp >= 0))
+        && (!("territoryLevel" in data) || (data.territoryLevel is number && data.territoryLevel >= 1))
+        && (!("inventory" in data) || data.inventory is list)
+        && (!("equippedItems" in data) || data.equippedItems is list)
+        && (!("lastUpdated" in data) || data.lastUpdated is string)
+        && (!("avatar" in data) || (data.avatar is string && data.avatar.size() <= 100))
+        && (!("lastLoginDate" in data) || data.lastLoginDate is string)
+        && (!("loginStreak" in data) || (data.loginStreak is number && data.loginStreak >= 0))
+        // 每日登入 board mirror (types.ts UserProfile / constants/dailyLogin.ts). The server owns
+        // `daily_login_claims`; these three are the client's copy so the panel can draw a board
+        // without a round trip. The anchor is a civil date written once, the cycle id is
+        // `cycle-YYYY-MM-DD`, and the claimed days are 1-based indices into one round — so the
+        // list can never be longer than the round is. Deliberately NOT size-capped tighter than
+        // that: over-tight validation here is what breaks a save silently.
+        && (!("loginAnchorDate" in data) || (data.loginAnchorDate is string && data.loginAnchorDate.size() <= 10))
+        && (!("loginCycleId" in data) || (data.loginCycleId is string && data.loginCycleId.size() <= 32))
+        && (!("loginClaimedDays" in data) || (data.loginClaimedDays is list && data.loginClaimedDays.size() <= 31))
+        && (!("lastPetDate" in data) || data.lastPetDate is string)
+        && (!("petCountToday" in data) || (data.petCountToday is number && data.petCountToday >= 0))
+        // 每日登入獎勵 (constants/dailyLogin.ts). The round is a seven-day tile counted from
+        // `loginAnchorDate`; `loginCycleId` names the tile a claim belongs to and
+        // `loginClaimedDays` is which of its seven days are collected. `dailyLoginAnchor` is the
+        // server's own copy of the anchor (src/server/dailyLoginApi.ts), written by the Admin SDK.
+        //
+        // The day list is bounded here rather than trusted: without the size cap a client could
+        // grow it without limit, and without the value range it could name a day that is not in
+        // the round. It cannot police WHICH days are in the list — that is the check only the
+        // server can make, and is why the API exists.
+        && (!("loginAnchorDate" in data) || data.loginAnchorDate is string)
+        && (!("dailyLoginAnchor" in data) || data.dailyLoginAnchor is string)
+        && (!("loginCycleId" in data) || (data.loginCycleId is string && data.loginCycleId.size() <= 64))
+        && (!("loginClaimedDays" in data) || (data.loginClaimedDays is list && data.loginClaimedDays.size() <= 7))
+        // 商品碎片 (src/constants/fragments.ts). `itemFragments` is a map of catalog id -> count: one
+        // entry per item the player has actually collected toward, which is why it is a map and not
+        // a list — a fragment belongs to exactly one product, and the storage is what makes that
+        // true rather than a rule some later write has to remember.
+        //
+        // Validated for SHAPE and size only. Rules cannot check that a count is one the player
+        // earned any more than they can check a gold balance is, and an over-tight bound here does
+        // not reject one field — isValidUser runs against the WHOLE merged document, so it would
+        // fail every other write in the same load too (see docs/FIRESTORE_RULES.md). The cap is set
+        // well above the catalog's size so a growing shop cannot silently break existing saves.
+        && (!("itemFragments" in data) || (data.itemFragments is map && data.itemFragments.size() <= 500))
+        && (!("raffleTickets" in data) || (data.raffleTickets is number && data.raffleTickets >= 0))
+        // 免費轉盤次數 (src/types.ts, paid by 每日登入 第 7 天). A plain non-negative count, checked
+        // for SHAPE and floor only — rules cannot know how many turns a player has earned any more
+        // than they can know a gold balance, and what they CAN refuse is a negative or a non-number,
+        // which is what stops a hand-crafted write from corrupting the field for every later spin.
+        && (!("freeWheelSpins" in data) || (data.freeWheelSpins is number && data.freeWheelSpins >= 0))
+        && (!("raffleTicketProgress" in data) || (data.raffleTicketProgress is number && data.raffleTicketProgress >= 0))
+        && (!("migrationVersion" in data) || data.migrationVersion is string)
+        && (!("interiorData" in data) || data.interiorData is map)
+        // The player's single Home. Null means "not placed yet"; a map must carry a style id,
+        // and the one-per-player guarantee is structural - it is an object, not a list.
+        && (!("home" in data) || data.home == null || (
+          data.home is map
+          && data.home.currentStyle is string && data.home.currentStyle.size() <= 64
+        ))
+        && (!("islandPlacements" in data) || data.islandPlacements is list)
+        // 離線回歸 (src/constants/islandReturn.ts). One nested map holding: `lastSeenAt`, the ISO
+        // instant the absence is measured from; `sprouts`, the overgrowth currently standing on
+        // the island; and `pet`, the companion's mood. All three are decoration and mood — nothing
+        // under this key can grant an item, move a currency or alter progress, which is why it is
+        // validated for SHAPE and size and not for content.
+        //
+        // The list cap is deliberately looser than the client's own ceiling (OVERGROWTH_MAX, 26):
+        // an over-tight bound here does not reject one field, it fails the whole write and — via
+        // isValidUser running against the merged document — every other write in the same load.
+        // See docs/FIRESTORE_RULES.md.
+        && (!("islandState" in data) || (
+          data.islandState is map
+          && (!("lastSeenAt" in data.islandState) || data.islandState.lastSeenAt is string)
+          && (!("sprouts" in data.islandState) || (
+            data.islandState.sprouts is list && data.islandState.sprouts.size() <= 40
+          ))
+          && (!("pet" in data.islandState) || data.islandState.pet is map)
+        ))
+        // 健身獎勵 (src/constants/workoutRewards.ts). One nested map holding: `claims`, the rewards
+        // this account has already been paid, keyed by trigger id; `completedCount`/`lastCompletedAt`,
+        // the training record a future 連續／里程碑 rule would read; and `processedIds`, the recent
+        // completion ids that make a redelivered event a no-op.
+        //
+        // Unlike `islandState`, this one CAN grant an item — a claim is written in the same update
+        // as the `inventory` entry it paid for. That is deliberate and it is why the two share a
+        // whitelist clause below: they must land together or not at all. What the rules can check
+        // is SHAPE and size, not whether the item was deserved; deciding that is the client's job
+        // today and the fitness service's job once there is one to ask (see docs/workout-rewards.md).
+        //
+        // The id list is capped at four times PROCESSED_ID_LIMIT (12) rather than at it: an
+        // over-tight bound here does not reject one field, it fails the WHOLE write and — via
+        // isValidUser running against the merged document — every other write in the same load.
+        // See docs/FIRESTORE_RULES.md.
+        && (!("workoutRewards" in data) || (
+          data.workoutRewards is map
+          && (!("claims" in data.workoutRewards) || data.workoutRewards.claims is map)
+          && (!("completedCount" in data.workoutRewards) || (
+            data.workoutRewards.completedCount is number && data.workoutRewards.completedCount >= 0
+          ))
+          && (!("lastCompletedAt" in data.workoutRewards) || data.workoutRewards.lastCompletedAt is string)
+          && (!("processedIds" in data.workoutRewards) || (
+            data.workoutRewards.processedIds is list && data.workoutRewards.processedIds.size() <= 48
+          ))
+        ))
+        // 功能卡 (src/constants/utilityCards.ts). One nested map holding: `owned`, how many of each
+        // card is in the bag; `active`, the effects currently running; and `usedTotal`, a lifetime
+        // counter. One key here and one whitelist entry below, so the SECOND card — and the first
+        // effect that needs a new field — needs no rules change at all.
+        //
+        // Like `workoutRewards`, this one CAN pay: an active effect multiplies a currency grant
+        // (src/constants/rewardEffects.ts), and a `uses`-based card is spent in the same write as
+        // the reward it boosted. What rules can check is SHAPE and size, not whether the effect was
+        // deserved — deciding that is the client's job today and a service's job when there is one.
+        //
+        // The list cap is deliberately loose: an over-tight bound here does not reject one field,
+        // it fails the WHOLE write and — via isValidUser running against the merged document —
+        // every other write in the same load. See docs/FIRESTORE_RULES.md.
+        && (!("utilityCards" in data) || (
+          data.utilityCards is map
+          && (!("owned" in data.utilityCards) || data.utilityCards.owned is map)
+          && (!("usedTotal" in data.utilityCards) || data.utilityCards.usedTotal is map)
+          && (!("active" in data.utilityCards) || (
+            data.utilityCards.active is list && data.utilityCards.active.size() <= 24
+          ))
+        ))
+        // 限時商店 (src/constants/limitedShop.ts). Only the player's own purchase counts are stored
+        // — the rotation itself is derived from the clock and never saved, so there is nothing here
+        // a client could forge into a different shelf. The map is pruned to the recent periods on
+        // every write (see `recordPurchase`), which is what keeps the cap below comfortable.
+        && (!("limitedShop" in data) || (
+          data.limitedShop is map
+          && (!("purchases" in data.limitedShop) || (
+            data.limitedShop.purchases is map && data.limitedShop.purchases.size() <= 200
+          ))
+        ))
+        // 每週任務 (src/constants/weeklyTasks.ts). One nested map holding a single list of task
+        // DEFINITIONS — a name, a metric, a target and the weeks that target was met. One key here
+        // and one whitelist entry below, for the same reason `workoutRewards` and `utilityCards`
+        // are one: a new metric is a row in METRIC_SPECS rather than a schema change plus a rules
+        // deploy.
+        //
+        // Notably absent: progress. It is recomputed from `workout_logs` on every read, so there is
+        // no number here a client could inflate and no field that could fall out of step with the
+        // exercise it claims to represent. That is a stronger guarantee than any rule could give:
+        // rules can check that a number is a number, not that it was earned.
+        //
+        // The cap is MAX_WEEKLY_TASKS (8) with headroom, and it is deliberately loose for the
+        // reason spelled out over `workoutRewards`: an over-tight bound here does not reject one
+        // field, it fails the WHOLE write and — via isValidUser running against the merged
+        // document — every other write in the same load. See docs/FIRESTORE_RULES.md.
+        && (!("weeklyTasks" in data) || (
+          data.weeklyTasks is map
+          && (!("tasks" in data.weeklyTasks) || (
+            data.weeklyTasks.tasks is list && data.weeklyTasks.tasks.size() <= 32
+          ))
+        ));
+    }
+
+    function isValidAppSettings(data) {
+      return data.userId == request.auth.uid
+        && data.bgmVolume is number && data.bgmVolume >= 0.0 && data.bgmVolume <= 1.0
+        && data.isMuted is bool
+        && data.voiceGuideEnabled is bool
+        && data.warmupEnabled is bool
+        && (!("currentTrackIndex" in data) || data.currentTrackIndex is number)
+        && (!("youtubeMusicEnabled" in data) || data.youtubeMusicEnabled is bool);
+    }
+
+    function isValidWorkoutLog(data) {
+       return data.keys().hasAll(['logId', 'userId', 'type', 'duration', 'counts', 'calories', 'goldEarned', 'timestamp'])
+        && data.userId == request.auth.uid
+        && data.logId is string && data.logId.size() <= 100
+        && data.type is string && data.type.size() <= 100
+        && data.duration is number && data.duration >= 0
+        && data.counts is number && data.counts >= 0
+        && data.calories is number && data.calories >= 0.0
+        && data.goldEarned is number && data.goldEarned >= 0
+        && data.timestamp is string;
+    }
+
+    // --- Path Rules ---
+
+    // Connection Health Check
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // Global Shop Catalog items
+    match /shop_items/{itemId} {
+      allow read: if true; // Accessible by anyone to view the store items
+      allow write: if false; // Only system admin directly
+    }
+
+    // User Profile matching
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      
+      // Strict structural validation on Creation
+      allow create: if isOwner(userId) && isValidId(userId)
+        && isValidUser(incoming());
+
+      // Tiered Action-based Updates matching expected application updates
+      allow update: if isOwner(userId) && isValidId(userId)
+        && isValidUser(incoming())
+        && incoming().userId == existing().userId   // Immutable user reference identifier
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'avatar', 'lastUpdated']) ||
+          // Buying. The three fragment keys are in here because a gold purchase SETTLES the
+          // fragments collected toward the item it just bought, in the same write (see
+          // context/useShopActions.ts) — hasOnly is a subset test, so an ordinary purchase that
+          // touches none of them still matches this clause unchanged.
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'equippedItems', 'inventory', 'balanceGold', 'wallet',
+            'itemFragments', 'raffleTickets', 'raffleTicketProgress', 'lastUpdated'
+          ]) ||
+          // 商品碎片's own two writes: a grant (運動結算 / 每日簽到 / 轉盤) which touches only the
+          // fragment keys, and a 碎片解鎖 which spends a stack and appends the item to the
+          // inventory. Neither may move gold — the fragment route costs no currency, and leaving
+          // `balanceGold` out of this clause is what enforces that rather than a comment saying so.
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'itemFragments', 'raffleTickets', 'raffleTicketProgress', 'inventory', 'lastUpdated'
+          ]) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['interiorData', 'balanceGold', 'territoryLevel', 'lastUpdated']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['level', 'currentXp', 'balanceGold', 'lastUpdated']) ||
+          // The 每日登入 writes, all three of them: the once-a-day bookkeeping in
+          // AppContext (lastLoginDate/loginStreak/anchor, plus cycle+claims when the round
+          // rolls over), the server-claim mirror, and the offline claim that pays out
+          // locally (useEconomyActions). hasOnly is a subset test, so one clause covers all.
+          // 'wallet' is in this list because the round now PAYS 碎片 while a 補簽 still charges
+          // 金幣, so one claim write touches both halves of the wallet at once. `hasOnly` is a
+          // subset test, so the same clause still covers the mirror write that touches neither.
+          // 'utilityCards' is in this clause and the two below it for one reason: a 功能卡 whose
+          // duration is counted in USES is spent by the very grant it boosted, and that spend has
+          // to land in the same write as the payout — otherwise a failed save either pays twice or
+          // charges a use for nothing. See src/constants/rewardEffects.ts.
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'lastLoginDate', 'loginStreak', 'loginAnchorDate', 'loginCycleId', 'loginClaimedDays',
+            'balanceGold', 'wallet', 'currentXp', 'utilityCards', 'lastUpdated'
+          ]) ||
+          // 每日登入獎勵's NON-CURRENCY half (src/context/useDailyLoginPrize.ts). The round stopped
+          // being a ladder of one currency on 2026-09-17: a day can now pay 商品碎片, 抽獎券, a
+          // 功能卡, a whole product, or a free turn of the 幸運轉盤, and this is the ONE write that
+          // lands whichever of those the day rolled.
+          //
+          // It is its own clause rather than more keys on the one above, and that is the whole
+          // point of `hasOnly` being a subset test: the claim write moves money and marks the day
+          // off, this one hands over goods and moves no balance at all. Keeping them apart means
+          // `balanceGold` is absent HERE — so a prize write can never move gold, which is enforced
+          // by this list rather than by a comment saying it does not.
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'itemFragments', 'raffleTickets', 'raffleTicketProgress', 'inventory',
+            'utilityCards', 'freeWheelSpins', 'lastUpdated'
+          ]) ||
+          // 摸摸寵物 — the daily counter and its 碎片/經驗值 payout, in one write so the limit
+          // cannot be raced. See context/useEconomyActions.ts (petDog).
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'lastPetDate', 'petCountToday', 'wallet', 'currentXp', 'utilityCards', 'lastUpdated'
+          ]) ||
+          // The Economy / Reward Service's standalone grants (grantReward): one currency, or XP,
+          // and nothing else. 島嶼秘寶 and the 管理員測試 supply buttons are the callers today.
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'wallet', 'balanceGold', 'currentXp', 'utilityCards', 'lastUpdated'
+          ]) ||
+          // 功能卡's own two writes: a grant (a 輪盤 drop, 管理員測試) and a use, which spends a copy
+          // and starts an effect. Both touch this one nested map and nothing else — the same
+          // property that makes 離線回歸's clause a single line, and the reason a second card needs
+          // no rules change. See context/useUtilityCards.ts.
+          incoming().diff(existing()).affectedKeys().hasOnly(['utilityCards', 'lastUpdated']) ||
+          // 幸運轉盤 (context/useWheelActions.ts). ONE write: the turn spent — a free one
+          // (`freeWheelSpins`) or a 抽獎券 — and whatever the wedge paid, which is fragments, more
+          // tickets, an item or a card. They must land together or the wheel either charges for
+          // nothing or spins for free.
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'raffleTickets', 'raffleTicketProgress', 'freeWheelSpins', 'itemFragments',
+            'inventory', 'utilityCards', 'lastUpdated'
+          ]) ||
+          // 限時商店 purchase (context/useLimitedShop.ts). ONE write: the charge, the goods and the
+          // per-period purchase record. The goods are either a 功能卡 (`utilityCards`) or a catalog
+          // item (`inventory`, plus the fragment settlement a purchase strands), which is why both
+          // appear here — hasOnly is a subset test, so one clause covers both kinds of product and
+          // both currencies. Splitting it would let a charge land without the goods.
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'limitedShop', 'utilityCards', 'inventory', 'balanceGold', 'wallet',
+            'itemFragments', 'raffleTickets', 'raffleTicketProgress', 'lastUpdated'
+          ]) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['territoryLevel', 'migrationVersion', 'lastUpdated']) ||
+          // 離線回歸's four writes — the arrival, the 「我還在」 heartbeat, a 整理, and the pet
+          // greeting its owner. All of them touch this one nested map and nothing else, which is
+          // the whole reason the state is a map rather than five top-level fields: one clause here
+          // covers the feature, and a fifth kind of write later needs no rules change at all.
+          incoming().diff(existing()).affectedKeys().hasOnly(['islandState', 'lastUpdated']) ||
+          // 寵物照護 (src/constants/petCare.ts, src/context/usePetCare.ts). A feed spends one bag of
+          // 寵物用品 AND restores the animal, and those cannot be two writes: a failure between them
+          // either takes the food without feeding the pet or feeds it for free, and the player has
+          // no way to tell which happened. Same reasoning as 健身獎勵's clause below.
+          //
+          // Note what this clause does NOT add: a field. The care state lives at
+          // `islandState.pet.care`, inside a map `isValidUser()` already validates as 「a map」, so
+          // no shape clause changed and the feature is writable against a ruleset deployed before
+          // it existed. That was a deliberate choice at the data-modelling stage — see the `care`
+          // field's own note in src/constants/islandReturn.ts. This clause is therefore
+          // documentation of a write that the fallback whitelist already permits, not a gate the
+          // feature is waiting on.
+          incoming().diff(existing()).affectedKeys().hasOnly(['islandState', 'inventory', 'lastUpdated']) ||
+          // 健身獎勵's two writes: the bookkeeping a valid completion produces, and the grant that
+          // pays a reward. The grant touches BOTH keys in one update on purpose — the item and the
+          // record that it was given have to land together, or the save ends up either marked-and-
+          // unpaid or paid-and-unmarked. hasOnly is a subset test, so this one clause covers the
+          // bookkeeping-only write as well. See context/useWorkoutRewards.ts.
+          // 'balanceGold'/'currentXp' joined this clause when the workout PAYOUT moved out of the
+          // fitness screen and into the reward service (context/useWorkoutRewards.ts): the coins,
+          // the XP and the replay guard (`processedIds`, inside `workoutRewards`) now ride in ONE
+          // write, which is what makes a redelivered completion unable to pay twice.
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'workoutRewards', 'inventory', 'balanceGold', 'currentXp', 'utilityCards', 'lastUpdated'
+          ]) ||
+          // Establishing the Home consumes the Starter House from the inventory in one write;
+          // re-skinning it touches 'home' alone.
+          incoming().diff(existing()).affectedKeys().hasOnly(['home', 'inventory', 'lastUpdated']) ||
+          // 每週任務 — building, editing, deleting a goal, and recording that a week's target was
+          // met. All four touch the one key, and none of them may move anything else: a task is a
+          // goal the player set for themselves, and it has never been a thing that pays out.
+          // Keeping it in its own clause rather than folding it into the fallback whitelist is
+          // what makes that true by construction (see context/useWeeklyTasks.ts).
+          incoming().diff(existing()).affectedKeys().hasOnly(['weeklyTasks', 'lastUpdated']) ||
+          // Fallback whitelist ensuring any partial updates in standard User attributes are fully permitted
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName', 'level', 'currentXp', 'territoryLevel', 'balanceGold',
+            'inventory', 'equippedItems', 'lastUpdated', 'avatar', 'home',
+            'lastLoginDate', 'loginStreak', 'loginAnchorDate', 'loginCycleId', 'loginClaimedDays',
+            'lastPetDate', 'petCountToday', 'dailyLoginAnchor',
+            'itemFragments', 'raffleTickets', 'raffleTicketProgress',
+            'interiorData', 'islandPlacements', 'islandState', 'workoutRewards', 'migrationVersion',
+            'wallet', 'utilityCards', 'limitedShop', 'weeklyTasks'
+          ])
+        );
+      
+      // Sub-collections under User Profile
+      match /inventory/{itemId} {
+        allow read: if isOwner(userId) && isValidId(userId);
+        allow create, update: if isOwner(userId) && isValidId(userId) && isValidId(itemId);
+      }
+
+      match /workout_logs/{logId} {
+        allow list, get: if isOwner(userId) && isValidId(userId);
+        allow create: if isOwner(userId) && isValidId(userId) && isValidId(logId)
+          && isValidWorkoutLog(incoming());
+      }
+
+      // 每日登入的領取紀錄與稽核 (src/server/dailyLoginApi.ts).
+      //
+      // Readable by the owner so the panel can show its own history; NOT writable by anyone. The
+      // server writes these with the Admin SDK, which bypasses rules entirely — so "no client
+      // writes" costs nothing and is what makes the claim record trustworthy: a document here can
+      // only have been created by the transaction that also moved the wallet.
+      match /daily_login_claims/{claimId} {
+        allow list, get: if isOwner(userId) && isValidId(userId);
+        allow write: if false;
+      }
+
+      match /daily_login_audit/{entryId} {
+        allow list, get: if isOwner(userId) && isValidId(userId);
+        allow write: if false;
+      }
+
+      match /settings/{settingId} {
+        allow get: if isOwner(userId) && isValidId(userId) && isValidId(settingId);
+        allow create, update: if isOwner(userId) && isValidId(userId) && isValidId(settingId)
+          && isValidAppSettings(incoming());
+      }
+    }
+  }
+}

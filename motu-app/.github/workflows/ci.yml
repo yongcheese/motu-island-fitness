@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Type check
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Audit z-fighting
+        if: ${{ !cancelled() }}
+        run: npm run audit:zfighting
+
+      - name: Audit hair assets
+        if: ${{ !cancelled() }}
+        run: npm run audit:hair
+
+      - name: Audit interior shell
+        if: ${{ !cancelled() }}
+        run: npm run audit:interior
+
+      - name: Audit placements
+        if: ${{ !cancelled() }}
+        run: npm run audit:placements

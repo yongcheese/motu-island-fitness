@@ -667,3 +667,32 @@
 .wk-rw-res-pill .icon { color: var(--motu-coral); }
 .wk-rw-res-pill b { font-weight: 900; }
 .wk-rw-res-s { margin-top: 8px; font-size: 12px; color: var(--motu-color-text-muted); }
+
+/* ===== 合體第二階段整合：插槽（遊戲組元件由整合版宿主畫進來；舊版沒有 .fx-slot／.lv-fx，以下規則不生效） ===== */
+.fx-slot-wallet { margin: 4px 0 8px; }
+.wk-rec-hero .fx-slot-hero { position: absolute; inset: 0; }
+/* 訓練畫面：原本相機兩側是深青底，整合版讓亮色背景（阿肌）從兩側透出來 */
+.lv-fx .fx-slot-backdrop { position: absolute; inset: 0; z-index: 0; }
+.lv-fx #lv-video { background: transparent; }
+.lv-fx .fx-slot-companion { position: absolute; top: calc(env(safe-area-inset-top) + 16px); right: 16px; z-index: 6; }
+/* 使用者截圖標註「位置可以換一下」：數據列改到左側資訊卡下方直排，底部只留提示與控制鈕（Slice 8 依確認結果定案） */
+@media (min-width: 621px) {
+  .lv-fx .lv-hud { left: 16px; right: auto; top: 200px; bottom: auto; width: 250px; grid-template-columns: repeat(2, 1fr); padding: 0; }
+  .lv-fx .lv-coach { bottom: 84px; }
+  .lv-fx .lv-next { bottom: 150px; }
+}
+/* 整合版結算：獎勵已在領獎序列領過，表現卡佔滿整列，延伸數據在達標率下方另起一列 */
+.wk-sum > .wk-sum-hero:has(.wk-sum-more) { grid-column: 1 / -1; flex-wrap: wrap; }
+.wk-sum-more { flex: 1 1 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 2px dashed var(--motu-color-border); }
+.wk-sum-more-c { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--motu-radius-lg); background: var(--motu-color-surface-sunken); color: var(--motu-color-text-muted); font-size: 12px; font-weight: 700; }
+.wk-sum-more-c .icon { color: var(--motu-teal-dark); }
+.wk-sum-more-c b { color: var(--motu-color-text); font-size: 18px; font-weight: 900; }
+/* 整合版：右上角是遊戲端的關閉鍵（回島嶼），資源列讓出位置 */
+.fx-slot-wallet { padding-right: 72px; }
+@media (max-width: 620px) {
+  /* 手機：關閉鍵固定在右上角，非全螢幕的頁面整體往下讓出一列，避免蓋住結算頁的評等章 */
+  .fx-body #view:not(.full) { padding-top: 76px; }
+  .fx-slot-wallet { padding-right: 0; }
+  /* 手機：左上資訊卡已佔滿寬度，陪伴主角移到資訊卡下方的右側 */
+  .lv-fx .fx-slot-companion { top: calc(env(safe-area-inset-top) + 150px); transform: scale(.85); transform-origin: top right; }
+}

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <title>Ceiling light preview</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #1b2430; }
+      #root { width: 100vw; height: 100vh; }
+      pre { position: fixed; top: 0; left: 0; color: #fca5a5; font: 12px monospace; z-index: 9; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <pre id="err"></pre>
+    <script>
+      const show = (m) => { document.getElementById('err').textContent += m + '\n'; };
+      window.addEventListener('error', (e) => show('ERROR: ' + (e.message || e.error) + ' @ ' + e.filename));
+      window.addEventListener('unhandledrejection', (e) => show('REJECT: ' + e.reason));
+    </script>
+    <script type="module" src="/tmp-ceiling-light.tsx"></script>
+  </body>
+</html>

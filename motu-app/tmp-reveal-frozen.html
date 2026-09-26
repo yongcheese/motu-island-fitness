@@ -1,0 +1,19 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>reveal frozen</title></head>
+<body style="margin:0"><div id="root"></div>
+<script type="module" src="/src/index.css"></script>
+<script type="module" src="/tmp-reveal.tsx"></script>
+<script type="module">
+  // Throwaway: freeze the REAL reveal at one instant so the settle-anchored beats (burst, rings,
+  // ground light, gradient, copy, hint) can be screenshotted. The strip in tmp-spinstrip.tsx
+  // overrides every animation-delay and so can only ever show the arrival; this keeps the delays
+  // and seeks the whole document's animations instead. Time in ms comes from the hash.
+  const t = Number(location.hash.slice(1) || 5500);
+  setTimeout(() => {
+    for (const a of document.getAnimations()) {
+      try { a.pause(); a.currentTime = t; } catch (e) { /* not seekable - ignore */ }
+    }
+    document.title = 'frozen@' + t;
+  }, 400);
+</script>
+</body></html>

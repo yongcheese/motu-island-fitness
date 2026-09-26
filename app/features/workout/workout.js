@@ -27,6 +27,28 @@ let bgmCtx = null, bgmNodes = null;   // 背景音樂 (WebAudio)
 function disposeIntroAv() { try { introAv?.dispose(); } catch { } introAv = null; }
 function disposeCardAv() { try { cardAv?.dispose(); } catch { } cardAv = null; }
 
+/* ---------------- 整合版插槽（合體第二階段整合 Slice 1） ----------------
+   遊戲組的元件（島嶼主角、阿肌、對話框、金幣碎片列）由整合版宿主用 React 畫進這些節點。
+   只有宿主提供 ctx.slots 時才產生；舊版 :8080 沒有宿主，輸出空字串，版面完全不變。 */
+export function slotHtml(slots, name) {
+  return slots ? `<div class="fx-slot fx-slot-${name}" data-slot="${name}"></div>` : '';
+}
+function clearSlots() { CTX?.slots?.set({}); }
+// 每次重畫 root 後呼叫：把目前畫面上的插槽一次交給宿主（舊節點隨 innerHTML 消失，宿主整批換掉）
+function syncSlots() {
+  if (!CTX?.slots) return;
+  const map = {};
+  root.querySelectorAll('[data-slot]').forEach(el => { map[el.dataset.slot] = el; });
+  CTX.slots.set(map);
+}
+/** 結束訓練後要逐項領取的獎勵（骨架階段：金幣與經驗取自我方結算；碎片由遊戲端決定，Slice 9 起改走 ctx.game.settle）。 */
+export function previewAwards(session) {
+  return [
+    { kind: 'coins', amount: session.coinsEarned || 0 },
+    { kind: 'xp', amount: session.xpGain ?? (session.validReps || 0) * 5 },
+  ];
+}
+
 // Slice3 R3（六-補決策）：SET_SECONDS(60s 時間制) 退役 → 次數為主、SAFETY_SECONDS=單組 90 秒安全網（防站著不動卡死）。
 const SAFETY_SECONDS = 90;
 
@@ -84,6 +106,7 @@ export default {
     // 獎勵儀式的 timer 與掛在 body 上的金幣、彩帶都要清 —— 它們不會隨 #view.innerHTML 一起消失，
     // 切頁後會變成畫面上擦不掉的殘影。rwClear 一併處理（Slice 13）。
     rwClear();
+    clearSlots();   // 整合版：頁面拆掉時一併撤掉畫進插槽的遊戲元件
     CTX?.setChrome(true); },
 };
 
@@ -102,6 +125,7 @@ function renderMenu(activeGroup = 'all') {
 
   root.innerHTML = `
     <div class="fade-in">
+      ${slotHtml(CTX.slots, 'wallet')}
       <h1 class="h1">開始訓練</h1>
       <p class="sub wk-sub">${icon('sparkles', { size: 16 })} AI 即時判定動作品質 — 只有正確動作才換得到金幣 ${icon('coins', { size: 16 })}</p>
       ${recCardHtml(EXERCISES[REC_ID])}
@@ -117,6 +141,7 @@ function renderMenu(activeGroup = 'all') {
       <div class="wk-grid stagger" id="wk-list"></div>
     </div>`;
 
+  syncSlots();
   const listEl = root.querySelector('#wk-list');
   const renderCards = (items) => {
     listEl.innerHTML = items.map(e => cardHtml(e)).join('') ||
@@ -208,6 +233,8 @@ const TAGLINE = {
    合體第二階段 Slice 9：hero 改放 3D 人物 canvas（原本是圖示，深蹲的往下箭頭看起來像下載鍵）。
    推薦卡比例與動作卡不同，startCardAnims 會從共用 renderer 的畫面置中裁切貼上，不為它重設 renderer 尺寸。 */
 export function recHeroHtml(id) {
+  // 整合版：推薦卡改放島嶼主角（遊戲組元件畫進插槽），不畫我方 3D 人物
+  if (CTX?.slots) return `<div class="wk-rec-hero">${slotHtml(CTX.slots, 'hero')}</div>`;
   return `<div class="wk-rec-hero"><canvas class="wk-rec-canvas" data-ex="${id}" data-crop="1" aria-hidden="true"></canvas></div>`;
 }
 function recCardHtml(e) {
@@ -430,6 +457,7 @@ async function startLive(ex, doWarmup) {
   ensureAudio();               // 趁點擊手勢解鎖音訊
   CTX.setChrome(false);
   root.innerHTML = liveShell(ex);
+  syncSlots();
   const canvas = root.querySelector('#lv-canvas');
   const ctx = canvas.getContext('2d');
   const statusEl = root.querySelector('#lv-status');
@@ -477,7 +505,7 @@ async function startLive(ex, doWarmup) {
   // 階段二：AI 模型
   try {
     statusEl.innerHTML = `<div class="lv-loading">${icon('brain', { size: 24 })} 載入 AI 模型中…</div>`;
-    const pose = await createPose({ model: 'full' });
+    const pose = await createPose({ model: 'full', assetRoot: CTX.assetRoot });   // 整合版由宿主注入 /vendor
     if (live !== run) { try { pose.close(); } catch { } run.cam?.stop(); return; }   // 已過期 → 釋放模型與相機,避免 GPU/相機洩漏
     live.pose = pose;
   } catch (e) {
@@ -730,7 +758,8 @@ function restHtml({ setIdx, totalSets, restSec, nextReps }) {
 
 function liveShell(ex) {
   return `
-    <div class="lv-wrap" id="lv-wrap">
+    <div class="lv-wrap${CTX.slots ? ' lv-fx' : ''}" id="lv-wrap">
+      ${slotHtml(CTX.slots, 'backdrop')}
       <video id="lv-video" playsinline muted></video>
       <canvas id="lv-canvas"></canvas>
       <div class="lv-top">
@@ -758,6 +787,7 @@ function liveShell(ex) {
         <div class="lv-gauge-track"><i id="lv-gfill"></i><b id="lv-gtarget"></b></div>
         <span>深度</span>
       </div>
+      ${slotHtml(CTX.slots, 'companion')}
       <div class="lv-next" id="lv-next" hidden></div>
       <div class="lv-repflash" id="lv-repflash"></div>
       <div class="lv-status" id="lv-status"></div>
@@ -1324,8 +1354,14 @@ function finishLive() {
     met: ex.met, baseCoinPerRep: ex.baseCoinPerRep, faultCounts: summary.faultCounts,
     advisoryCounts: summary.advisoryCounts,
   });
-  renderResult(ex, summary, session);
-  if (wasVoice) CTX.coach.say('這組完成，做得很好！', 'high');
+  const toResult = () => {
+    renderResult(ex, summary, session);
+    if (wasVoice) CTX.coach.say('這組完成，做得很好！', 'high');
+  };
+  // 整合版：先逐項領獎（遊戲端演出，玩家按下任意鍵後才 resolve），再進結算頁
+  if (CTX.game?.claim) {
+    CTX.game.claim(previewAwards(session)).then(toResult, (e) => { console.error(e); toResult(); });
+  } else toResult();
 }
 
 /* ---------------- 結算（Slice 13：一頁看懂） ----------------
@@ -1370,6 +1406,16 @@ function rateRing(rate) {
     </div>`;
 }
 
+/* 整合版結算左側的延伸數據（Slice 1 骨架：版位先出來，Slice 11 接上真實數值） */
+function sumMoreHtml(session) {
+  const cell = (ic, k, v) => `<div class="wk-sum-more-c">${icon(ic, { size: 16 })}<span>${k}</span><b>${v}</b></div>`;
+  return `<div class="wk-sum-more" aria-label="更多數據">
+    ${cell('timer', '總時間', fmtTime(session.durationSec))}
+    ${cell('repeat', '各組次數', '—')}
+    ${cell('award', '最佳一組', '—')}
+    ${cell('triangle-alert', '失誤分布', '—')}
+  </div>`;
+}
 function renderResult(ex, summary, session) {
   CTX.setChrome(true);
   rwClear();
@@ -1413,8 +1459,9 @@ function renderResult(ex, summary, session) {
           <div class="wk-sum-sub">共做 ${total} 下 · ${summary.invalidReps} 下沒算到</div>
           <p class="wk-sum-hint">${icon('target', { size: 16 })} ${gi.hint}</p>
         </div>
+        ${CTX.game ? sumMoreHtml(session) : ''}
       </section>
-
+      ${CTX.game ? '' : `
       <section class="card wk-sum-reward" aria-label="獲得獎勵">
         <div class="wk-sum-sec-t">這次拿到</div>
         <div class="wk-sum-gains">
@@ -1437,7 +1484,7 @@ function renderResult(ex, summary, session) {
             <i id="wk-rw-goalfill" style="width:${pctOf(prevCoins)}%"></i>
           </div>` : ''}
         </div>
-      </section>
+      </section>`}
 
       <section class="card wk-sum-notes" aria-label="下次怎麼更好">
         ${faults.length ? `
@@ -1473,6 +1520,8 @@ function renderResult(ex, summary, session) {
     if (fillEl) fillEl.style.width = pctOf(s.wallet.coins) + '%';
     document.querySelectorAll('.wk-coin-fly, .wk-confetti').forEach(el => el.remove());
   };
+  // 整合版：獎勵已在領獎序列演出並飛進資源列，結算頁不再重演
+  if (CTX.game) return;
   if (summary.validReps > 0) launchConfetti();
   if (empty) return;
   if (reducedMotion()) { settle(); return; }

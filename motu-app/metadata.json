@@ -1,0 +1,10 @@
+{
+  "name": "Motu",
+  "description": "A gamified 3D fitness tracking app. Exercise on a tropical island, earn gold, and customize your avatar with AI-powered movement tracking.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

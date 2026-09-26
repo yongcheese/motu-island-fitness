@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <title>Shop icon vs model</title>
+    <style>
+      html, body { margin: 0; background: #f4f6f7; font: 13px system-ui, sans-serif; color: #223; }
+      #root { width: 100%; }
+      pre#err { position: fixed; top: 0; right: 0; color: #b91c1c; font: 11px monospace; z-index: 9; white-space: pre-wrap; max-width: 40vw; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <pre id="err"></pre>
+    <script>
+      const show = (m) => { document.getElementById('err').textContent += m + '\n'; };
+      window.addEventListener('error', (e) => show('ERROR: ' + (e.message || e.error) + ' @ ' + e.filename));
+      window.addEventListener('unhandledrejection', (e) => show('REJECT: ' + e.reason));
+    </script>
+    <script type="module" src="/tmp-shopmatch.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,9 @@
+# Git hooks are executed by sh, so they must arrive with LF endings. core.autocrlf=true is the
+# Git for Windows default and would hand a fresh clone a CRLF copy, leaving a stray \r on the
+# shebang - which sh reports as "bad interpreter". The one file whose job is to run on every
+# commit would then be the one file that cannot run, silently, on exactly the machines this
+# check exists to cover.
+#
+# Deliberately scoped to the hooks. Normalising the whole tree is a separate decision with a
+# repo-sized diff, and not one to make in the middle of a merge.
+scripts/hooks/* text eol=lf
