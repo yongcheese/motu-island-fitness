@@ -154,12 +154,13 @@
 - **依賴**：Slice 1
 - **平行組**：P1
 
-### [ ] Slice 4 — 健身初始頁換上島嶼主角並拿掉太陽、換遊戲組金幣
+### [ ] Slice 4 — 健身初始頁換上島嶼主角並拿掉太陽與標語、換遊戲組金幣
 - **目標**：初始頁的推薦卡角色變成使用者在島嶼上的主角（同一套穿著），做我方的示範動作。
 - **範圍內**：
   - 新增 `FitnessCharacter.tsx`：R3F 畫布＋遊戲組 `CharacterModel`，穿著由 profile `equippedItems` 經 `resolveCharacterOutfit` 取得（profile 變動即重算＝與島嶼同步），關節由 Slice 3 `poseToRig` 驅動
   - 推薦卡插槽換成 `FitnessCharacter`（我方舊版維持藍色小人）
   - 拿掉今日推薦卡的太陽圖示；`app/ui/icons.js` 的 `coins` 路徑換成遊戲組 lucide-react 0.546 版本
+  - 刪除動作清單標題下的標語「AI 即時判定動作品質 — 只有正確動作才換得到金幣」整行（2026-09-26 使用者追加，併入本 Slice；兩個版本都刪）
 - **範圍外**：訓練中陪伴主角（Slice 7）、資源列（Slice 5）。
 - **改動檔案**：`motu-app/src/components/fitness/FitnessCharacter.tsx`（新增）、`motu-app/src/components/fitness/FitnessHost.tsx`、`app/features/workout/workout.js`、`app/ui/icons.js`、`tests/icons.test.js`（新增案例）、`tests/workout-visual.test.js`（申報：太陽斷言）
 - **設計要點**：角色置於推薦卡原 3D 位置，背景透明；WebGL 失敗時顯示遊戲組 `AvatarIcon` 替代。
@@ -167,8 +168,9 @@
 - **驗收標準**：
   - [ ] 在島嶼更衣室換裝 → 切到健身頁，推薦卡主角穿著一致
   - [ ] 推薦卡無太陽；金幣圖示與遊戲端 HUD 相同方向
+  - [ ] 動作清單標題下不再有「AI 即時判定動作品質…」標語
   - [ ] 主角以我方動作循環播放；離開頁面 WebGL 資源釋放（無記憶體持續上升）
-- **測試策略**：`tests/icons.test.js` — `coins` 路徑等於遊戲組版本；`tests/workout-visual.test.js` — 推薦卡不含 `sun`；整合版以 dev server 實機換裝驗證並截圖。
+- **測試策略**：`tests/icons.test.js` — `coins` 路徑等於遊戲組版本；`tests/workout-visual.test.js` — 推薦卡不含 `sun`、選單模板不含該標語；整合版以 dev server 實機換裝驗證並截圖。
 - **完成定義**：`npm test`＋`tsc --noEmit` PASS＋截圖
 - **對外介面**：
 - **依賴**：Slice 2、Slice 3
