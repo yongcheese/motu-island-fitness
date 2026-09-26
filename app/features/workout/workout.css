@@ -706,3 +706,7 @@
   /* 手機：左上資訊卡已佔滿寬度，陪伴主角移到資訊卡下方的右側 */
   .lv-fx .fx-slot-companion { top: calc(env(safe-area-inset-top) + 150px); transform: scale(.85); transform-origin: top right; }
 }
+/* 整合版容器：app.css 在 ≥960px 會把 #app 排成「256px 左側欄＋主區」的 grid，舊版靠 shell.css 取消；
+   整合版沒有載入 shell.css（外殼是遊戲端的），那一欄空著會把整頁往右推 —— 同樣取消，#view 滿版置中 */
+.fx-body { position: absolute; inset: 0; }
+.fx-body #app { position: absolute; inset: 0; display: flex; flex-direction: column; width: auto; height: auto; max-width: none; margin: 0; }
