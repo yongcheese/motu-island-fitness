@@ -1,0 +1,7 @@
+{
+  "name": "workers-verify-spike",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "wrangler dev --port 8787", "bench": "node bench.mjs" },
+  "devDependencies": { "wrangler": "^4" }
+}

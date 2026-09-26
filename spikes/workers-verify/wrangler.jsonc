@@ -1,0 +1,7 @@
+{
+  "name": "workers-verify-spike",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+  // spike 用的簽章金鑰：只供測試，明碼放這裡；正式版要改用 `wrangler secret`
+  "vars": { "SPIKE_HMAC_KEY": "spike-only-not-a-real-secret" }
+}
