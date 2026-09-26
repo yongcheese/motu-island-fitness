@@ -45,7 +45,10 @@ export function HeroSkeleton({ label = '島嶼主角' }: { label?: string }) {
 export function BackdropSkeleton() {
   return (
     <div className="absolute inset-0 overflow-hidden bg-gradient-to-br from-island-cream via-[#E6F6F1] to-[#FFF1D6]">
-      <CoachSprite className="absolute bottom-4 left-4 w-40 max-h-[35%]" />
+      {/* 站在控制鈕上方，不和底部數據列、控制鈕重疊（--lv-ctrls-bottom 由健身頁的 .lv-fx 提供） */}
+      <div className="absolute left-4 w-24 sm:w-40" style={{ bottom: 'calc(var(--lv-ctrls-bottom, 132px) + 64px)' }}>
+        <CoachSprite className="w-full" />
+      </div>
     </div>
   );
 }

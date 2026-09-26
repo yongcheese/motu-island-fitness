@@ -676,9 +676,21 @@
 .lv-fx #lv-video { background: transparent; }
 .lv-fx .fx-slot-companion { position: absolute; top: calc(env(safe-area-inset-top) + 16px); right: 16px; z-index: 6; }
 /* 使用者 2026-09-26 看過骨架後定案：數據列留在底部，但排在暫停／語音／靜音按鈕的「下方」（貼底），
-   控制鈕移到數據列上方；教練提示與動作指引維持在控制鈕之上（Slice 8 補 RWD 細節） */
+   控制鈕移到數據列上方；教練提示與動作指引維持在控制鈕之上（Slice 8 補 RWD 細節）。
+   使用者同日追加：底部四格字要放大（做動作時離螢幕遠，看不清楚）；示範模式人物的圓形展示台不可壓到四格。
+   數據列高度會隨字級變，控制鈕與展示台的位置都由 --lv-hud-h 推出來，改字級只要改這一個值。 */
+.lv-fx { --lv-hud-h: 96px; --lv-ctrls-bottom: calc(env(safe-area-inset-bottom) + 12px + var(--lv-hud-h) + 12px); }
 .lv-fx .lv-hud { bottom: calc(env(safe-area-inset-bottom) + 12px); }
-.lv-fx .lv-ctrls { bottom: calc(env(safe-area-inset-bottom) + 96px); }
+.lv-fx .lv-metric { padding: 12px 6px; }
+.lv-fx .m-v { font-size: clamp(26px, 7vw, 38px); line-height: 1.15; }
+.lv-fx .m-k { font-size: clamp(13px, 3.4vw, 16px); margin-top: 4px; }
+.lv-fx .lv-ctrls { bottom: var(--lv-ctrls-bottom); }
+.lv-fx .lv-coach { bottom: calc(var(--lv-ctrls-bottom) + 48px + 16px); }
+/* 示範模式的 3D 展示台只畫在控制鈕上方，底部讓給控制鈕與數據列；底色透明，讓亮色背景（阿肌）透出 */
+.lv-fx .lv-avatar3d { bottom: calc(var(--lv-ctrls-bottom) + 48px + 12px); background: transparent;
+  /* 展示台下緣被裁平，用淡出收邊，看起來像站在舞台上而不是被切掉 */
+  -webkit-mask-image: linear-gradient(to bottom, #000 82%, transparent); mask-image: linear-gradient(to bottom, #000 82%, transparent); }
+@media (max-width: 620px) { .lv-fx { --lv-hud-h: 84px; } }
 /* 整合版結算：獎勵已在領獎序列領過，表現卡佔滿整列，延伸數據在達標率下方另起一列 */
 .wk-sum > .wk-sum-hero:has(.wk-sum-more) { grid-column: 1 / -1; flex-wrap: wrap; }
 .wk-sum-more { flex: 1 1 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 2px dashed var(--motu-color-border); }
