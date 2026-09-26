@@ -112,6 +112,7 @@
   - `motu-app/src/components/fitness/fitnessStyles.ts`：export `toShadowCss(css) → { css, fontFaces }`、型別 `ShadowCss`。
   - `motu-app/src/components/fitness/skeleton/FitnessSkeleton.tsx`：`WalletSkeleton`、`HeroSkeleton`、`BackdropSkeleton`、`CompanionSkeleton`、`ClaimSkeleton({awards, onDone})`、型別 `ClaimAward {kind:'coins'|'xp'|'fragments'; amount}`（後續 Slice 逐一替換，全部換完刪檔）。
   - `motu-app/package.json`：script `test:fitness`（目前跑 `scripts/test-fitness-shadow-css.ts`，後續 Slice 的測試腳本串接在後）。
+- **骨架確認回饋**：2026-09-26 使用者看過骨架後定案：數據列**留在底部**，但排在暫停／語音／靜音按鈕的**下方**（貼底），控制鈕移到數據列上方（原提案「數據列移到左側直排」作廢）。已改 `workout.css` 的 `.lv-fx` 規則，1440×900 與 390×844 實測量框：提示 → 控制鈕 → 數據列由上而下、互不重疊。
 - **審查紀錄**：2026-09-26 slice-reviewer 第 1 輪 BLOCK（pose.js 注入與其測試未做、.gitignore 未補、tsconfig／CoachSprite 未申報、Shadow DOM 決策未寫回看板；另兩項疑慮〔dist 未排除、領獎遮罩未壓暗〕經 `git check-ignore` 與實測 hit-test 查證為誤判，審查員自行撤回）→ 修正後第 2 輪 **PASS**。
 - **施工備忘**：`npm ci` 的 prepare 腳本（`scripts/setup-hooks.mjs`）會把**本 repo** 的 `core.hooksPath` 設成 `scripts/hooks`（motu-app 沒有自己的 .git），已 `git config --local --unset core.hooksPath` 還原；之後在 motu-app 重裝套件要再檢查一次。已知留給後續：真實 4:3 相機在 1440 寬時兩側只剩約 120px，阿肌會被相機畫面蓋住一半（Slice 6）；手機寬度阿肌與底部數據列重疊（Slice 6／8）；領獎時背後訓練畫面的提示文字仍透出（Slice 10）；整合版 console 只剩遊戲組原有的 favicon.ico 404。
 - **依賴**：無
@@ -227,7 +228,7 @@
 - **平行組**：獨立
 
 ### [ ] Slice 8 — 依骨架確認結果定案訓練畫面的數據列與控制鈕位置
-- **目標**：把 Slice 1 使用者看過後確認的數據列、控制鈕、「找不到人」提示位置正式化（含 RWD）。
+- **目標**：把 Slice 1 使用者看過後確認的數據列、控制鈕、「找不到人」提示位置正式化（含 RWD）。使用者已定案：數據列在底部、位於控制鈕下方（見 Slice 1「骨架確認回饋」）；本 Slice 補齊各寬度細節與版位測試。
 - **範圍內**：`workout.js`／`workout.css` 版面調整（電腦版與手機直式）、提示與控制鈕不重疊。
 - **範圍外**：判定、計次邏輯。
 - **改動檔案**：`app/features/workout/workout.js`、`app/features/workout/workout.css`、`tests/workout-layout.test.js`

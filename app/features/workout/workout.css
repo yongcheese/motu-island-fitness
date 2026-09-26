@@ -675,12 +675,10 @@
 .lv-fx .fx-slot-backdrop { position: absolute; inset: 0; z-index: 0; }
 .lv-fx #lv-video { background: transparent; }
 .lv-fx .fx-slot-companion { position: absolute; top: calc(env(safe-area-inset-top) + 16px); right: 16px; z-index: 6; }
-/* 使用者截圖標註「位置可以換一下」：數據列改到左側資訊卡下方直排，底部只留提示與控制鈕（Slice 8 依確認結果定案） */
-@media (min-width: 621px) {
-  .lv-fx .lv-hud { left: 16px; right: auto; top: 200px; bottom: auto; width: 250px; grid-template-columns: repeat(2, 1fr); padding: 0; }
-  .lv-fx .lv-coach { bottom: 84px; }
-  .lv-fx .lv-next { bottom: 150px; }
-}
+/* 使用者 2026-09-26 看過骨架後定案：數據列留在底部，但排在暫停／語音／靜音按鈕的「下方」（貼底），
+   控制鈕移到數據列上方；教練提示與動作指引維持在控制鈕之上（Slice 8 補 RWD 細節） */
+.lv-fx .lv-hud { bottom: calc(env(safe-area-inset-bottom) + 12px); }
+.lv-fx .lv-ctrls { bottom: calc(env(safe-area-inset-bottom) + 96px); }
 /* 整合版結算：獎勵已在領獎序列領過，表現卡佔滿整列，延伸數據在達標率下方另起一列 */
 .wk-sum > .wk-sum-hero:has(.wk-sum-more) { grid-column: 1 / -1; flex-wrap: wrap; }
 .wk-sum-more { flex: 1 1 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 2px dashed var(--motu-color-border); }
