@@ -78,8 +78,8 @@
 > 下游的 run-slice 與 slice-builder 一律沿用本區塊，不得重新調用 ui-ux-pro-max。
 
 ## 進度總覽
-- 總 Slice 數：13
-- 已完成：13 / 13
+- 總 Slice 數：21
+- 已完成：13 / 21（Slice 14–21 為 2026-09-27 追加：示範人物換成島嶼主角，見文末追加區）
 - 平行組：P1 = {Slice 2, Slice 3}（兩者都只新增純函式檔與測試檔，檔案兩兩不相交、互不依賴）
 
 ---
@@ -533,3 +533,184 @@
   - **真人＋實體相機**的訓練中 fps 與計次（無頭瀏覽器做不到，所有 fps 數字都是假相機／示範模式量的）。
   - **企劃書用截圖**：本次截圖左上角都標著「示範模式」、訓練畫面沒有相機影像，不適合直接放企劃書；正式截圖需以實體相機在整合版拍（鏡頭放低 0.8–1.0m）。
 - **觀察（不阻擋）**：1280 寬時遊戲端「管理員測試」側邊標籤會蓋住深度量表的「深度」字樣，只在測試模式出現。
+
+---
+
+# 追加區（2026-09-27）：示範人物換成島嶼主角
+
+> 需求來源：`REQUIREMENT.md` 第 8 節（使用者選方案 A）
+> 前 13 個 Slice 原封不動；本區追加 Slice 14–21，沿用上方「架構決策」「本次的不變量」「設計鐵律速查」「設計顧問輸入」。
+> 動工前看板備份：`TODO_PLAN.backup-20260927-1859.md`
+
+## 追加區需求檔位
+- **檔位**：L
+- **判定理由**：從 S 起算，命中 3 條 →
+  ②介面多個消費端：共用主角 renderer（`FitnessCharacter` 的 `getShared`）目前服務推薦卡與陪伴，改成多掛載點後推薦卡、陪伴、4 張動作卡、說明頁、示範舞台 5 種消費端同時依賴；
+  ③brownfield 耦合：遊戲組角色零件是跨畫布共用快取，已知「每卸載一個 renderer 洩漏一個 WebGL context」（Slice 4），多掛載點改法若錯會再犯；
+  ⑤橫跨 3 個以上關注點：renderer 架構、伏地挺身姿勢（根節點俯仰）、示範時間軸同步（事件通道）、三處版面取景。
+  （①持久化、④新依賴：未命中。）3 條 → L。
+- **本檔位規格**：Slice 數 8 ｜ slice-reviewer **逐 Slice** ｜ 完整 build 每個 Slice（皆為獨立組）＋收尾 ｜ context 隔離：半自動每 2–3 個 Slice 換一次對話
+- **UI 骨架 Slice：有（Slice 14，追加區第一個）**。三件套獨立：骨架＝Slice 14、視覺美學＝Slice 20、微互動＝Slice 21。
+
+## 追加區的技術前提（查證自原始碼，2026-09-27）
+- 可用動作只有 4 個（`app/core/exercises/index.js`：squat、jumpingjack、highknees、pushup），其餘 6 張卡是鎖定卡、不畫人物 → 同時最多 4 張卡＋推薦卡要動。
+- `FitnessCharacter` 全頁單一 renderer、**一次只服務一個掛載點**（畫布搬家）；示範模式時「中央示範人物」與「右上陪伴主角」同時存在 → 必須先做多掛載點（Slice 15），否則兩者互搶畫布。
+- 做法定為**單一 renderer 逐點繪製再貼到各點的 2D 畫布**（同我方 `startCardAnims` 的離屏 blit 思路）：不開第二個 WebGL context、不用 drei `View`（它要一張蓋全頁的畫布並追蹤 DOM 位置，在 Shadow DOM＋捲動容器裡風險高）。
+- 伏地挺身：`poseToRig` 側面機位 `torsoDrop` 恆為 0、軀幹不俯仰 → 角色是漂在空中的平板（Slice 3／7 已知），需根節點俯仰＋貼地（Slice 16）。
+- 各動作視角：我方 `EX_VIEW`（深蹲 3/4 側、開合跳近正面…）；`FitnessCharacter` 目前固定 `TURN_Y = -0.55`，要改成依動作。
+- 示範模式的合成資料是 `makeSequence` 產生的 MediaPipe 格式 landmarks（`live.frames`），可直接餵 `poseToRig`，人物與引擎判定同一份資料。
+
+## 追加區不變量（在上方 7 條之外）
+8. 舊版 :8080（無 `ctx.slots`）三處仍用 `avatar3d` 公仔，程式路徑與畫面不變。
+9. 整合版（有 `ctx.slots`）三處**不建立** `createAvatar3D`（不為看不到的公仔開 WebGL context）。
+10. 全頁主角 WebGL context 固定 1 個（不含島嶼），進出健身頁／切換篩選 10 輪不增加。
+
+---
+
+### [ ] Slice 14 — 三處示範人物改為插槽並刻出取景骨架
+- **目標**：整合版的動作卡片、說明頁、示範模式中央都改成插槽，先放「主角大小的佔位剪影」，讓使用者確認取景與版位。
+- **範圍內**：
+  - `workout.js`：有 `ctx.slots` 時，卡片 `canvas.wk2-canvas` → `slotHtml(slots, 'card-<id>')`；說明頁人物區 → `intro`；示範模式 `.lv-avatar3d` 舞台 → `stage`。三處都不建立 `createAvatar3D`（`startCardAnims`／`animDemo`／示範舞台在整合版跳過）。
+  - `FitnessHost.tsx`：以 `FitnessSkeleton` 的佔位剪影（新增 `FigureSkeleton`）畫進三種插槽，標出人物外框、頭頂與腳下留白線。
+  - `workout.css`：整合版的取景規則 —— 卡片人物框（腳底留白 ≥ 8%、頭頂 ≥ 10%）、說明頁人物框、示範舞台位於數據列與控制鈕上方、不與「+1」位置（畫面中央）與提示欄重疊（人物置中偏上或左移，由使用者看過後定案）。
+- **範圍外**：真的 3D 主角（Slice 15、17–19）、伏地挺身姿勢（Slice 16）、動畫與減少動畫（Slice 21）、視覺細修（Slice 20）。
+- **改動檔案**：`app/features/workout/workout.js`、`app/features/workout/workout.css`、`motu-app/src/components/fitness/FitnessHost.tsx`、`motu-app/src/components/fitness/skeleton/FitnessSkeleton.tsx`、`tests/workout-slots.test.js`
+- **設計要點**：佔位剪影用遊戲組淺色（奶油／淺海洋青），外框虛線；示範舞台移除深色展示台與底部淡出遮罩（那是舊公仔的舞台）。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [ ] 整合版三處都是插槽，頁面上 `avatar3d` 建立次數為 0（實測 WebGL context 數）
+  - [ ] 舊版 :8080 三處仍是原公仔（`workout-slots` 測試鎖無 slots 分支）
+  - [ ] 1440／390 截圖：佔位剪影不被裁、示範舞台不壓到「+1」、提示框、控制鈕、數據列
+  - [ ] **停下來請使用者看截圖確認取景與版位**（手動模式關卡）
+- **測試策略**：`tests/workout-slots.test.js` — 有 slots 時卡片／說明頁／示範輸出插槽且無 `wk2-canvas`；無 slots 時輸出與原本逐字相同（邊界：鎖定卡不輸出插槽）。
+- **完成定義**：`npm test` 全綠＋`tsc`＋`vite build`＋兩寬截圖＋slice-reviewer＋使用者確認
+- **對外介面**：
+- **依賴**：無（接續 Slice 13）
+- **平行組**：獨立
+
+### [ ] Slice 15 — 共用主角畫布改成同時服務多個掛載點
+- **目標**：一個 renderer 能同時畫推薦卡、4 張動作卡、陪伴主角、示範舞台，WebGL context 仍只有 1 個。
+- **範圍內**：`FitnessCharacter` 的 `getShared` 改為「掛載點登記表」：每個掛載點有自己的 2D 畫布、尺寸、動作、模式、姿勢來源；每幀逐點擺姿勢 → 以該點尺寸繪製 → `drawImage` 到該點畫布。看不到的點（IntersectionObserver、`display:none`）不畫；排程邏輯抽成純函式檔 `characterViews.ts`。推薦卡與陪伴主角改走登記表（外觀不變）。角色模型只載一份，各點共用幾何與穿著。
+- **範圍外**：新增掛載點的畫面（Slice 17–19）、依動作視角（Slice 17）、伏地挺身（Slice 16）。
+- **改動檔案**：`motu-app/src/components/fitness/FitnessCharacter.tsx`、`motu-app/src/components/fitness/characterViews.ts`（新增）、`motu-app/scripts/test-fitness-views.ts`（新增）、`motu-app/package.json`（`test:fitness` 串接）
+- **設計要點**：N/A ｜ 架構（外觀須與 Slice 13 完全相同）
+- **UI Slice?**：NO
+- **驗收標準**：
+  - [ ] 推薦卡＋陪伴同時掛載時兩者都正確繪製（Slice 13 已知「互相覆蓋 dpr」問題一併消失）
+  - [ ] 進出健身頁 10 輪、切篩選 10 輪：主角 WebGL context 固定 1 個、heap 後段持平
+  - [ ] 推薦卡、陪伴外觀與 Slice 13 截圖逐像素差異僅限動畫相位
+  - [ ] 一般模式訓練中 fps 不低於 Slice 13 實測（60）
+- **測試策略**：`scripts/test-fitness-views.ts` — 登記／移除、不可見點略過、尺寸變更、全部移除後停止繪製、同一點重複登記（StrictMode 雙掛載）不重複計數（邊界）。
+- **完成定義**：`test:fitness`＋`tsc`＋`vite build`＋context／heap 實測＋slice-reviewer
+- **對外介面**：
+- **依賴**：Slice 14
+- **平行組**：獨立
+
+### [ ] Slice 16 — 伏地挺身讓主角趴在地上撐起
+- **目標**：島嶼主角做伏地挺身時身體俯臥貼地、手撐地上下，不再是漂浮的平板。
+- **範圍內**：`poseToRig` 側面機位輸出根節點俯仰角與離地高度（新增欄位，舊欄位不變）；`FitnessCharacter` 套用到根節點。
+- **範圍外**：其他三個動作的姿勢（已可用）；我方判定引擎（不變量 1）。
+- **改動檔案**：`motu-app/src/components/fitness/poseToRig.ts`、`motu-app/src/components/fitness/FitnessCharacter.tsx`、`motu-app/scripts/test-fitness-pose-to-rig.ts`
+- **設計要點**：身體直線、手在肩正下方、腳尖著地；下壓最低點胸口離地約一個頭高。
+- **UI Slice?**：YES（姿勢外觀）
+- **驗收標準**：
+  - [ ] 合成伏地挺身全程：根節點俯仰 70°–95°、手與腳尖最低點高度差 ≤ 頭高的 20%（不懸空）
+  - [ ] 深蹲／開合跳／高抬腿的輸出與改前相同（回歸）
+  - [ ] 截圖：頂端與底部兩格看得出是伏地挺身
+- **測試策略**：`test-fitness-pose-to-rig.ts` 新增 — 俯仰範圍、貼地、正面機位新欄位為 0（邊界）、既有斷言不改。
+- **完成定義**：`test:fitness`＋`tsc`＋截圖＋slice-reviewer
+- **對外介面**：
+- **依賴**：Slice 15
+- **平行組**：獨立
+
+### [ ] Slice 17 — 動作卡片換上會示範的島嶼主角
+- **目標**：4 張可用動作卡各自顯示穿著同步的島嶼主角循環示範該動作，視角依動作。
+- **範圍內**：`card-<id>` 插槽掛 `FitnessCharacter`（loop）；`FitnessCharacter` 新增 `view` 屬性（依 `EX_VIEW` 的 yaw，取代固定 `TURN_Y`；推薦卡沿用深蹲視角不變）；各卡起始相位錯開；篩選／搜尋重畫卡片時插槽正確換手。
+- **範圍外**：說明頁（Slice 18）、示範舞台（Slice 19）、取景細修（Slice 20）。
+- **改動檔案**：`motu-app/src/components/fitness/FitnessHost.tsx`、`motu-app/src/components/fitness/FitnessCharacter.tsx`
+- **設計要點**：取景照 Slice 14 使用者確認的框線。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [ ] 換裝後 4 張卡主角同一套穿著
+  - [ ] 開合跳近正面、深蹲與高抬腿 3/4 側、伏地挺身側面
+  - [ ] 篩選切換 10 輪 context 數不增加、無殘留畫布
+  - [ ] 1440／390 截圖、console 0 error
+- **測試策略**：`test-fitness-views.ts` 補「視角依動作」「插槽換手」；我方 `workout-slots` 沿用。
+- **完成定義**：測試＋`tsc`＋`vite build`＋截圖＋slice-reviewer
+- **對外介面**：
+- **依賴**：Slice 16
+- **平行組**：獨立
+
+### [ ] Slice 18 — 動作說明頁換上島嶼主角
+- **目標**：點進動作說明頁，上方大圖是島嶼主角示範該動作。
+- **範圍內**：`intro` 插槽掛 `FitnessCharacter`（loop、依動作視角）；說明頁容器移除舊公仔的深色展示台，改遊戲組淺色底。
+- **範圍外**：示範舞台（Slice 19）。
+- **改動檔案**：`motu-app/src/components/fitness/FitnessHost.tsx`、`app/features/workout/workout.css`
+- **設計要點**：人物框高約容器 80%，置中。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [ ] 4 個動作說明頁皆為島嶼主角、穿著同步、不被裁
+  - [ ] 返回清單再進入 10 輪 context 不增加
+  - [ ] 舊版 :8080 說明頁不變
+- **測試策略**：`workout-slots` 補說明頁分支；實機截圖。
+- **完成定義**：測試＋`tsc`＋`vite build`＋截圖＋slice-reviewer
+- **對外介面**：
+- **依賴**：Slice 17
+- **平行組**：獨立
+
+### [ ] Slice 19 — 示範模式中央人物由島嶼主角照合成資料演出
+- **目標**：示範模式中央的主角做的正是引擎正在判定的那一段合成動作（含故意的半蹲那一下），和計次同步。
+- **範圍內**：`workout.js` 示範迴圈每幀經 `ctx.events.emit('demoFrame', { landmarks })` 送出目前那幀（整合版才送）；`stage` 插槽掛 `FitnessCharacter` 新模式 `feed`（以 ref 接收幀，不經 React state）→ `poseToRig`；休息時定格。
+- **範圍外**：真相機模式（中央是使用者影像，不放主角）。
+- **改動檔案**：`app/features/workout/workout.js`、`motu-app/src/components/fitness/FitnessHost.tsx`、`motu-app/src/components/fitness/FitnessCharacter.tsx`、`tests/workout-slots.test.js`、`motu-app/scripts/test-fitness-views.ts`
+- **設計要點**：與陪伴主角同屏時兩者大小要分得出主次（中央大、右上小）。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [ ] 每次「+1」出現時中央主角在最低點附近（取樣 10 下，時間差 ≤ 200ms）；半蹲那一下主角明顯蹲不到底、且沒有「+1」
+  - [ ] 陪伴主角同時正常動作
+  - [ ] 事件每幀送出不造成 React 重畫（React Profiler 或渲染計數驗證）
+  - [ ] 舊版示範模式不變（引擎測試全數沿用）
+- **測試策略**：`workout-slots` — 有 slots 才送 `demoFrame`、無 slots 不送；`test-fitness-views` — feed 模式取最新一幀、沒幀時站姿（邊界）。
+- **完成定義**：測試＋`tsc`＋`vite build`＋實機同步量測＋slice-reviewer
+- **對外介面**：
+- **依賴**：Slice 18
+- **平行組**：獨立
+
+### [ ] Slice 20 — 打磨三處主角的取景與舞台視覺
+- **目標**：三處主角看起來像遊戲裡的角色站在健身頁上：取景、陰影、底座一致。
+- **範圍內**：腳底柔影（沿用陪伴主角的陰影做法）、卡片與說明頁底色、示範舞台大小與位置（兩寬）、推薦卡 390 寬草帽被裁（Slice 4 已知）一併處理。
+- **範圍外**：動畫。
+- **改動檔案**：`app/features/workout/workout.css`、`motu-app/src/components/fitness/FitnessCharacter.tsx`、`motu-app/src/components/fitness/FitnessHost.tsx`
+- **設計要點**：沿用上方設計顧問輸入；不用深色展示台；文字對比規則不變。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [ ] 1440／1920／390 三寬：頭頂留白 ≥ 10%、腳底在框高 80–88%、陰影對準腳底（量測寫回看板）
+  - [ ] 示範舞台人物與「+1」、提示、控制鈕、數據列無重疊（元素框量測）
+  - [ ] 使用者看改前／改後截圖
+- **測試策略**：`tests/workout-layout.test.js` 補整合版取景規則；實機量測腳本。
+- **完成定義**：測試＋`vite build`＋三寬量測＋slice-reviewer
+- **對外介面**：
+- **依賴**：Slice 19
+- **平行組**：獨立
+
+### [ ] Slice 21 — 多主角同屏的減少動畫與效能底線
+- **目標**：一頁 5 個主角時仍順，減少動畫時全部定格，低階筆電會自動讓路。
+- **範圍內**：減少動畫 → 卡片／說明頁定格在動作中段，示範舞台照合成資料（屬回應內容，非裝飾循環）；`perfGuard` 降級時先降卡片更新頻率（例如每 2 幀畫一次），再降解析度；捲出畫面的卡片停畫（Slice 15 已做，本 Slice 驗證）。
+- **範圍外**：新功能。
+- **改動檔案**：`motu-app/src/components/fitness/FitnessCharacter.tsx`、`motu-app/src/components/fitness/perfGuard.ts`、`motu-app/scripts/test-fitness-perf.ts`
+- **設計要點**：沿用 Slice 13 節奏與降級順序。
+- **UI Slice?**：YES
+- **驗收標準**：
+  - [ ] 健身初始頁（5 主角）一般 ≥ 55fps、CPU 降速 12 倍 ≥ 24fps（實測寫回看板）
+  - [ ] 示範模式訓練中 ≥ 24fps（同條件）
+  - [ ] 減少動畫：卡片、說明頁定格（截圖比對）
+- **測試策略**：`test-fitness-perf.ts` 補「卡片降頻」的降級決策（邊界：等級回復時恢復全頻）。
+- **完成定義**：測試＋`tsc`＋`vite build`＋fps 實測＋slice-reviewer
+- **對外介面**：
+- **依賴**：Slice 20
+- **平行組**：獨立
+
+## 追加區收尾總驗證
+- 我方 `npm test`、整合版 `tsc`＋`vite build`＋全部遊戲組測試＋`test:fitness`
+- `REQUIREMENT.md` 第 8 節 6 條逐條實機驗證（1440／390）；重跑 `.playwright-mcp/fv-final.mjs` 確認第 7 節不退步
+- 截圖交使用者親眼確認
