@@ -8,6 +8,9 @@
  *   2. 提供健身頁需要的 ctx（store、語音教練、切頁、全螢幕），全螢幕改走遊戲端的 isWorkoutActive；
  *   3. 健身頁在自己的 DOM 留插槽（ctx.slots），這裡用 React portal 把遊戲組元件畫進去；
  *      結束訓練時健身頁呼叫 ctx.game.claim(awards)，這裡播領獎序列，玩家按任意鍵後才 resolve。
+ *
+ * 遊戲端餘額（金幣、碎片、經驗、等級）由這裡從 profile 發布，資源列與健身頁本體
+ * （ctx.game.balances／subscribe）讀的是同一份，見 FitnessWallet.tsx。
  */
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -16,11 +19,12 @@ import { useApp } from '../../context/AppContext';
 import { View } from '../../types';
 import { toShadowCss } from './fitnessStyles';
 import { FitnessCharacter } from './FitnessCharacter';
+import { FitnessWallet, createBalanceFeed } from './FitnessWallet';
+import { balancesFromProfile } from './gameContract';
 import {
   BackdropSkeleton,
   ClaimSkeleton,
   CompanionSkeleton,
-  WalletSkeleton,
   type ClaimAward,
 } from './skeleton/FitnessSkeleton';
 
@@ -59,7 +63,7 @@ function cloneGameStyles(target: ShadowRoot) {
 type Slots = Record<string, HTMLElement>;
 
 export function FitnessHost() {
-  const { setIsWorkoutActive, setCurrentView } = useApp();
+  const { setIsWorkoutActive, setCurrentView, profile } = useApp();
   // 健身頁只掛載一次：context 的 setter 若在重繪時換了參考，也不能因此把訓練中的頁面拆掉重掛
   const appRef = useRef({ setIsWorkoutActive, setCurrentView });
   appRef.current = { setIsWorkoutActive, setCurrentView };
@@ -68,6 +72,11 @@ export function FitnessHost() {
   const [overlay, setOverlay] = useState<HTMLElement | null>(null);
   const [claim, setClaim] = useState<{ awards: ClaimAward[]; resolve: () => void } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // 遊戲端餘額：整個宿主生命週期只有一條訊息，profile 一換就重新發布（四個數字沒變則不通知）
+  const [balanceFeed] = useState(() => createBalanceFeed(balancesFromProfile(profile)));
+  useEffect(() => {
+    balanceFeed.publish(balancesFromProfile(profile));
+  }, [balanceFeed, profile]);
   // 遊戲端的分頁列只在主頁出現，其他頁面各自有右上角的關閉鍵回島嶼（同健康頁、設定頁）；全螢幕訓練時隱藏
   const [chrome, setChromeState] = useState(true);
 
@@ -120,6 +129,8 @@ export function FitnessHost() {
       },
       slots: { set: (map: Slots) => setSlots({ ...map }) },
       game: {
+        balances: balanceFeed.balances,
+        subscribe: balanceFeed.subscribe,
         claim: (awards: ClaimAward[]) =>
           new Promise<void>((resolve) => setClaim({ awards, resolve })),
       },
@@ -140,7 +151,7 @@ export function FitnessHost() {
 
   return (
     <div ref={hostRef} className="absolute inset-0">
-      {portal('wallet', <WalletSkeleton />)}
+      {portal('wallet', <FitnessWallet feed={balanceFeed} />)}
       {/* 推薦卡的主角做的是推薦卡那個動作（卡片上的 data-rec-id） */}
       {portal('hero', <FitnessCharacter exercise={slots.hero?.closest('[data-rec-id]')?.getAttribute('data-rec-id') ?? 'squat'} />)}
       {portal('backdrop', <BackdropSkeleton />)}

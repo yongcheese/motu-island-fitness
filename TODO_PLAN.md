@@ -79,7 +79,7 @@
 
 ## 進度總覽
 - 總 Slice 數：13
-- 已完成：4 / 13
+- 已完成：5 / 13
 - 平行組：P1 = {Slice 2, Slice 3}（兩者都只新增純函式檔與測試檔，檔案兩兩不相交、互不依賴）
 
 ---
@@ -214,7 +214,7 @@
 - **依賴**：Slice 2、Slice 3
 - **平行組**：獨立
 
-### [ ] Slice 5 — 健身頁新增金幣與碎片數量列並與島嶼同步
+### [x] Slice 5 — 健身頁新增金幣與碎片數量列並與島嶼同步
 - **目標**：健身初始頁看得到跟島嶼一樣的金幣與碎片數字，任一邊變動另一邊立刻更新。
 - **範圍內**：新增 `FitnessWallet.tsx`（遊戲組 `Coins` 金色、`Gem` 深青圖示＋數字，樣式同遊戲組 `CurrencyChips`），掛進資源列插槽，數字來自 `balancesFromProfile`；並提供 `ctx.game.balances()`／`subscribe()`，讓我方頁面內原本顯示金幣的地方改讀遊戲端數字。
 - **範圍外**：領獎飛入動畫（Slice 10）。
@@ -222,11 +222,24 @@
 - **設計要點**：數字用深藍、`aria-label="金幣 N"`；大數字用遊戲組 `shortNumber` 規則。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [ ] 健身頁數字＝島嶼 HUD 數字；在管理員面板調整金幣後健身頁即時更新
-  - [ ] 無 `ctx.game` 時（舊版）行為不變
+  - [x] 健身頁數字＝島嶼 HUD 數字；在管理員面板調整金幣後健身頁即時更新
+  - [x] 無 `ctx.game` 時（舊版）行為不變
 - **測試策略**：`tests/workout-slots.test.js` 新增：有 `ctx.game` 時金幣顯示取自 `balances()`；整合版實機比對截圖。
 - **完成定義**：`npm test`＋`tsc --noEmit` PASS＋截圖
 - **對外介面**：
+  - `motu-app/src/components/fitness/FitnessWallet.tsx`：
+    - `FitnessWallet({ feed: BalanceFeed })`：資源列元件（`useSyncExternalStore` 訂閱），`role="group" aria-label="島嶼資源"`，金幣／碎片各自 `aria-label="金幣 N"`（完整數字）、畫面顯示 `shortNumber` 縮寫。
+    - `createBalanceFeed(initial: FitnessBalances) → BalanceFeed`；型別 `BalanceFeed { balances(): FitnessBalances; subscribe(fn: BalanceListener): () => void; publish(next): void }`、`BalanceListener = (b: FitnessBalances) => void`。`publish` 四個數字都沒變就不通知、`balances()` 回同一物件；`subscribe` 不會立刻回呼（要現值讀 `balances()`），回傳取消訂閱函式。
+    - `shortNumber(n)`：照抄遊戲組 TopBar（未 export、不可改）的縮寫規則。
+  - 訓練頁可讀的 ctx 欄位（新增）：`ctx.game.balances() → { coins, fragments, xp, level }`、`ctx.game.subscribe(fn) → unsubscribe`。與資源列同一條訊息，來源＝`useApp().profile` 經 `balancesFromProfile`，profile 一換即發布。
+  - `FitnessHost.tsx`：`wallet` 插槽改掛 `FitnessWallet`（`WalletSkeleton` 已無使用者，骨架檔統一在全部換完後刪）。
+  - `motu-app/package.json`：`test:fitness` 串接 `scripts/test-fitness-wallet.ts`。
+- **施工決策**：
+  - **`app/features/workout/workout.js` 與 `tests/workout-slots.test.js` 未改動**（原列於改動檔案與測試策略）：查證後，整合版內我方頁面已沒有「顯示餘額」的地方 —— 初始頁餘額自 Slice 1 起就是純插槽；結算頁唯一讀 `s.wallet` 的區塊在有 `ctx.game` 時早已隱藏（Slice 1）。`ctx.game.balances／subscribe` 先開好介面，目前由資源列經同一條訊息消費，**workout.js 尚未呼叫**；第一個 app/ 端消費者（預計 Slice 9／11）要驗證這條路徑。測試改以 `scripts/test-fitness-wallet.ts`（20 條：縮寫邊界、訊息通知／去重／取消訂閱、畫面數字、profile 為 null）鎖住。
+  - 數字依文字對比規則用深藍（遊戲組 TopBar 用金色字，這裡只讓圖示帶金／深青）。
+  - Circuit Breaker 1 次：`renderToStaticMarkup` 測試要求 `useSyncExternalStore` 的第三個參數 `getServerSnapshot`，補上同一個 `balances`。
+- **UI QA 紀錄**（無頭瀏覽器，整合版 :3000）：訪客初始健身頁 100／0＝島嶼 HUD；停在健身頁以管理員面板金幣 +10,000、碎片 +100 → 立即變「10.1K／100」，回島嶼 HUD 為 10,100／100。1440 與 390 寬截圖（`.playwright-mcp/slice5-*.png`，已被 .gitignore 排除）。console 只剩遊戲組原有 favicon.ico 404。舊版 `app/` 未改動，`npm test` 475/475。
+- **審查紀錄**：2026-09-27 slice-reviewer 第 1 輪 **PASS**（觸發條件：L 檔、新增 export 型別／ctx 介面、改 `package.json`、觸發過 Circuit Breaker）。審查員建議把 workout.js 未改的落差寫進施工決策（已補）。
 - **依賴**：Slice 4
 - **平行組**：獨立
 
