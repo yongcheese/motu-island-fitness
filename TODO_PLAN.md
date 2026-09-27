@@ -79,7 +79,7 @@
 
 ## 進度總覽
 - 總 Slice 數：13
-- 已完成：8 / 13
+- 已完成：9 / 13
 - 平行組：P1 = {Slice 2, Slice 3}（兩者都只新增純函式檔與測試檔，檔案兩兩不相交、互不依賴）
 
 ---
@@ -342,21 +342,40 @@
 - **依賴**：Slice 7
 - **平行組**：獨立
 
-### [ ] Slice 9 — 結束訓練改由遊戲端發放金幣、經驗與碎片
+### [x] Slice 9 — 結束訓練改由遊戲端發放金幣、經驗與碎片
 - **目標**：整合版結算的金幣、經驗、碎片真的寫進遊戲存檔，島嶼那邊立刻看得到。
 - **範圍內**：`ctx.game.settle(summary)`：`completionFromSession` → `reportWorkoutCompletion`、`payoutForWorkout` 取得顯示值、`fragmentsForWorkout`＋`rollWorkoutFragmentItem`＋`grantFragments` 發碎片 → 回傳 `awardQueue`；`workout.js` 結束時若有 `ctx.game` 則呼叫它（我方 `commitSession` 仍記錄訓練統計，但整合版不再自行加金幣）。
 - **範圍外**：領獎動畫（Slice 10）。
-- **改動檔案**：`motu-app/src/components/fitness/FitnessHost.tsx`、`motu-app/src/components/fitness/useFitnessSettle.ts`（新增）、`app/features/workout/workout.js`、`app/state/store.js`（`commitSession` 新增「不發金幣」選項，預設行為不變）、`tests/session-rewards.test.js`（新增案例）
+- **改動檔案**：`motu-app/src/components/fitness/FitnessHost.tsx`、`motu-app/src/components/fitness/useFitnessSettle.ts`（新增）、`app/features/workout/workout.js`、`app/state/store.js`（`commitSession` 新增「不發金幣」選項，預設行為不變）、`tests/session-rewards.test.js`（新增案例）；施工時追加（見施工決策）：`motu-app/scripts/test-fitness-contract.ts`（測試策略內）、`motu-app/src/components/fitness/skeleton/FitnessSkeleton.tsx`（一行）
 - **設計要點**：N/A ｜ 資料流
 - **UI Slice?**：NO
 - **驗收標準**：
-  - [ ] 做完 10 下有效 → 島嶼 HUD 金幣、經驗增加量＝遊戲端公式；碎片進背包
-  - [ ] 示範模式／0 下 → 不發獎、不報錯
-  - [ ] 重複觸發結束（連點）只發一次（遊戲端去重＋前端鎖）
-  - [ ] `npm run test:workout-rewards` 仍 61/61
+  - [x] 做完 10 下有效 → 島嶼 HUD 金幣、經驗增加量＝遊戲端公式；碎片進背包（⚠️ 存檔增加量＝公式；HUD 剛發完獎會暫時顯示雙倍、重整後正確 —— 遊戲組 `useWorkoutRewards.ts` 既有問題，見施工決策）
+  - [x] 示範模式／0 下 → 不發獎、不報錯
+  - [x] 重複觸發結束（連點）只發一次（遊戲端去重＋前端鎖）
+  - [x] `npm run test:workout-rewards` 仍 61/61
 - **測試策略**：`tests/session-rewards.test.js` — `commitSession({ grantCoins:false })` 不動錢包但記錄統計；`scripts/test-fitness-contract.ts` 補連點去重案例；實機驗證。
 - **完成定義**：`npm test`＋整合版測試＋`tsc --noEmit` PASS
 - **對外介面**：
+  - 訓練頁讀的 ctx 欄位（新增）：`ctx.game.settle(session & { mode }) → Promise<Award[]>`。宿主以遊戲端發放金幣／經驗（`reportWorkoutCompletion`，顯示值＝`payoutForWorkout` 基礎值）與**商品碎片**（`grantFragments`，數量＝真的留在商品上的 `kept`，溢出換抽獎券的部分不演出），回傳 `awardQueue`；非相機、0 下有效、profile 未載入 → `[]`。同一 `workoutId`（`fx-` + session id）只結算一次，重複呼叫回同一個 Promise。
+  - `motu-app/src/components/fitness/useFitnessSettle.ts`：`createFitnessSettle(deps: SettleDeps) → FitnessSettle`（純工廠，測試用）、`useFitnessSettle(profile, grantFragments) → FitnessSettle`（宿主用，一個生命週期一個，每次呼叫讀最新 profile）；型別 `SettleDeps { getProfile; report; grantFragments; random? }`、`FitnessSettle = (session) => Promise<Award[]>`。
+  - `app/state/store.js`：`commitSession(result, opts?)`，`opts.grantCoins === false` 時不動錢包／XP／等級、不消耗雙倍卡旗標，照記 history／連續天數／成就；回傳 `coinsEarned`、`xpGain` 為 0。session 新增欄位 `walletGranted: boolean`（純追加）。只有明確 `false` 才停發。
+  - `app/features/workout/workout.js`：export `claimRewards(game, session, mode) → Promise<Award[]>`（有 settle → settle 後把非空清單交給 claim；只有 claim → `previewAwards` 相容路徑；沒有 game → `[]`；失敗會丟出，`finishLive` 接住後照樣進結算頁）。`finishLive` 在有 `ctx.game.settle` 時以 `{ grantCoins: false }` 結算。
+  - `FitnessHost.tsx`：`ctx.game.settle` 已接上。
+  - `FitnessSkeleton.tsx`：`ClaimSkeleton` 改為只播傳入的清單（原本寫死補一張「+3 碎片」）。
+- **施工決策**：
+  - **兩種「碎片」**：遊戲端資源列顯示的是錢包碎片（`wallet.fragments`），遊戲規則規定**只能來自訓練以外**（`constants/currency.ts`）；訓練發的是商品碎片（`itemFragments`，集滿換商品），同遊戲組原型 `FitnessView`。本 Slice 照看板與遊戲端規則發商品碎片 → **Slice 10「飛入資源列」的碎片目的地要重新決定**（資源列的碎片數字不會因訓練增加）。
+  - `grantFragments` 本身沒有去重（金幣經驗有 `processedIds`），所以前端以 `workoutId` 加鎖；`finishLive` 原本就有 `live.finished` 鎖。
+  - 碎片發放失敗或 `ok:false` → 金幣經驗照發、碎片不進領獎清單（畫面不能說拿到了背包卻沒有）。
+  - **追加改 `FitnessSkeleton.tsx` 一行**：骨架寫死補一張「+3 碎片」，settle 回傳真碎片後會多演一張假卡；Slice 10 會整個換掉骨架。
+  - **遊戲組既有問題（未修，不變量 5 不可改）**：`useWorkoutRewards.ts` 寫入後對本機 profile 做樂觀疊加（`currencyPatch(live, …, getBalance(live) + coins)`），疊在可能已被存檔監聽更新過的 profile 上 → 發完獎島嶼 HUD 暫時顯示雙倍（實測存檔 110/64、HUD 120/LV2，重整後正確）。**不經過健身頁**直接呼叫 `reportWorkoutCompletion` 同樣重現，非本 Slice 造成。需轉給遊戲組修。
+  - Circuit Breaker 1 次：新增的接線測試用 `indexOf('stopLive();')` 抓到「未開始就退出」那行而誤紅，改為從 `emitPhase('end'` 之後找，斷言強度不變。
+  - **補記 Slice 8**：依 L 檔規則獨立 Slice 應跑 `vite build`，Slice 8 當時誤判為留待收尾；本 Slice 的 build（PASS）已涵蓋 Slice 8 的改動。
+- **UI QA 紀錄**（無頭瀏覽器、無實體相機；存檔以遊戲端 firebase 層 `getDoc` 讀取）：
+  - 真人計次路徑：Playwright 在網路層把送到瀏覽器的 `workout.js` 中 `live.mode = 'demo'` 改成 `'camera'`（原始碼未改），示範動作計次走完真實流程：10 下有效、連點結束 3 次 → 領獎卡 +10 金幣／+64 經驗／+6 碎片＝`payoutForWorkout(同一 completion)` {10, 64}；存檔金幣 100→110、經驗 0→64、`itemFragments` +6、`processedIds` 1 筆、`completedCount` 1；之後進結算頁；遊戲端新手獎勵（毛帽）照常跳出；console 0 error。腳本 `.playwright-mcp/s9-e2e.js`。
+  - 示範模式（不改寫）：10 下後結束 → 沒有領獎卡、直接進結算頁、存檔不變、未送完成事件、console 0 error（`.playwright-mcp/s9-demo.js`）。
+  - 已知留給後續：真實相機下未實機驗證；HUD 雙倍顯示待遊戲組修。
+- **審查紀錄**：2026-09-27 slice-reviewer 第 1 輪 **PASS**（觸發條件：L 檔、新增 ctx 介面／export、改動檔案與其他 Slice 交集〔`workout.js`、`FitnessHost.tsx`〕、觸發過 Circuit Breaker）。審查員獨立讀 `useWorkoutRewards.ts` 佐證 HUD 雙倍為遊戲端既有問題；建議回填追加的改動檔案與記錄該問題（皆已補）。
 - **依賴**：Slice 2、Slice 5
 - **平行組**：獨立
 

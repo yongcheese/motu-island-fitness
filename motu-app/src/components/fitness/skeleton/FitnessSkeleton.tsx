@@ -84,8 +84,8 @@ const AWARD_META: Record<ClaimAward['kind'], { name: string; icon: React.ReactNo
  * 最後出現「按下任意鍵以繼續」，再按一次才結束。Slice 10 換成遊戲組風格的揭曉與飛入動畫。
  */
 export function ClaimSkeleton({ awards, onDone }: { awards: ClaimAward[]; onDone: () => void }) {
-  // 骨架寫死一項碎片：碎片由遊戲端決定（Slice 9），這裡只是讓版面看得到三種卡
-  const queue = [...awards, { kind: 'fragments' as const, amount: 3 }];
+  // Slice 9 起清單由遊戲端 settle 回傳（含商品碎片），原本寫死補上的一項碎片已移除，否則會多演一張假的碎片卡
+  const queue = awards;
   const [index, setIndex] = useState(0);
   const finished = index >= queue.length;
 

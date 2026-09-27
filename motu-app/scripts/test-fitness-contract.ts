@@ -15,6 +15,9 @@ import {
 import { fragmentsForWorkout } from '../src/constants/fragments';
 import { isValidWorkout, payoutForWorkout, WORKOUT_PAYOUT } from '../src/constants/workoutRewards';
 import type { UserProfile } from '../src/types';
+import { createFitnessSettle, type SettleDeps } from '../src/components/fitness/useFitnessSettle';
+import type { WorkoutCompletion } from '../src/constants/workoutRewards';
+import type { FragmentGrant } from '../src/constants/fragments';
 
 let checks = 0;
 let failures = 0;
@@ -151,7 +154,80 @@ ok('邊界：payout 為 null（示範模式）→ []', awardQueue({ payout: null
   ok('邊界：小數取整、負數與 NaN 剔除', show(q) === show([{ kind: 'coins', amount: 3 }]), show(q));
 }
 
-console.log(
-  failures === 0 ? `\nALL PASS (${checks} checks)\n` : `\n${failures} of ${checks} checks FAILED\n`,
-);
-process.exit(failures === 0 ? 0 : 1);
+// --- Slice 9：ctx.game.settle（結束訓練 → 遊戲端發獎） -----------------------
+/** 假的遊戲端：記下送了幾次完成事件、發了幾次碎片；碎片全數留在商品上。 */
+function fakeGame(over: Partial<SettleDeps> = {}, p: UserProfile | null = profile()) {
+  const reported: WorkoutCompletion[] = [];
+  const granted: FragmentGrant[][] = [];
+  const deps: SettleDeps = {
+    getProfile: () => p,
+    report: (c) => { reported.push(c); },
+    grantFragments: async (grants) => {
+      granted.push(grants);
+      await new Promise((r) => setTimeout(r, 5));   // 模擬存檔要等一下，連點會落在這段空窗
+      return { ok: true, results: grants.map((g) => ({ itemId: g.itemId, kept: g.amount, stored: g.amount, overflow: 0, completed: false })), tickets: 0 };
+    },
+    random: () => 0,
+    ...over,
+  };
+  return { settle: createFitnessSettle(deps), reported, granted };
+}
+
+async function settleSpecs() {
+  console.log('\n-- settle（Slice 9）--------------------------------------------------------');
+  {
+    const g = fakeGame();
+    const q = await g.settle(session());
+    const c = completionFromSession(session(), 'u-1')!;
+    const pay = payoutForWorkout(c);
+    ok('正常一輪 → 送出一次完成事件，workoutId 為 fx-<session id>', g.reported.length === 1 && g.reported[0].workoutId === 'fx-abc123', show(g.reported));
+    ok('金幣／經驗＝遊戲端 payoutForWorkout；碎片＝fragmentsForWorkout', show(q) === show([
+      { kind: 'coins', amount: pay.coins }, { kind: 'xp', amount: pay.xp }, { kind: 'fragments', amount: fragmentsForWorkout(20) },
+    ]), show(q));
+    ok('碎片發給一個商品、數量＝fragmentsForWorkout', g.granted.length === 1 && g.granted[0].length === 1 && g.granted[0][0].amount === fragmentsForWorkout(20), show(g.granted));
+  }
+  {
+    const g = fakeGame();
+    const [a, b, c] = await Promise.all([g.settle(session()), g.settle(session()), g.settle(session())]);
+    ok('連點三次（同一次訓練、存檔尚未回來）→ 完成事件與碎片都只發一次', g.reported.length === 1 && g.granted.length === 1, `${g.reported.length} / ${g.granted.length}`);
+    ok('連點三次拿到同一份領獎清單', show(a) === show(b) && show(b) === show(c) && a.length === 3, show([a, b, c]));
+    await g.settle(session());
+    ok('結算完成後再送同一次 → 仍不重發', g.reported.length === 1 && g.granted.length === 1);
+    await g.settle(session({ id: 'next-1' }));
+    ok('下一次訓練（不同 id）→ 照常發', g.reported.length === 2 && g.granted.length === 2);
+  }
+  {
+    const g = fakeGame();
+    const demo = await g.settle(session({ mode: 'demo' }));
+    const zero = await g.settle(session({ id: 'z', validReps: 0 }));
+    const none = await g.settle(null);
+    ok('示範模式／0 下有效／沒有 session → []，不送事件、不發碎片', demo.length === 0 && zero.length === 0 && none.length === 0 && g.reported.length === 0 && g.granted.length === 0);
+  }
+  {
+    const g = fakeGame({}, null);
+    const q = await g.settle(session());
+    ok('邊界：遊戲存檔還沒載入（profile null）→ []、不送事件', q.length === 0 && g.reported.length === 0);
+  }
+  {
+    const g = fakeGame({ grantFragments: async () => { throw new Error('存檔被拒'); } });
+    const q = await g.settle(session());
+    ok('碎片存檔失敗 → 金幣經驗照發、碎片不進領獎清單、不丟錯', g.reported.length === 1 && show(q.map((a) => a.kind)) === show(['coins', 'xp']), show(q));
+  }
+  {
+    const g = fakeGame({ grantFragments: async () => ({ ok: false, results: [], tickets: 0 }) });
+    const q = await g.settle(session());
+    ok('碎片存檔回報 ok:false → 碎片不進領獎清單', !q.some((a) => a.kind === 'fragments'), show(q));
+  }
+  {
+    const g = fakeGame({ grantFragments: async (gr) => ({ ok: true, results: [{ itemId: gr[0].itemId, kept: 2, stored: 10, overflow: 10, completed: true }], tickets: 1 }) });
+    const q = await g.settle(session());
+    ok('碎片溢出（換成抽獎券）→ 只演出真的留在商品上的數量', q.find((a) => a.kind === 'fragments')?.amount === 2, show(q));
+  }
+}
+
+settleSpecs().then(() => {
+  console.log(
+    failures === 0 ? `\nALL PASS (${checks} checks)\n` : `\n${failures} of ${checks} checks FAILED\n`,
+  );
+  process.exit(failures === 0 ? 0 : 1);
+});

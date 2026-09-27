@@ -62,7 +62,11 @@ export const store = {
   subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
 
   // —— 唯一加幣入口（防刷）——
-  commitSession(result) {
+  // opts.grantCoins（預設 true）：false＝整合版，金幣與經驗改由遊戲端發放（合體第二階段 Slice 9）——
+  //   照常記錄訓練統計（history、連續天數、成就），但錢包不動、雙倍卡旗標不消耗，
+  //   回傳的 coinsEarned／xpGain 為 0（本端沒有發），walletGranted 標示這次錢包是否有入帳。
+  commitSession(result, opts = {}) {
+    const grantCoins = opts?.grantCoins !== false;   // 只有明確傳 false 才停發，漏傳或傳錯型別都維持舊行為
     // result: { exercise, durationSec, validReps, invalidReps, targetRate, faultCounts, met, baseCoinPerRep }
     // 輸入消毒：拒絕非有限/負值,避免 NaN/Infinity 汙染錢包並持久化到 localStorage（壞了整個 App）。
     const safeInt = (v) => Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
@@ -79,11 +83,11 @@ export const store = {
     const baseCoins = coinsFor({ validReps, baseCoinPerRep, targetRate, streakDays });
     // 雙倍金幣卡：只對「這一次」生效，用完即清。
     // 放在結算內部而非另開介面，是為了維持「金幣的唯一產出點」這個結構性保證。
-    const boosted = state.boost?.coinNext === true;
-    const coins = boosted ? baseCoins * COIN_BOOST_MULTIPLIER : baseCoins;
+    const boosted = grantCoins && state.boost?.coinNext === true;
+    const coins = !grantCoins ? 0 : boosted ? baseCoins * COIN_BOOST_MULTIPLIER : baseCoins;
     if (boosted) state.boost.coinNext = false;   // 生效次數為 1，不累積、不延續
     const g = grade({ targetRate, validRate: targetRate });
-    const xpGain = validReps * 5;
+    const xpGain = grantCoins ? validReps * 5 : 0;
     // 碎片與抽獎券：只算「本次獲得多少」並輸出，健身端不持有餘額 ——
     // 08/21 雙方議定由遊戲端儲存記帳。故此二值只進 session（單次結算結果），
     // 絕不可寫入 state.wallet 或任何持久化結構，否則即違反「不得回流成金幣或經驗值」的底線。
@@ -104,6 +108,7 @@ export const store = {
       xpGain,            // 補上此欄以消除 UI 端重複推導 XP 公式的脆弱點（原 workout.js 自行乘 5）
       coinBoostApplied: boosted,   // 本次是否套用雙倍卡（供結算畫面說明金幣為何較多）
       shards, tickets,   // 本次獲得量，非餘額
+      walletGranted: grantCoins,   // false＝金幣經驗由遊戲端發（整合版），本端錢包未入帳
     };
     state.history.push(session);
     state.wallet.coins += coins;

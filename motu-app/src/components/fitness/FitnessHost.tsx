@@ -7,7 +7,8 @@
  *   1. 把健身頁關進 shadow root（樣式改寫見 fitnessStyles.ts），兩邊的 CSS 互不干擾；
  *   2. 提供健身頁需要的 ctx（store、語音教練、切頁、全螢幕），全螢幕改走遊戲端的 isWorkoutActive；
  *   3. 健身頁在自己的 DOM 留插槽（ctx.slots），這裡用 React portal 把遊戲組元件畫進去；
- *      結束訓練時健身頁呼叫 ctx.game.claim(awards)，這裡播領獎序列，玩家按任意鍵後才 resolve。
+ *      結束訓練時健身頁先呼叫 ctx.game.settle(session) 由遊戲端發獎（見 useFitnessSettle.ts），
+ *      再呼叫 ctx.game.claim(awards)，這裡播領獎序列，玩家按任意鍵後才 resolve。
  *
  * 遊戲端餘額（金幣、碎片、經驗、等級）由這裡從 profile 發布，資源列與健身頁本體
  * （ctx.game.balances／subscribe）讀的是同一份，見 FitnessWallet.tsx。
@@ -26,6 +27,7 @@ import { FitnessWallet, createBalanceFeed } from './FitnessWallet';
 import { balancesFromProfile } from './gameContract';
 import { CoachBackdrop } from './CoachBackdrop';
 import { CompanionCoach, createCompanionFeed } from './CompanionCoach';
+import { useFitnessSettle } from './useFitnessSettle';
 import { ClaimSkeleton, type ClaimAward } from './skeleton/FitnessSkeleton';
 
 import workout from '@fitness/features/workout/workout.js';
@@ -63,7 +65,7 @@ function cloneGameStyles(target: ShadowRoot) {
 type Slots = Record<string, HTMLElement>;
 
 export function FitnessHost() {
-  const { setIsWorkoutActive, setCurrentView, profile } = useApp();
+  const { setIsWorkoutActive, setCurrentView, profile, grantFragments } = useApp();
   // 健身頁只掛載一次：context 的 setter 若在重繪時換了參考，也不能因此把訓練中的頁面拆掉重掛
   const appRef = useRef({ setIsWorkoutActive, setCurrentView });
   appRef.current = { setIsWorkoutActive, setCurrentView };
@@ -79,6 +81,8 @@ export function FitnessHost() {
   }, [balanceFeed, profile]);
   // 訓練中的事件：整個宿主生命週期一條，陪伴主角訂閱
   const [companionFeed] = useState(createCompanionFeed);
+  // 結束訓練發獎：整個宿主生命週期一個（同一次訓練只發一次），每次呼叫讀最新的 profile
+  const settle = useFitnessSettle(profile, grantFragments);
   // 遊戲端的分頁列只在主頁出現，其他頁面各自有右上角的關閉鍵回島嶼（同健康頁、設定頁）；全螢幕訓練時隱藏
   const [chrome, setChromeState] = useState(true);
 
@@ -134,6 +138,7 @@ export function FitnessHost() {
       game: {
         balances: balanceFeed.balances,
         subscribe: balanceFeed.subscribe,
+        settle,
         claim: (awards: ClaimAward[]) =>
           new Promise<void>((resolve) => setClaim({ awards, resolve })),
       },

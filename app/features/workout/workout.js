@@ -62,12 +62,24 @@ export function liveRepEvents(res, set) {
   else if (valid && set.target - setValid === 3) list.push({ type: 'milestone', payload: { kind: 'last3', setIdx: set.idx, totalSets: set.total } });
   return list;
 }
-/** 結束訓練後要逐項領取的獎勵（骨架階段：金幣與經驗取自我方結算；碎片由遊戲端決定，Slice 9 起改走 ctx.game.settle）。 */
+/** 結束訓練後要逐項領取的獎勵 —— 只剩「宿主有 ctx.game.claim 卻沒有 settle」的相容路徑使用（Slice 1 骨架）；
+ *  整合版一律走 ctx.game.settle，金額以遊戲端為準（看板架構決策 5）。 */
 export function previewAwards(session) {
   return [
     { kind: 'coins', amount: session.coinsEarned || 0 },
     { kind: 'xp', amount: session.xpGain ?? (session.validReps || 0) * 5 },
   ];
+}
+/** 結束訓練後的遊戲端發獎＋領獎（合體第二階段 Slice 9）。沒有 ctx.game 時什麼都不做（舊版）。
+ *  有 settle：交出 session（補上計次方式 mode）由遊戲端發放金幣、經驗、商品碎片並回傳領獎清單；
+ *  清單為空（示範模式、0 下有效）就跳過領獎，直接進結算。
+ *  settle 或 claim 失敗會丟出，由呼叫端照樣進結算頁（錢已經由遊戲端處理，畫面不能卡住）。 */
+export async function claimRewards(game, session, mode) {
+  if (!game) return [];
+  const awards = game.settle ? await game.settle({ ...session, mode })
+    : game.claim ? previewAwards(session) : [];
+  if (awards?.length && game.claim) await game.claim(awards);
+  return awards || [];
 }
 
 // Slice3 R3（六-補決策）：SET_SECONDS(60s 時間制) 退役 → 次數為主、SAFETY_SECONDS=單組 90 秒安全網（防站著不動卡死）。
@@ -1373,6 +1385,7 @@ function finishLive() {
   live.finished = true;
   const ex = live.ex;
   const wasVoice = live.voice;
+  const mode = live.mode;   // stopLive 會清掉 live，先記下計次方式（只有 camera 會發獎）
   const summary = live.detector.summary();
   const durationSec = Math.max(1, live.elapsedMs / 1000);
   emitPhase('end', live.set, ex);
@@ -1383,14 +1396,14 @@ function finishLive() {
     validReps: summary.validReps, invalidReps: summary.invalidReps,
     met: ex.met, baseCoinPerRep: ex.baseCoinPerRep, faultCounts: summary.faultCounts,
     advisoryCounts: summary.advisoryCounts,
-  });
+  }, { grantCoins: !CTX.game?.settle });   // 整合版：金幣經驗由遊戲端發，本端只記訓練統計
   const toResult = () => {
     renderResult(ex, summary, session);
     if (wasVoice) CTX.coach.say('這組完成，做得很好！', 'high');
   };
-  // 整合版：先逐項領獎（遊戲端演出，玩家按下任意鍵後才 resolve），再進結算頁
-  if (CTX.game?.claim) {
-    CTX.game.claim(previewAwards(session)).then(toResult, (e) => { console.error(e); toResult(); });
+  // 整合版：遊戲端發獎 → 逐項領獎（玩家按下任意鍵後才 resolve）→ 結算頁
+  if (CTX.game) {
+    claimRewards(CTX.game, session, mode).then(toResult, (e) => { console.error(e); toResult(); });
   } else toResult();
 }
 
