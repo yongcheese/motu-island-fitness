@@ -55,7 +55,31 @@ test('icon() 輸出 24×24 viewBox、stroke 2、currentColor、不填色', () =>
   assert(s.startsWith('<svg') && s.endsWith('</svg>'));
   for (const attr of ['viewBox="0 0 24 24"', 'stroke="currentColor"', 'stroke-width="2"', 'fill="none"', 'width="18"', 'height="18"'])
     assert(s.includes(attr), '缺 ' + attr);
-  assert(s.includes('<circle cx="16" cy="8" r="6"'), '內容應是 Lucide coins 的路徑');
+  // 合體第二階段 Slice 4 申報：coins 換成遊戲組 lucide-react 0.546 的版本（原斷言為較新版的 cx="16"）
+  assert(s.includes('<circle cx="8" cy="8" r="6"'), '內容應是 Lucide coins 的路徑');
+});
+
+/* ---------- 金幣圖示與遊戲端一致（合體第二階段 Slice 4） ---------- */
+// 遊戲組 lucide-react 0.546.0 的 coins（node_modules/lucide-react/dist/esm/icons/coins.js 原文照抄）。
+// 我方原本用的是較新版 Lucide，兩版金幣左右相反：整合版 HUD 與健身頁並排時方向會不一致。
+const GAME_COINS = [
+  '<circle cx="8" cy="8" r="6"/>',
+  '<path d="M18.09 10.37A6 6 0 1 1 10.34 18"/>',
+  '<path d="M7 6h1v4"/>',
+  '<path d="m16.71 13.88.7.71-2.82 2.82"/>',
+];
+test('coins 路徑等於遊戲組 lucide-react 0.546 版本（逐段、同順序、沒有多餘形狀）', () => {
+  eq(ICONS.coins, GAME_COINS.join(''));
+});
+test('整合版有裝套件時，直接對照 motu-app 的 lucide-react 原檔（邊界：沒裝則只比對上面的照抄值）', () => {
+  const file = join(root, 'motu-app/node_modules/lucide-react/dist/esm/icons/coins.js');
+  let src;
+  try { src = readFileSync(file, 'utf8'); } catch { return; }
+  const nodes = [...src.matchAll(/\["(circle|path)", \{([^}]*)\}\]/g)].map(([, tag, attrs]) => {
+    const kv = [...attrs.matchAll(/(\w+): "([^"]*)"/g)].filter(([, k]) => k !== 'key').map(([, k, v]) => `${k}="${v}"`);
+    return `<${tag} ${kv.join(' ')}/>`;
+  });
+  eq(nodes.join(''), ICONS.coins, 'motu-app 的 lucide-react 版本變了，金幣要重新對齊');
 });
 
 test('每一個圖示都照 24×24 格線、stroke 2 輸出，且只含 SVG 形狀元素', () => {

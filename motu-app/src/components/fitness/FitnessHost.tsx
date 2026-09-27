@@ -15,11 +15,11 @@ import { X } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { View } from '../../types';
 import { toShadowCss } from './fitnessStyles';
+import { FitnessCharacter } from './FitnessCharacter';
 import {
   BackdropSkeleton,
   ClaimSkeleton,
   CompanionSkeleton,
-  HeroSkeleton,
   WalletSkeleton,
   type ClaimAward,
 } from './skeleton/FitnessSkeleton';
@@ -141,7 +141,8 @@ export function FitnessHost() {
   return (
     <div ref={hostRef} className="absolute inset-0">
       {portal('wallet', <WalletSkeleton />)}
-      {portal('hero', <HeroSkeleton />)}
+      {/* 推薦卡的主角做的是推薦卡那個動作（卡片上的 data-rec-id） */}
+      {portal('hero', <FitnessCharacter exercise={slots.hero?.closest('[data-rec-id]')?.getAttribute('data-rec-id') ?? 'squat'} />)}
       {portal('backdrop', <BackdropSkeleton />)}
       {portal('companion', <CompanionSkeleton />)}
       {overlay &&

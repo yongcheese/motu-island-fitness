@@ -58,6 +58,7 @@
 
 **已申報的需求變更（既有斷言改寫）**：
 - （施工時回填，例：結算頁移除金幣／經驗 → `tests/session-rewards.test.js`、`tests/game-resource-card.test.js` 相關斷言；今日推薦卡移除太陽 → `tests/workout-visual.test.js`）
+- Slice 4（2026-09-27）：`tests/icons.test.js`「icon() 輸出…」的內容斷言由較新版 Lucide coins（`<circle cx="16" cy="8" r="6"`）改為遊戲組 0.546 版（`<circle cx="8" cy="8" r="6"`）—— 需求：金幣圖示與遊戲端同方向。太陽與標語為新增斷言，未改寫既有斷言。
 
 ## 設計鐵律速查（本專案版，覆蓋 make-plan 預設）
 - 視覺系統＝遊戲組 **Motu**：整合版內一律用遊戲組既有的 Tailwind `island-*` 色與 DesignKit 元件（`HintBubble`、`ModalOverlay`、`PortholeFrame`…）；我方 `app/` 內沿用 `--motu-*` token。make-plan 預設的 neutral/zinc 灰階**不適用**。
@@ -78,7 +79,7 @@
 
 ## 進度總覽
 - 總 Slice 數：13
-- 已完成：3 / 13
+- 已完成：4 / 13
 - 平行組：P1 = {Slice 2, Slice 3}（兩者都只新增純函式檔與測試檔，檔案兩兩不相交、互不依賴）
 
 ---
@@ -178,7 +179,7 @@
 - **依賴**：Slice 1
 - **平行組**：P1
 
-### [ ] Slice 4 — 健身初始頁換上島嶼主角並拿掉太陽與標語、換遊戲組金幣
+### [x] Slice 4 — 健身初始頁換上島嶼主角並拿掉太陽與標語、換遊戲組金幣
 - **目標**：初始頁的推薦卡角色變成使用者在島嶼上的主角（同一套穿著），做我方的示範動作。
 - **範圍內**：
   - 新增 `FitnessCharacter.tsx`：R3F 畫布＋遊戲組 `CharacterModel`，穿著由 profile `equippedItems` 經 `resolveCharacterOutfit` 取得（profile 變動即重算＝與島嶼同步），關節由 Slice 3 `poseToRig` 驅動
@@ -190,13 +191,26 @@
 - **設計要點**：角色置於推薦卡原 3D 位置，背景透明；WebGL 失敗時顯示遊戲組 `AvatarIcon` 替代。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [ ] 在島嶼更衣室換裝 → 切到健身頁，推薦卡主角穿著一致
-  - [ ] 推薦卡無太陽；金幣圖示與遊戲端 HUD 相同方向
-  - [ ] 動作清單標題下不再有「AI 即時判定動作品質…」標語
-  - [ ] 主角以我方動作循環播放；離開頁面 WebGL 資源釋放（無記憶體持續上升）
+  - [x] 在島嶼更衣室換裝 → 切到健身頁，推薦卡主角穿著一致
+  - [x] 推薦卡無太陽；金幣圖示與遊戲端 HUD 相同方向
+  - [x] 動作清單標題下不再有「AI 即時判定動作品質…」標語
+  - [x] 主角以我方動作循環播放；離開頁面 WebGL 資源釋放（無記憶體持續上升）
 - **測試策略**：`tests/icons.test.js` — `coins` 路徑等於遊戲組版本；`tests/workout-visual.test.js` — 推薦卡不含 `sun`、選單模板不含該標語；整合版以 dev server 實機換裝驗證並截圖。
 - **完成定義**：`npm test`＋`tsc --noEmit` PASS＋截圖
 - **對外介面**：
+  - `motu-app/src/components/fitness/FitnessCharacter.tsx`：export `FitnessCharacter({ exercise: string })`。穿著讀 `useApp().profile.equippedItems`（以 id 清單字串為 key，換裝即重算）；模型用 `useCharacterModel()`；動作 `demoPose` → `poseToRig`（含 `prev`）；WebGL 不支援或畫布內出錯 → 遊戲組 `AvatarIcon`（`profile.avatar`）。
+  - **全頁共用單一 renderer**（模組層級 `createRoot`）：canvas 在各掛載點之間搬家，沒有掛載點時 `frameloop:'never'`，不銷毀。**Slice 7（訓練中陪伴主角）不要各自開 `<Canvas>`**：遊戲組角色零件是跨畫布共用的快取，每個卸載的 renderer 都會被快取的 dispose 監聽留住（實測每次卸載洩漏 1 個 WebGL context）；應沿用或擴充這個共用 root（目前一次只服務一個掛載點，尺寸跟最新掛載點）。
+  - 畫布內元件接不到 AppContext（不在 App 的 React 樹裡），需要的資料由外層以 props 傳入。
+  - `FitnessHost.tsx`：`hero` 插槽改掛 `FitnessCharacter`，動作 id 取自插槽所在 `.wk-rec[data-rec-id]`（預設 `squat`）。`HeroSkeleton` 仍給 `CompanionSkeleton` 使用。
+  - `app/ui/icons.js`：`ICONS.coins` 改為 lucide-react 0.546 版（整合版與舊版一起生效）。
+  - `app/features/workout/workout.js`：推薦卡徽章只剩「今日推薦」字；`renderMenu` 移除 `.wk-sub` 標語行。
+- **施工決策**：
+  - 不掛遊戲組 `Avatar`（島上操控器，讀鍵盤／playerBus／地形），只借模型層 `CharacterModel`＋`resolveCharacterOutfit`，與 Avatar.tsx 同一套穿著翻譯。角色轉 3/4 側面（正面看不出深蹲的大腿前抬）。
+  - WebGL 支援偵測整頁只做一次、測完即 `loseContext`（原本每次掛載多開 1–2 個 context）。
+  - `workout.css` 的 `.wk-sub .icon` 兩條規則已無對象，檔案不在本 Slice 改動清單，留著未刪（無副作用）。
+- **UI QA 紀錄**（無頭 Chrome，整合版 :3000）：訪客用管理員測試模式「擁有全部商品」後，在背包穿上草帽＋海島襯衫，健身頁推薦卡主角同款並持續做深蹲；1440 與 390 寬截圖。進出健身頁 12 輪（含篩選鈕重畫選單）後存活的 WebGL2 context 固定 2 個（島嶼＋主角），heap 40 輪 112→117MB 後段持平（無主角對照組 20 輪 110→114MB，原本就有的緩升，來源不在本 Slice）。舊版 :8080 推薦卡仍是藍色小人、無太陽、無標語、console 0 error。整合版 console 只剩進健身頁前就出現的 2 個 404（遊戲端開場資源）與「Multiple instances of Three.js」警告（我方 `vendor/three` 與遊戲組 npm three 並存，Slice 1 起即有）。
+  - 已知留給 Slice 12：390 寬時推薦卡只有 84px 寬，草帽帽簷左右被裁一點；深蹲時單節式的腿往前伸，縮圖看起來比較像「坐下」。
+- **審查紀錄**：2026-09-27 slice-reviewer 第 1 輪 **PASS**（觸發條件：L 檔、新增 export 元件、觸發過 Circuit Breaker）。施工時 Circuit Breaker 1 次（實測發現每次卸載洩漏 1 個 WebGL context → 改為共用單一 renderer）。
 - **依賴**：Slice 2、Slice 3
 - **平行組**：獨立
 

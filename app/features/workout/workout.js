@@ -127,7 +127,6 @@ function renderMenu(activeGroup = 'all') {
     <div class="fade-in">
       ${slotHtml(CTX.slots, 'wallet')}
       <h1 class="h1">開始訓練</h1>
-      <p class="sub wk-sub">${icon('sparkles', { size: 16 })} AI 即時判定動作品質 — 只有正確動作才換得到金幣 ${icon('coins', { size: 16 })}</p>
       ${recCardHtml(EXERCISES[REC_ID])}
       <div class="wk-filters">
         <div class="wk-search">
@@ -246,7 +245,7 @@ function recCardHtml(e) {
       ${recHeroHtml(e.id)}
       <div class="wk-rec-body">
         <div class="wk-rec-head">
-          <span class="pill wk-rec-badge">${icon('sun', { size: 16 })} 今日推薦</span>
+          <span class="pill wk-rec-badge">今日推薦</span>
           <span class="wk-rec-diff" title="難度 ${d}/3">${diffDots(d)}</span>
         </div>
         <h3 class="wk-rec-name">${e.name}</h3>

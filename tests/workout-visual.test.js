@@ -59,6 +59,22 @@ test('推薦卡模板用的是 recHeroHtml，且沒有動作時整張卡不輸�
   assert(!/exIcon\(/.test(body[1]), '推薦卡不應再用圖示');
 });
 
+test('推薦卡不再有太陽圖示，「今日推薦」字仍在（合體第二階段 Slice 4）', () => {
+  const src = read('app/features/workout/workout.js');
+  const body = src.match(/function recCardHtml\(e\) \{([\s\S]*?)\n\}/);
+  assert(body, '找不到 recCardHtml');
+  assert(!/icon\('sun'/.test(body[1]), '推薦卡不應再有太陽');
+  assert(/今日推薦<\/span>/.test(body[1]), '「今日推薦」標籤要保留');
+});
+
+test('動作清單標題下不再有「AI 即時判定動作品質」標語（合體第二階段 Slice 4，兩個版本共用同一份模板）', () => {
+  const src = read('app/features/workout/workout.js');
+  const body = src.match(/function renderMenu\(activeGroup = 'all'\) \{([\s\S]*?)\n\}/);
+  assert(body, '找不到 renderMenu');
+  assert(/<h1 class="h1">開始訓練<\/h1>/.test(body[1]), '標題要保留');
+  assert(!/AI 即時判定動作品質|只有正確動作才換得到金幣|wk-sub/.test(body[1]), '標語整行要刪除');
+});
+
 test('卡片動畫迴圈：推薦卡排在動作卡之後、裁切項不改 renderer 尺寸、裁切以 renderer 實際像素為準', () => {
   const src = read('app/features/workout/workout.js');
   const body = src.match(/function startCardAnims\(\) \{([\s\S]*?)\n\}/);
