@@ -78,7 +78,7 @@
 
 ## 進度總覽
 - 總 Slice 數：13
-- 已完成：2 / 13
+- 已完成：3 / 13
 - 平行組：P1 = {Slice 2, Slice 3}（兩者都只新增純函式檔與測試檔，檔案兩兩不相交、互不依賴）
 
 ---
@@ -147,7 +147,7 @@
 - **依賴**：Slice 1
 - **平行組**：P1
 
-### [ ] Slice 3 — 把我方動作資料轉成遊戲角色的關節旋轉
+### [x] Slice 3 — 把我方動作資料轉成遊戲角色的關節旋轉
 - **目標**：遊戲組主角可以用我方的深蹲、伏地挺身、開合跳、高抬腿動作來動。
 - **範圍內**：新增 `motu-app/src/components/fitness/poseToRig.ts`：輸入我方 `makeSequence` 產生的 33 點 landmarks 一幀 → 輸出 `{ torso, head, leftArm, rightArm, leftLeg, rightLeg }` 的歐拉旋轉（對應遊戲組 `CharacterRig` 只吃旋轉的規則），含身體下沉量（torso 的 y 位移，給深蹲用）；關鍵點缺失時回傳站姿。
 - **範圍外**：畫出角色、接進畫面。
@@ -155,11 +155,26 @@
 - **設計要點**：N/A ｜ 純邏輯
 - **UI Slice?**：NO
 - **驗收標準**：
-  - [ ] 站姿 → 四肢旋轉接近 0；深蹲最低點 → 大腿旋轉 > 60°、身體下沉；開合跳張開 → 雙臂外展 > 120°
-  - [ ] 缺點（visibility 低）時不產生 NaN
+  - [x] 站姿 → 四肢旋轉接近 0；深蹲最低點 → 大腿旋轉 > 60°、身體下沉；開合跳張開 → 雙臂外展 > 120°
+  - [x] 缺點（visibility 低）時不產生 NaN
 - **測試策略**：`scripts/test-fitness-pose-to-rig.ts` — 用 `app/core/synth.js` 產生四種動作的關鍵幀驗證角度範圍；NaN／缺點邊界案例。
 - **完成定義**：測試 PASS＋`tsc --noEmit` PASS
 - **對外介面**：
+  - `motu-app/src/components/fitness/poseToRig.ts`：
+    - `poseToRig(frame: PoseFrame | null | undefined, ref?: RigReference | null, prev?: RigPose | null) → RigPose`。**逐幀驅動角色時務必傳 `prev`（上一幀結果）**，四肢歐拉角才連續（同一方向有兩組解，不傳時合成開合跳在頂端會跳 169°，做插值平滑會甩手）。
+    - `rigReference(standingFrame) → RigReference | null`：從一幀正面站姿量肢段比例（以雙肩距離為 1），側面或缺點回 `null`；不給 `ref` 時用 `DEFAULT_RIG_REFERENCE`（粗估、**未經真人驗證**，會低估往前抬）。Slice 7 應在訓練開始時先校正。
+    - `standingRig() → RigPose`（全 0、`view:'none'`）。
+    - 型別：`RigPose { torso; head; leftArm; rightArm; leftLeg; rightLeg: RigEuler; torsoDrop: number; view: 'front'|'side'|'none' }`、`RigEuler { x; y; z }`（弧度，three 預設 XYZ）、`PoseLandmark`、`PoseFrame`、`RigReference { torso; arm; thigh; shank }`、`RigView`。
+    - 慣例（照遊戲組 `Avatar.tsx` 實際寫入）：四肢、軀幹、頭都是角色根節點下的平行節點，角度皆為絕對值；四肢下垂＝0、`x` 負＝往前抬、`z` 左負右正＝往外張；軀幹 `x` 正＝前傾、`z` 正＝往角色左側倒；頭只給左右歪頭 `z`。
+    - `torsoDrop` 單位是「腿長」（0 站直～1），呼叫端乘角色腿長後從軀幹 `position.y` 扣掉；只在正面機位計算，**伏地挺身（側面）恆為 0**，要讓角色趴低需另外處理根節點（Slice 6／7）。
+    - 側面機位（伏地挺身）輸出的是「漂在空中的平板」：軀幹前傾約 80°、雙腿往後、手臂朝下；角色整體要轉向與貼地由呼叫端處理。
+    - 正面只能看到投影：往前抬的量靠投影縮短推算，一律假設「往前」（不會判成往後）。
+  - `motu-app/package.json`：`test:fitness` 串接 `scripts/test-fitness-pose-to-rig.ts`。
+- **施工決策**：
+  - 驗收「站姿四肢接近 0」以中性站姿（`baseSkeleton`）驗；深蹲預備是寬站距（合成器踝距＝肩寬 1.85 倍），大腿本來就往外斜約 24°，另外驗「只往外、不往前」。
+  - 新增選配參數 `prev`（原規格只有一幀輸入）：測試發現合成開合跳的歐拉解會在頂端換組，數值跳 169°。方向不受影響，但下游一做平滑就會甩手，故在本 Slice 解決。
+  - 施工時 Circuit Breaker 共 2 次（上述 2 項測試紅燈；`synth.js` 的 JSDoc 使 `makeSequence` 被推成 `any[]`，測試端以明確型別接住，`app/core` 未改）。
+- **審查紀錄**：2026-09-27 slice-reviewer 第 1 輪 **PASS**（觸發條件：L 檔、新增 export 型別、改 `package.json`、觸發過 Circuit Breaker）。
 - **依賴**：Slice 1
 - **平行組**：P1
 
