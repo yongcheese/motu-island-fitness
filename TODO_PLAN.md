@@ -79,7 +79,7 @@
 
 ## 進度總覽
 - 總 Slice 數：13
-- 已完成：9 / 13
+- 已完成：10 / 13
 - 平行組：P1 = {Slice 2, Slice 3}（兩者都只新增純函式檔與測試檔，檔案兩兩不相交、互不依賴）
 
 ---
@@ -379,7 +379,7 @@
 - **依賴**：Slice 2、Slice 5
 - **平行組**：獨立
 
-### [ ] Slice 10 — 做出逐項領獎動畫與飛入資源列
+### [x] Slice 10 — 做出逐項領獎動畫與飛入資源列
 - **目標**：按結束後依序跳出金幣、經驗、碎片的揭曉動畫，每項按任意鍵後飛到頂端資源列，最後出現「按下任意鍵以繼續」。
 - **範圍內**：新增 `ClaimSequence.tsx`（`ctx.game.claim`）：
   - 揭曉：參考遊戲組 `DailyClaimReveal`（旋轉登場、閃光、光環、彩帶、數字重擊）；經驗用遊戲組經驗條樣式、碎片用 `FragmentShard`
@@ -387,16 +387,33 @@
   - 輸入閘：動畫落定後才接受下一次輸入；點擊、觸控、鍵盤皆可；最後顯示半透明「按下任意鍵以繼續」
   - 空佇列直接 resolve
 - **範圍外**：減少動畫降級細節（Slice 13）。
-- **改動檔案**：`motu-app/src/components/fitness/ClaimSequence.tsx`（新增）、`motu-app/src/components/fitness/claimMachine.ts`（新增，純狀態機）、`motu-app/scripts/test-fitness-claim.ts`（新增）、`motu-app/src/components/fitness/FitnessHost.tsx`、`app/features/workout/workout.js`
+- **改動檔案**：`motu-app/src/components/fitness/ClaimSequence.tsx`（新增）、`motu-app/src/components/fitness/claimMachine.ts`（新增，純狀態機）、`motu-app/scripts/test-fitness-claim.ts`（新增）、`motu-app/src/components/fitness/FitnessHost.tsx`、`app/features/workout/workout.js`；施工時追加（見施工決策）：`motu-app/package.json`（串 script）、刪除 `motu-app/src/components/fitness/skeleton/FitnessSkeleton.tsx`
 - **設計要點**：遮罩用遊戲組 `ModalOverlay`；提示字深藍淡。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [ ] 三種獎勵依序出現、各自飛到正確欄位、數字跟著更新
-  - [ ] 動畫進行中連按不會跳過項目；最後按任意鍵進結算頁
-  - [ ] 只有金幣時只跳一次；0 下直接進結算
+  - [x] 三種獎勵依序出現、各自飛到正確欄位、數字跟著更新
+  - [x] 動畫進行中連按不會跳過項目；最後按任意鍵進結算頁
+  - [x] 只有金幣時只跳一次；0 下直接進結算
 - **測試策略**：`scripts/test-fitness-claim.ts` — 狀態機：揭曉→可領→飛行→下一項→結尾；飛行中輸入被忽略；空佇列直接結束。實機錄影／截圖。
 - **完成定義**：測試＋`tsc --noEmit` PASS＋截圖
 - **對外介面**：
+  - `motu-app/src/components/fitness/claimMachine.ts`（純函式）：`initialClaim(queue) → ClaimState`（空清單＝`done`）、`stepClaim(state, event, queue) → ClaimState`（不合法事件回傳同一參考）、`acceptsInput(state)`、`landedTotals(queue, landed)`、`claimBarValues(before, queue, landed) → { coins, xp, fragments }`、`claimBarKinds(queue) → AwardKind[]`；型別 `ClaimPhase = 'reveal'|'ready'|'flying'|'outro-in'|'outro'|'done'`、`ClaimState { phase; index; landed }`、`ClaimEvent = 'settled'|'input'|'landed'`。
+  - `motu-app/src/components/fitness/ClaimSequence.tsx`：`ClaimSequence({ awards: Award[], before: { coins, xp }, onDone })`（`role="dialog"`、`z-reveal`、畫進 `.fx-overlay`）；常數 `CLAIM_SETTLE_MS`(900)、`CLAIM_READY_MS`(1300)、`FLIGHT_COUNT`(6)、`FLIGHT_LANDED_MS`(915)、`OUTRO_READY_MS`(500)。沿用遊戲組 index.css 的 `.daily-reveal-*`、`.daily-coin-fly`、`.daily-wallet-hit`（未改遊戲組檔案）。
+  - `FitnessHost.tsx`：`ctx.game.claim(awards)` 改掛 `ClaimSequence`；`ctx.game.settle` 包一層，呼叫前記下 `balanceFeed.balances()` 當作領獎資源列起點（介面不變）。
+  - `app/features/workout/workout.js`：`finishLive` 在有 `ctx.game` 時，領獎前把 `.lv-prompts`、`.lv-ctrls` 設為 `visibility:hidden`（結算頁重畫即消失）；無新增 export。
+  - `motu-app/package.json`：`test:fitness` 串接 `scripts/test-fitness-claim.ts`。
+  - 骨架檔 `skeleton/FitnessSkeleton.tsx` 已刪除（所有佔位元件皆已被取代，`ClaimAward` 型別改用 `gameContract` 的 `Award`）。
+- **施工決策**：
+  - **碎片的飛入目的地**（Slice 9 留下的決定）：領獎資源列是領獎專用的暫時列（不是初始頁的 `FitnessWallet`），第三欄為「商品碎片」（`FragmentShard` 圖示），數字只算**本次**拿到的（`+N`，從 0 起算）；不碰錢包碎片（`Gem`），遵守遊戲端「錢包碎片只來自訓練以外」的規則。資源列只列清單裡有的種類。
+  - 金幣、經驗的起點＝發獎**前**的餘額＋已飛抵的獎勵，不讀發獎後的 profile，避開遊戲組 HUD 暫時雙倍的問題（Slice 9 施工決策），畫面數字剛好等於公式值。
+  - `DailyClaimReveal` 綁死每日登入的獎勵型別與文案（「第 N 天登入獎勵」），不能直接掛；其 `BigCoin`／`BigMedallion` 未 export 且不變量 5 不可改，故在 `ClaimSequence.tsx` 照原畫法重畫一份，動畫全數沿用遊戲組 CSS。碎片用遊戲組 `FragmentShard`（`lit`）、經驗用青色徽章＋TopBar「經驗 XP」同款經驗條。
+  - 「按任意鍵」提示放在白色膠囊上、字用深藍淡（設計要點；深色舞台上直接用深藍淡字看不見），呼吸閃爍沿用 `.daily-reveal-hint`。
+  - 輸入閘：鍵盤忽略 `e.repeat`（按住不放不算連按）；點擊與觸控走同一個 `onClick`。
+  - **實機發現、已修**：①背後訓練畫面的提示框與控制鈕透出遮罩，1440 寬時「站直站穩」與「按任意鍵領取」位置重疊（Slice 1 標記留給本 Slice）→ `workout.js` 領獎前隱藏；②飛行顆粒抵達後沒從 DOM 清掉（清除計時器被階段切換取消）→ 改在抵達那一刻一併清除。兩者皆非測試紅燈，未計入 Circuit Breaker。
+  - 只有金幣一項的實機情境難以用示範動作湊出（10 下必有經驗與碎片），以狀態機與靜態輸出測試覆蓋。
+- **UI QA 紀錄**（無頭瀏覽器、無實體相機；以網路層把示範模式標成相機，原始碼未改，腳本 `.playwright-mcp/s10-e2e.js`）：1440×900 與 390×844（觸控）各跑一輪 10 下有效：揭曉中連按空白 5 下不前進；落定（約 1.3 秒）後才出現「按任意鍵領取」；滑鼠點擊領第 1 項 → 6 枚金幣飛入頂端資源列，飛行中按 Enter／a 被忽略，抵達時金幣 100→110；第 2 項經驗 +64（LV 1、64/100 經驗條）；第 3 項商品碎片 +6（390 寬用觸控點擊領取）；「獎勵已全部入袋／按下任意鍵以繼續」→ 空白鍵 → 對話框消失、進結算頁。存檔 100/0/0 → 110/64/碎片 6＝`payoutForWorkout` {10, 64}。示範模式（不改寫，`s9-demo.js`）：不出現領獎、直接進結算、存檔不變。兩個寬度 console 0 error。截圖 `.playwright-mcp/slice10-{reveal,fly,xp,frag,outro}-{1440,390}.png`（已被 .gitignore 排除）。`vite build` PASS。
+  - 已知留給後續：減少動畫模式下飛入改淡入、資源列不滑（Slice 13）；真實相機下未實機驗證。
+- **審查紀錄**：2026-09-27 slice-reviewer 第 1 輪 **PASS**（觸發條件：L 檔、新增 export、改動檔案與其他 Slice 交集〔`FitnessHost.tsx`、`workout.js`〕、改 `package.json`）。觀察（不阻擋）：量測不到元素位置時該格不播飛行但流程照常推進；隱藏的提示／控制鈕由結算頁整段重畫移除。
 - **依賴**：Slice 9
 - **平行組**：獨立
 

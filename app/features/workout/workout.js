@@ -1403,6 +1403,8 @@ function finishLive() {
   };
   // 整合版：遊戲端發獎 → 逐項領獎（玩家按下任意鍵後才 resolve）→ 結算頁
   if (CTX.game) {
+    // 領獎期間背後的訓練畫面只當背景：提示與控制鈕已經失效，藏起來，不和領獎的「按任意鍵」搶位置（Slice 10）
+    root.querySelectorAll('.lv-prompts, .lv-ctrls').forEach((el) => { el.style.visibility = 'hidden'; });
     claimRewards(CTX.game, session, mode).then(toResult, (e) => { console.error(e); toResult(); });
   } else toResult();
 }
