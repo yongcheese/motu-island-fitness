@@ -18,7 +18,7 @@ const C = {
   bed: ['#F2D49A', '#D9B26A'],
 };
 const SW = 5; // 主要描邊粗細（對齊 Cute 版）
-const F = (k, extra = '') => `fill="${C[k][0]}" stroke="${C[k][1]}" stroke-width="${SW}" stroke-linejoin="round" stroke-linecap="round" ${extra}`;
+const F = (k, extra = '') => `fill="${C[k][0]}" stroke="${C[k][1]}" ${/stroke-width=/.test(extra) ? '' : `stroke-width="${SW}" `}stroke-linejoin="round" stroke-linecap="round" ${extra}`;
 const shine = (d, w = 4, op = 0.7) => `<path d="${d}" fill="none" stroke="#FFFFFF" stroke-width="${w}" stroke-linecap="round" opacity="${op}"></path>`;
 
 const els = []; // {id, x, y, w, h, inner} 以全域座標繪製
@@ -239,4 +239,20 @@ if (OUT_DIR) {
   for (const e of els) fs.writeFileSync(path.join(OUT_DIR, `${e.id}.svg`), svgOf(e, true).replace('<svg viewBox', '<svg xmlns="http://www.w3.org/2000/svg" viewBox'));
   fs.writeFileSync(path.join(OUT_DIR, '_labels.json'), JSON.stringify(texts, null, 2));
 }
+
+
+// ---- Figma 用分層 SVG：每個元素一個具名群組、文字為可編輯 <text> ----
+if (process.argv[4]) {
+  const esc = t => t.replace(/&/g, '&amp;');
+  const parts = ordered.map(e => {
+    if (e.raw) {
+      const inner = e.raw.replace(/^<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
+      return `<svg id="${e.id}" x="${e.x}" y="${e.y}" width="${e.w}" height="${e.h}" viewBox="0 0 140 144">${inner}</svg>`;
+    }
+    return `<g id="${e.id}">${e.inner}</g>`;
+  });
+  const tx = texts.map(t => `<text id="${t.id}" x="${t.x}" y="${t.y}" text-anchor="${t.anchor}" font-family="Huninn" font-size="${t.size}" fill="${t.color}">${esc(t.s)}</text>`);
+  fs.writeFileSync(process.argv[4], `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">\n${parts.join('\n')}\n<g id="labels">\n${tx.join('\n')}\n</g>\n</svg>\n`);
+}
+
 console.log('ok', els.length, 'elements', texts.length, 'labels');

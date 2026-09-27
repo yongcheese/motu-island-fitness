@@ -17,3 +17,7 @@
 `產生程式/gen_architecture.mjs`（Node，需 `npm i simple-icons@16`）：在 `產生程式/` 目錄執行
 `node gen_architecture.mjs 輸出.html 元素SVG輸出資料夾`。`coach.min.svg` 是從遊戲組系統取出的「教練阿肌」原稿。
 線上畫布：https://claude.ai/artifact/WRbzbJhTDq8wyjLS6b5mFE（「飽滿版 4」為定稿）。
+
+## Figma 共編版
+- Figma 檔：https://www.figma.com/design/hl6bNm5NWqJEB1j7kAW8pI（由 `系統架構圖_Figma分層.svg` 匯入）。
+- 匯入後為 27 個具名圖層＋23 個可編輯文字圖層（字型 Huninn）；要重新匯入，把 `系統架構圖_Figma分層.svg` 拖進 Figma 即可。
