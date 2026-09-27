@@ -16,8 +16,14 @@
  *   - `feed`（示範模式中央）：每幀讀 `feed.current` —— 健身頁引擎正在判定的那一幀合成 landmarks，
  *     主角做的就是被計次的那一段（含故意做錯的那一下）。幀由宿主寫進 ref，不經 React state。
  *
- * 視角依動作（characterViews.ts 的 VIEW_YAW）。伏地挺身時整個角色繞腳底往前傾倒、手腳貼地
- * （{@link layProne}），不是只轉軀幹 —— 四肢與軀幹是平行節點，只轉軀幹會變成漂在半空中的平板。
+ * 視角依動作（characterViews.ts 的 VIEW_YAW）。
+ *
+ * Q 版化（{@link chibiPose}）：遊戲組角色的手腳是一整根、沒有膝蓋手肘，人的關節角直接套上去會走樣
+ * —— 深蹲「大腿抬到水平」變成整條腿往前伸直＝坐在地上，高抬腿變成踢腿，伏地挺身頭貼地像臉朝下趴著。
+ * 開合跳另一個問題：正面機位分不出側舉與前舉，資料常解成前舉過頭，正面看手臂被透視縮短像只舉到肩膀。
+ * 所以 poseToRig 的結果先改寫成 Q 版角色做得出來、看得懂的姿勢：深蹲改成雙腳外張、身體下降
+ * （膝蓋往外、身體下降，並整個略壓扁 —— 卡通的蹲下慣例）＋雙手前平舉，開合跳一律從身體兩側舉手，高抬腿抬到約 75°；伏地挺身整個角色繞腳底傾倒、手撐在肩膀下、頭離地（{@link layProne}）。
+ * 動作深淺照原本的資料（示範模式的半蹲那一下照樣蹲得比較淺），最後一律把腳底貼回地面。
  *
  * WebGL 建不起來（不支援或建立時丟錯）就退回遊戲組的 `AvatarIcon` 頭像。
  *
@@ -115,7 +121,13 @@ const PRONE_MAX = 1.5;
 /** 手臂伸直程度的下限：角色手臂沒有手肘，再往後傾手就伸到腳那邊去了。 */
 const PRONE_MIN_REACH = 0.55;
 /** 趴地時頭往上抬的比例（臉朝前方而不是朝地板）。 */
-const PRONE_HEAD_LIFT = 0.45;
+const PRONE_HEAD_LIFT = 0.9;
+/**
+ * 趴地時頭的最低點至少離地多少（世界單位，頭直徑約 1.17）：頭貼地看起來像臉朝下摔倒，不像撐著。
+ */
+const PRONE_HEAD_GAP = 0.3;
+/** 手臂往腳的方向斜的量打折：Q 版手臂短，斜太多手就跑到胸口下、不像撐在肩膀正下方。 */
+const PRONE_ARM_TILT = 0.6;
 const box = new Box3();
 const lowest = (o: Object3D | null) => (o ? box.setFromObject(o).min.y : Infinity);
 
@@ -128,7 +140,7 @@ const lowest = (o: Object3D | null) => (o ? box.setFromObject(o).min.y : Infinit
  * 求出的角度自然變大，看起來就是撐起、壓下。量高度用關節群組的包圍盒（世界座標）。
  */
 function layProne(rig: CharacterRig, root: Group, pitch: Group, pose: RigPose) {
-  const armTilt = Math.acos(clamp(pose.armReach, PRONE_MIN_REACH, 1));
+  const armTilt = Math.acos(clamp(pose.armReach, PRONE_MIN_REACH, 1)) * PRONE_ARM_TILT;
   const place = (p: number) => {
     pitch.rotation.x = p;
     // 手臂的世界方向＝往下、朝腳的方向斜 armTilt；關節角是相對已傾倒的身體
@@ -144,11 +156,12 @@ function layProne(rig: CharacterRig, root: Group, pitch: Group, pose: RigPose) {
     return { hand, foot, head: lowest(rig.head.current) };
   };
   root.position.set(0, 0, 0);
+  root.scale.set(1, 1, 1);
   let lo = 0, hi = PRONE_MAX;
   for (let i = 0; i < 10; i++) {
     const mid = (lo + hi) / 2;
     const m = place(mid);
-    if (m.hand < m.foot || m.head < m.foot) hi = mid;               // 倒過頭：手或頭低於腳
+    if (m.hand < m.foot || m.head < m.foot + PRONE_HEAD_GAP) hi = mid;   // 倒過頭：手低於腳、或頭快碰地
     else lo = mid;
   }
   const m = place(lo);
@@ -157,13 +170,61 @@ function layProne(rig: CharacterRig, root: Group, pitch: Group, pose: RigPose) {
   root.position.x = -(box.min.x + box.max.x) / 2;                  // 趴下後身體往前延伸，置中
 }
 
+/** 深蹲蹲到底時 poseToRig 的下沉量（合成器標準深蹲約 0.55 腿長）；拿來換算蹲的深淺 0–1。 */
+const SQUAT_FULL_DROP = 0.55;
+/** 高抬腿：往前抬的角度打折（人抬到水平 90° → 角色約 60°；一整根腿抬到水平像踢腿）。 */
+const HIGHKNEE_SCALE = 0.85;
+/** 深蹲蹲到底時垂直壓扁的比例。 */
+const SQUAT_SQUASH = 0.12;
+
+/**
+ * 把人的關節角改寫成 Q 版角色做得出來的姿勢（見檔頭「Q 版化」）。只改深蹲與高抬腿；
+ * 開合跳是四肢往外張，一整根手腳也做得像，照原資料。
+ */
+function chibiPose(exercise: string, pose: RigPose): RigPose {
+  if (exercise === 'squat') {
+    const d = clamp(pose.torsoDrop / SQUAT_FULL_DROP, 0, 1);
+    return {
+      ...pose,
+      torso: { x: 0.25 * d, y: 0, z: 0 },                           // 身體微前傾
+      head: { x: -0.2 * d, y: 0, z: 0 },                            // 抬頭看前方
+      // 膝蓋往外、身體往下（Q 版遊戲的蹲法）：一整根腿往兩側張到約 60°，身體跟著降下（腳底貼地由呼叫端處理）
+      leftLeg: { x: -0.2 * d, y: 0, z: -(0.06 + 1.0 * d) },
+      rightLeg: { x: -0.2 * d, y: 0, z: 0.06 + 1.0 * d },
+      leftArm: { x: -1.45 * d, y: 0, z: -0.12 * d },                 // 雙手前平舉保持平衡
+      rightArm: { x: -1.45 * d, y: 0, z: 0.12 * d },
+    };
+  }
+  if (exercise === 'jumpingjack') {
+    // 人的資料在正面機位分不出「側舉」與「前舉」，常解成前舉過頭（正面看手臂被透視縮短，像只舉到肩膀）。
+    // 開合跳一定是側舉：取手臂離開下垂的角度，改成從身體兩側舉起；雙腳跟著張開
+    const lift = (e: { x: number; z: number }) => Math.acos(clamp(Math.cos(e.x) * Math.cos(e.z), -1, 1));
+    const up = Math.max(lift(pose.leftArm), lift(pose.rightArm));
+    const d = clamp(up / 2.8, 0, 1);
+    return {
+      ...pose,
+      leftArm: { x: 0, y: 0, z: -up },
+      rightArm: { x: 0, y: 0, z: up },
+      leftLeg: { x: 0, y: 0, z: -(0.04 + 0.42 * d) },
+      rightLeg: { x: 0, y: 0, z: 0.04 + 0.42 * d },
+    };
+  }
+  if (exercise === 'highknees') {
+    const knee = (e: { x: number; y: number; z: number }) => (e.x < 0 ? { ...e, x: e.x * HIGHKNEE_SCALE } : e);
+    return { ...pose, leftLeg: knee(pose.leftLeg), rightLeg: knee(pose.rightLeg) };
+  }
+  return pose;
+}
+
 /** 每幀把示範姿勢寫進角色關節。模型只擁有幾何，動的一律從這裡寫（同 Avatar.tsx 的分工）。 */
-function DemoRig({ exercise, rig, root, pitch, hipY, mode, reps, cheering, loops, feed, phase }: {
+function DemoRig({ exercise, rig, root, pitch, hipY, soleY, mode, reps, cheering, loops, feed, phase }: {
   exercise: string;
   rig: CharacterRig;
   root: React.RefObject<Group | null>;
   pitch: React.RefObject<Group | null>;
   hipY: number;
+  /** 模型的腳底高度（LOCAL，骨架的 soleY）：站直時腳的最低點，貼地以它為準。 */
+  soleY: number;
   mode: FitnessCharacterMode;
   reps: number;
   cheering: boolean;
@@ -221,18 +282,28 @@ function DemoRig({ exercise, rig, root, pitch, hipY, mode, reps, cheering, loops
       layProne(rig, root.current, pitch.current, pose);
       return;
     }
+    const shown = chibiPose(exercise, pose);
     const set = (g: Group | null, e: { x: number; y: number; z: number }) => {
       if (g) g.rotation.set(e.x, e.y, e.z);
     };
-    set(rig.torso.current, pose.torso);
-    set(rig.head.current, pose.head);
-    set(rig.leftArm.current, pose.leftArm);
-    set(rig.rightArm.current, pose.rightArm);
-    set(rig.leftLeg.current, pose.leftLeg);
-    set(rig.rightLeg.current, pose.rightLeg);
+    set(rig.torso.current, shown.torso);
+    set(rig.head.current, shown.head);
+    set(rig.leftArm.current, shown.leftArm);
+    set(rig.rightArm.current, shown.rightArm);
+    set(rig.leftLeg.current, shown.leftLeg);
+    set(rig.rightLeg.current, shown.rightLeg);
     if (pitch.current) pitch.current.rotation.x = 0;
-    // 下沉量的單位是「腿長」；角色的腿長約等於髖關節高度（腳底在原點）
-    if (root.current) root.current.position.set(0, -pose.torsoDrop * hipY * CHARACTER_ROOT_SCALE, 0);
+    const r = root.current;
+    if (!r) return;
+    // 腳底貼地：站著時比較低的那隻腳踩在地面（腳張開、身體就跟著降下來，不會漂浮或陷進地裡）；
+    // 抬腿時另一隻腳還在地上，所以取兩腳的最低點
+    r.position.set(0, 0, 0);
+    r.updateMatrixWorld(true);
+    const foot = Math.min(lowest(rig.leftLeg.current), lowest(rig.rightLeg.current));
+    r.position.y = Number.isFinite(foot) ? soleY * CHARACTER_ROOT_SCALE - foot : -pose.torsoDrop * hipY * CHARACTER_ROOT_SCALE;
+    // 深蹲蹲到底時整個略壓扁（卡通的蹲下慣例）：沒有膝蓋的腿光靠張開，身體降得不夠明顯
+    const squash = exercise === 'squat' ? SQUAT_SQUASH * clamp(pose.torsoDrop / SQUAT_FULL_DROP, 0, 1) : 0;
+    r.scale.set(1 + squash * 0.5, 1 - squash, 1 + squash * 0.5);
   });
   return null;
 }
@@ -274,7 +345,7 @@ function Stage({ slotKey, exercise, equippedKey, mode, reps, cheering, loops, fe
   );
   const root = useRef<Group>(null);
   const pitch = useRef<Group>(null);
-  const hipY = getCharacterModelDefinition(modelId).skeleton.hip.y;
+  const { hip: { y: hipY }, soleY } = getCharacterModelDefinition(modelId).skeleton;
 
   return (
     <group
@@ -293,7 +364,7 @@ function Stage({ slotKey, exercise, equippedKey, mode, reps, cheering, loops, fe
         </group>
       </group>
       <DemoRig
-        exercise={exercise} rig={rig} root={root} pitch={pitch} hipY={hipY}
+        exercise={exercise} rig={rig} root={root} pitch={pitch} hipY={hipY} soleY={soleY}
         mode={mode} reps={reps} cheering={cheering} loops={loops} feed={feed}
         phase={(slotKey * 0.37) % 1}
       />

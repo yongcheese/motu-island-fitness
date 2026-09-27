@@ -70,9 +70,10 @@ console.log('\n繪圖緩衝');
 
 console.log('\n視角與取景');
 {
-  ok('深蹲沿用推薦卡原本的 3/4 側（外觀不變）', viewYaw('squat') === -0.55);
-  ok('開合跳近正面、高抬腿 3/4 側、伏地挺身近側面',
-    Math.abs(VIEW_YAW.jumpingjack) < 0.3 && Math.abs(VIEW_YAW.highknees) > 0.3 && Math.abs(VIEW_YAW.pushup) > 1.2);
+  // 2026-09-27 使用者看過改前姿勢後修正：深蹲（膝蓋外張）與開合跳接近正面看張開、高抬腿偏側面看抬膝、
+  // 伏地挺身偏側面但轉一點向鏡頭（頭才不擋住撐地的手）
+  ok('深蹲、開合跳接近正面（看得出張腿）', Math.abs(VIEW_YAW.squat) <= 0.35 && Math.abs(VIEW_YAW.jumpingjack) < 0.3);
+  ok('高抬腿、伏地挺身偏側面', Math.abs(VIEW_YAW.highknees) >= 0.8 && Math.abs(VIEW_YAW.pushup) >= 0.9);
   ok('沒有定義的動作用深蹲的視角', viewYaw('burpee') === viewYaw('squat'));
   ok('框夠寬時視角不變', fovFor(240 / 132) === BASE_FOV && fovFor(MIN_VIEW_ASPECT) === BASE_FOV);
   const narrow = 84 / 185;

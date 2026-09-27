@@ -99,14 +99,13 @@ export function fovFor(aspect: number): number {
 
 /**
  * 各動作的視角（角色繞垂直軸轉幾度，弧度；負值＝轉向畫面左方露出右側面）。
- * 同我方舊公仔 `EX_VIEW` 的取捨：深蹲、高抬腿 3/4 側看得到臀後坐與抬膝；開合跳近正面看張開幅度；
- * 伏地挺身趴在地上要看側面才看得出身體直線與下壓（留一點角度露出靠鏡頭那隻手）。
- * 深蹲沿用原本推薦卡的 -0.55，推薦卡外觀不變。
+ * Q 版角色的取捨（2026-09-27 使用者看過改前姿勢後修正）：深蹲是膝蓋往外、身體下降，接近正面才看得出張腿；高抬腿接近側面才看得出膝蓋抬起（3/4 側時腿朝鏡頭被透視縮短）；
+ * 開合跳近正面看張開幅度；伏地挺身偏側面看身體斜線，但轉一點向鏡頭，頭才不會擋住撐在地上的手。
  */
 export const VIEW_YAW: Readonly<Record<string, number>> = Object.freeze({
-  squat: -0.55,
-  highknees: -0.5,
+  squat: -0.3,
+  highknees: -0.9,
   jumpingjack: -0.15,
-  pushup: -1.3,
+  pushup: -1.0,
 });
 export const viewYaw = (exercise: string) => VIEW_YAW[exercise] ?? VIEW_YAW.squat;
