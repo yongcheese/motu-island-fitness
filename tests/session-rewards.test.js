@@ -255,3 +255,67 @@ test('Slice 9：finishLive 接線 —— 有 settle 時不發本端金幣、結�
   assert(/claimRewards\(CTX\.game, session, mode\)\.then\(toResult, \(e\) => \{ console\.error\(e\); toResult\(\); \}\)/.test(fin), '失敗時沒進結算頁');
   assert(/if \(!live \|\| live\.finished\) return;/.test(fin), '前端鎖（live.finished）不見了');
 });
+
+// —— 合體第二階段 Slice 11：整合版結算頁拿掉金幣經驗，左側擴增表現數據 ——
+import { setRepsOf, bestSetOf, sumMoreHtml } from '../app/features/workout/workout.js';
+import { readFileSync } from 'node:fs';
+
+test('Slice 11 各組次數: 休息中收進的組＋結束時還在做的那組', () => {
+  // 第 1 組 10 下、第 2 組 12 下（進休息時收進 done），第 3 組做到 8 下時結束
+  eq(setRepsOf({ done: [10, 12], phase: 'WORK', baseValid: 22, lastValid: 30 }).join(','), '10,12,8');
+  // 在休息時結束：最後一組已收進 done，不重複計
+  eq(setRepsOf({ done: [10, 12], phase: 'REST', baseValid: 10, lastValid: 22 }).join(','), '10,12');
+});
+
+test('Slice 11 各組次數: 邊界 —— 只做一組、進新組 0 下就結束、完全沒資料', () => {
+  eq(setRepsOf({ done: [], phase: 'WORK', baseValid: 0, lastValid: 7 }).join(','), '7', '只做一組');
+  eq(setRepsOf({ done: [10], phase: 'WORK', baseValid: 10, lastValid: 10 }).join(','), '10', '新一組 0 下不列成一組');
+  eq(setRepsOf({ done: [], phase: 'WORK', baseValid: 0, lastValid: 0 }).join(','), '0', '整場 0 下仍是 1 組 0 下');
+  eq(setRepsOf(undefined).length, 0, '沒有組別狀態');
+  eq(setRepsOf({ phase: 'WORK', baseValid: 0, lastValid: 3 }).join(','), '3', '舊狀態沒有 done 陣列也不報錯');
+});
+
+test('Slice 11 最佳一組: 取最多、同分取較早、全 0 為 null', () => {
+  const b = bestSetOf([10, 12, 12, 8]);
+  eq(b.idx, 2, '同分 12 取第 2 組'); eq(b.reps, 12);
+  eq(bestSetOf([7]).idx, 1, '只做一組時最佳就是第 1 組');
+  eq(bestSetOf([0, 0]), null); eq(bestSetOf([]), null);
+});
+
+test('Slice 11 延伸數據: 四項數值與 session／各組一致', () => {
+  const html = sumMoreHtml({ durationSec: 125, faults: { half_rep: 3, torso_lean: 1, knee_valgus: 0 } }, [10, 12, 8]);
+  for (const k of ['總時間', '各組次數', '最佳一組', '失誤分布']) assert(html.includes(k), `缺 ${k}`);
+  assert(html.includes('<b>2:05</b>'), '總時間 125 秒應為 2:05');
+  assert(html.includes('10<i> / </i>12<i> / </i>8') && html.includes('共 3 組'), '各組次數不對');
+  assert(html.includes('<b>12 下</b><small>第 2 組</small>'), '最佳一組不對');
+  const d = html.slice(html.indexOf('wk-sum-dist'));
+  assert(d.indexOf('動作半程未達標') < d.indexOf('彎腰／軀幹前傾'), '失誤依次數由多到少');
+  assert(d.includes('<b>3</b>') && d.includes('<b>1</b>'), '失誤次數要寫出數字，不只靠條長');
+  assert(!html.includes('膝蓋內夾'), '0 次的失誤不列');
+  assert(d.includes('width:100%') && d.includes('width:33%'), '條長依最多者比例');
+  for (const bad of ['金幣', '經驗', 'coins', 'XP']) assert(!html.includes(bad), `延伸數據不應出現 ${bad}`);
+});
+
+test('Slice 11 延伸數據: 沒有失誤、沒有任何一組時不出現空白或 NaN', () => {
+  const html = sumMoreHtml({ durationSec: 30, faults: {} }, []);
+  assert(html.includes('<b>無</b>') && !html.includes('wk-sum-dist'), '沒有失誤應顯示「無」');
+  assert(html.includes('<b>—</b>'), '沒有組別資料用「—」');
+  assert(!html.includes('NaN') && !html.includes('undefined'), html);
+});
+
+test('Slice 11 結算頁: 整合版（有 ctx.game）不放金幣經驗區與演出；舊版照舊', () => {
+  const js = readFileSync(new URL('../app/features/workout/workout.js', import.meta.url), 'utf8');
+  const sum = js.slice(js.indexOf('function renderResult('), js.indexOf('/* 彩帶（Slice 13）'));
+  // 金幣／經驗整區只在舊版（沒有 ctx.game）輸出
+  const rw = sum.indexOf('<section class="card wk-sum-reward"');
+  assert(rw > 0 && sum.lastIndexOf("${CTX.game ? '' : `", rw) > sum.indexOf('wk-sum-hero'), '獎勵區未以 ctx.game 關掉');
+  assert(sum.includes('${CTX.game ? sumMoreHtml(session, setReps) : \'\'}'), '延伸數據只在整合版出現、且要帶各組次數');
+  assert(/if \(CTX\.game\) return;\s*if \(summary\.validReps > 0\) launchConfetti\(\)/.test(sum), '整合版不重演彩帶與飛幣');
+  // 各組次數要在 stopLive 清掉 live 之前取出
+  const fin = js.slice(js.indexOf('function finishLive()'), js.indexOf('function finishLive()') + 1600);
+  assert(fin.indexOf('setRepsOf(live.set)') > 0 && fin.indexOf('setRepsOf(live.set)') < fin.indexOf('stopLive();\n\n'), '各組次數要在 stopLive 前取');
+  assert(fin.includes('renderResult(ex, summary, session, setReps)'), '結算頁沒拿到各組次數');
+  // 休息開始時收進該組次數
+  const rest = js.slice(js.indexOf('function enterRest('), js.indexOf('function enterWork('));
+  assert(rest.includes('set.done.push(set.setEndValid - set.baseValid)'), '休息時沒收進該組次數');
+});

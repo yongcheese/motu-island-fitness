@@ -940,7 +940,7 @@ function containRect(video, cw, ch) {
 function initSetState(run) {
   // 與簡介頁同一個 planOf，兩處數字必然一致
   const m = planOf(run.ex);
-  run.set = { idx: 1, total: m.sets, target: m.repsPerSet, baseValid: 0, lastValid: 0, setEndValid: 0, phase: 'WORK', workMs: 0, restMs: 0, restSec: m.restSec, cue3: false, cue1: false };
+  run.set = { idx: 1, total: m.sets, target: m.repsPerSet, baseValid: 0, lastValid: 0, setEndValid: 0, done: [], phase: 'WORK', workMs: 0, restMs: 0, restSec: m.restSec, cue3: false, cue1: false };
   run.lastFrameTs = performance.now();
   run.skipRest = false;
   setCdMode('count');
@@ -958,6 +958,7 @@ function setCdMode(mode) {
 function enterRest(run) {
   const set = run.set;
   set.phase = 'REST'; set.restMs = 0; set.setEndValid = set.lastValid;
+  set.done.push(set.setEndValid - set.baseValid);   // 結算頁「各組次數」（Slice 11）
   run.skipRest = false; run.warn10 = false; run.lastBeepSec = null;   // 每相位 cue 重置
   const rest = root.querySelector('#lv-rest');
   if (rest) {
@@ -1388,6 +1389,7 @@ function finishLive() {
   const mode = live.mode;   // stopLive 會清掉 live，先記下計次方式（只有 camera 會發獎）
   const summary = live.detector.summary();
   const durationSec = Math.max(1, live.elapsedMs / 1000);
+  const setReps = setRepsOf(live.set);   // stopLive 會清掉 live，先取各組有效次數
   emitPhase('end', live.set, ex);
   stopLive();
 
@@ -1398,7 +1400,7 @@ function finishLive() {
     advisoryCounts: summary.advisoryCounts,
   }, { grantCoins: !CTX.game?.settle });   // 整合版：金幣經驗由遊戲端發，本端只記訓練統計
   const toResult = () => {
-    renderResult(ex, summary, session);
+    renderResult(ex, summary, session, setReps);
     if (wasVoice) CTX.coach.say('這組完成，做得很好！', 'high');
   };
   // 整合版：遊戲端發獎 → 逐項領獎（玩家按下任意鍵後才 resolve）→ 結算頁
@@ -1451,17 +1453,46 @@ function rateRing(rate) {
     </div>`;
 }
 
-/* 整合版結算左側的延伸數據（Slice 1 骨架：版位先出來，Slice 11 接上真實數值） */
-function sumMoreHtml(session) {
-  const cell = (ic, k, v) => `<div class="wk-sum-more-c">${icon(ic, { size: 16 })}<span>${k}</span><b>${v}</b></div>`;
+/** 各組有效次數（純函式，Slice 11）。休息開始時已收進 set.done；結束時還在做的那組另外補上 ——
+ *  但只做了 0 下的那組不列（在休息後一進新組就按結束，不算做了一組），除非整場只有這一組。 */
+export function setRepsOf(set) {
+  if (!set) return [];
+  const done = Array.isArray(set.done) ? set.done.slice() : [];
+  if (set.phase === 'WORK') {
+    const cur = Math.max(0, (set.lastValid || 0) - (set.baseValid || 0));
+    if (cur > 0 || !done.length) done.push(cur);
+  }
+  return done;
+}
+
+/** 最佳一組（純函式）：有效次數最多的那組，同分取較早的；沒有任何一下有效 → null。 */
+export function bestSetOf(setReps) {
+  let best = null;
+  (setReps || []).forEach((n, i) => { if (n > 0 && (!best || n > best.reps)) best = { idx: i + 1, reps: n }; });
+  return best;
+}
+
+/* 整合版結算左側的延伸數據：總時間、各組次數、最佳一組、失誤分布。
+   獎勵已在領獎序列領過，結算頁改成專心回答「做得怎麼樣」（Slice 11）。 */
+export function sumMoreHtml(session, setReps = []) {
+  const cell = (ic, k, v, cls = '') => `<div class="wk-sum-more-c${cls}">${icon(ic, { size: 16 })}<span>${k}</span>${v}</div>`;
+  const best = bestSetOf(setReps);
+  const sets = setReps.length
+    ? `<b>${setReps.join('<i> / </i>')}</b><small>共 ${setReps.length} 組</small>`
+    : '<b>—</b>';
+  const faults = Object.entries(session?.faults || {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  const max = faults.length ? faults[0][1] : 0;
+  const dist = faults.length
+    ? `<ul class="wk-sum-dist">${faults.map(([f, n]) => `<li><span>${escHtml(faultName(f))}</span><b>${n}</b><i style="width:${Math.round(n / max * 100)}%"></i></li>`).join('')}</ul>`
+    : '<b>無</b><small>每一下都算數</small>';
   return `<div class="wk-sum-more" aria-label="更多數據">
-    ${cell('timer', '總時間', fmtTime(session.durationSec))}
-    ${cell('repeat', '各組次數', '—')}
-    ${cell('award', '最佳一組', '—')}
-    ${cell('triangle-alert', '失誤分布', '—')}
+    ${cell('timer', '總時間', `<b>${fmtTime(session?.durationSec || 0)}</b>`)}
+    ${cell('repeat', '各組次數', sets)}
+    ${cell('award', '最佳一組', best ? `<b>${best.reps} 下</b><small>第 ${best.idx} 組</small>` : '<b>—</b>')}
+    ${cell('triangle-alert', '失誤分布', dist, faults.length ? ' wide' : '')}
   </div>`;
 }
-function renderResult(ex, summary, session) {
+function renderResult(ex, summary, session, setReps = []) {
   CTX.setChrome(true);
   rwClear();
   const s = CTX.store.getState();
@@ -1504,7 +1535,7 @@ function renderResult(ex, summary, session) {
           <div class="wk-sum-sub">共做 ${total} 下 · ${summary.invalidReps} 下沒算到</div>
           <p class="wk-sum-hint">${icon('target', { size: 16 })} ${gi.hint}</p>
         </div>
-        ${CTX.game ? sumMoreHtml(session) : ''}
+        ${CTX.game ? sumMoreHtml(session, setReps) : ''}
       </section>
       ${CTX.game ? '' : `
       <section class="card wk-sum-reward" aria-label="獲得獎勵">

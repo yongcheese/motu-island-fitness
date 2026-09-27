@@ -700,10 +700,21 @@
 @media (max-width: 620px) { .lv-fx { --lv-hud-h: 84px; } }
 /* 整合版結算：獎勵已在領獎序列領過，表現卡佔滿整列，延伸數據在達標率下方另起一列 */
 .wk-sum > .wk-sum-hero:has(.wk-sum-more) { grid-column: 1 / -1; flex-wrap: wrap; }
-.wk-sum-more { flex: 1 1 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 2px dashed var(--motu-color-border); }
+.wk-sum-more { flex: 1 1 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 2px dashed var(--motu-color-border); }
 .wk-sum-more-c { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--motu-radius-lg); background: var(--motu-color-surface-sunken); color: var(--motu-color-text-muted); font-size: 12px; font-weight: 700; }
 .wk-sum-more-c .icon { color: var(--motu-teal-dark); }
 .wk-sum-more-c b { color: var(--motu-color-text); font-size: 18px; font-weight: 900; }
+.wk-sum-more-c b i { font-style: normal; color: var(--motu-color-text-muted); font-weight: 700; }
+.wk-sum-more-c small { color: var(--motu-color-text-muted); font-size: 12px; font-weight: 700; }
+/* 失誤分布：每種一列「名稱 次數」＋依比例的細條；條只是輔助，數字一定寫出來（不只靠長度） */
+.wk-sum-more-c.wide { grid-column: 1 / -1; }
+/* 三格固定一列（總時間／各組次數／最佳一組），失誤分布獨佔下一列；組數多時數字換行而不撐破格子 */
+.wk-sum-more-c b { overflow-wrap: anywhere; }
+@media (max-width: 620px) { .wk-sum-more-c { padding: 8px 10px; } .wk-sum-more-c b { font-size: 16px; } }
+.wk-sum-dist { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 6px; }
+.wk-sum-dist li { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; align-items: baseline; color: var(--motu-color-text); font-size: 13px; }
+.wk-sum-dist li b { font-size: 14px; }
+.wk-sum-dist li i { grid-column: 1 / -1; height: 6px; margin-top: 3px; border-radius: 999px; background: var(--motu-teal); min-width: 6px; }
 /* 整合版：右上角是遊戲端的關閉鍵（回島嶼），資源列讓出位置 */
 .fx-slot-wallet { padding-right: 72px; }
 @media (max-width: 620px) {
