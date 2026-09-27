@@ -116,6 +116,22 @@ class WebglBoundary extends Component<{ onFail: () => void; children: ReactNode 
   }
 }
 
+/**
+ * 伏地挺身循環示範的節奏（一下的相位 0–1 → 下壓深度 0–1）：撐在上面停一下、慢慢放下、
+ * 底部停一拍、較快推上來。對稱的等速來回像機器（紙人上下動，09-28 使用者回饋）。
+ * 合成器的伏地挺身深度 0–0.25 手臂都是伸直的（見 poseToRig 的 armReach），所以從 0.25 起算。
+ */
+function pushupRhythm(phase: number): number {
+  const ease = (x: number) => x * x * (3 - 2 * x);
+  let r: number;
+  if (phase < 0.08) r = 0;
+  else if (phase < 0.52) r = ease((phase - 0.08) / 0.44);           // 放下：慢
+  else if (phase < 0.62) r = 1;                                      // 底部停一拍
+  else if (phase < 0.84) r = (1 - (phase - 0.62) / 0.22) ** 3;       // 推起：先快後收
+  else r = 0;
+  return 0.25 + 0.75 * r;
+}
+
 /** 0→1→0 的往返，同我方合成器。 */
 const pingPong = (phase: number) => (phase < 0.5 ? phase * 2 : (1 - phase) * 2);
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -133,6 +149,15 @@ const PRONE_BOTTOM_REACH = 0.744;
  * 壓低時頭縮小、身體就能趴得更平；撐起時回到原本大小。
  */
 const PRONE_HEAD_SQUASH = 0.8;
+/**
+ * 髖部跟隨（弧度／每秒深度變化）：真人伏地挺身胸口先動、髖部慢半拍 —— 下降時微微拱起、推起時微微塌腰。
+ * 整塊平板一起轉就像紙人上下動（09-28 使用者回饋），加上這個延遲身體才有重量。
+ */
+const PRONE_HIP_LAG = 0.16;
+/** 髖部跟隨最多彎多少（弧度，約 13°；角色身體短，太小看不出來）。 */
+const PRONE_HIP_MAX = 0.22;
+/** 髖部跟隨的平滑時間（秒）：不隨每幀深度的抖動亂晃。 */
+const PRONE_HIP_SMOOTH = 0.12;
 /** 手臂 IK 修正幾輪（見 layProne）。 */
 const PRONE_IK_PASSES = 3;
 /** 趴地時頭往上抬的比例（臉朝前方而不是朝地板）。 */
@@ -149,6 +174,8 @@ interface ProneFit {
   bottom: number;
   /** 手臂形狀（手臂座標）：最低點、手掌頂端。 */
   arm: ArmShape;
+  /** 腳尖的位置（沿角色前方的水平座標，世界單位）：髖部彎的時候整個人前後補回來，腳尖不滑。 */
+  toeF: number;
   /** 手掌撐地的位置（沿角色前方的水平座標，世界單位）：撐起時的肩膀下方（必要時往後一點），整下不動。 */
   handF: number;
   /** 頭的關節到頭最低點（下巴）的距離（頭所在座標）：頭縮小時要往下補回這段，否則頭會跟脖子分開。 */
@@ -168,18 +195,23 @@ function scaleHead(head: Group | null, s: number, chin: number) {
 }
 
 /** 擺成傾倒 p 的直平板（腿、軀幹打直，頭抬起看前方），回傳肩膀的世界高度與前後位置、腳與頭的最低點。 */
-function plank(rig: CharacterRig, root: Group, pitch: Group, p: number, headScale = 1, chin = 0) {
+function plank(rig: CharacterRig, root: Group, pitch: Group, p: number, headScale = 1, chin = 0, hip = 0) {
   pitch.rotation.x = p;
   rig.torso.current?.rotation.set(0, 0, 0);
-  rig.leftLeg.current?.rotation.set(0, 0, 0);
-  rig.rightLeg.current?.rotation.set(0, 0, 0);
+  rig.leftLeg.current?.rotation.set(hip, 0, 0);                    // 正值＝腳往背後（塌腰）、負值＝拱起
+  rig.rightLeg.current?.rotation.set(hip, 0, 0);
   rig.head.current?.rotation.set(-p * PRONE_HEAD_LIFT, 0, 0);
   scaleHead(rig.head.current, headScale, chin);
   root.updateMatrixWorld(true);
+  const fwd = pitch.parent!.getWorldDirection(tmpB);                // 視角轉過的「角色前方」（水平）
+  // 腳尖＝腿的包圍盒最往後的那一角
+  box.setFromObject(rig.leftLeg.current!);
+  let toe = Infinity;
+  for (const x of [box.min.x, box.max.x]) for (const z of [box.min.z, box.max.z]) toe = Math.min(toe, x * fwd.x + z * fwd.z);
   const at = rig.leftArm.current!.getWorldPosition(tmpA);
-  const forward = at.dot(pitch.parent!.getWorldDirection(tmpB));   // 視角轉過的「角色前方」（水平）
+  const forward = at.dot(fwd);
   const foot = Math.min(lowest(rig.leftLeg.current), lowest(rig.rightLeg.current));
-  return { shoulder: at.y, forward, foot, head: lowest(rig.head.current) };
+  return { shoulder: at.y, forward, toe, foot, head: lowest(rig.head.current) };
 }
 
 /**
@@ -224,6 +256,7 @@ function fitProne(rig: CharacterRig, root: Group, pitch: Group): ProneFit | null
   box.setFromObject(pitch);
   const fit = {
     top, bottom, arm: shape,
+    toeF: m.toe,
     handF,
     chin,
     centerX: (box.min.x + box.max.x) / 2,
@@ -240,18 +273,33 @@ function fitProne(rig: CharacterRig, root: Group, pitch: Group): ProneFit | null
  * 圓球手掌不變形）；下壓時平板往下擺、肩膀降低並往前，手掌釘在原地，手臂保持打直、繞手掌前後擺
  * —— 角色沒有前臂可以彎手肘（見 limbBend.ts 的 createArmStretcher），打直的手臂輪廓最乾淨。深淺照 landmarks 的手臂伸直程度（示範模式故意做淺的那一下照樣淺）。
  */
-function layProne(rig: CharacterRig, root: Group, pitch: Group, pose: RigPose, arms: { left: ArmStretcher; right: ArmStretcher }) {
+function layProne(
+  rig: CharacterRig, root: Group, pitch: Group, pose: RigPose,
+  arms: { left: ArmStretcher; right: ArmStretcher },
+  /** 跨幀狀態：上一幀的深度（-1＝還沒有）、目前髖部彎度。 */
+  motion: { e: number; hip: number },
+  dt: number,
+) {
   const fit = fitProne(rig, root, pitch);
   if (!fit) return;
   const d = clamp((1 - pose.armReach) / (1 - PRONE_BOTTOM_REACH), 0, 1);
   const e = d * d * (3 - 2 * d);                                    // 兩端放慢，像撐著體重
   const p = fit.top + (fit.bottom - fit.top) * e;
+  // 髖部慢半拍：往下（e 變大）時拱起（負）、往上時塌腰（正）
+  const v = motion.e < 0 || dt <= 0 ? 0 : (e - motion.e) / dt;
+  motion.e = e;
+  const want = clamp(-v * PRONE_HIP_LAG, -PRONE_HIP_MAX, PRONE_HIP_MAX);
+  motion.hip += (want - motion.hip) * Math.min(1, dt / PRONE_HIP_SMOOTH);
   root.position.set(0, 0, 0);
   root.scale.set(1, 1, 1);
-  const m = plank(rig, root, pitch, p, 1 + (PRONE_HEAD_SQUASH - 1) * e, fit.chin);
+  const m = plank(rig, root, pitch, p, 1 + (PRONE_HEAD_SQUASH - 1) * e, fit.chin, motion.hip);
+  // 腿彎了腳尖會前後跑：整個人沿前方補回來，腳尖釘在原地
+  const fwd = pitch.parent!.getWorldDirection(tmpB).clone();
+  const shift = fit.toeF - m.toe;
+  root.position.set(fwd.x * shift, 0, fwd.z * shift);
+  m.forward += shift;
   // 打直的手臂從肩膀指向手掌（從鉛直往腳的方向偏 dir），長度＝肩膀到手掌的距離（手腕伸縮補足）。
   // 縮到下限時手掌會稍微離開原位；量出手掌實際落點、把目標反向補回去再解，迭代幾次
-  const fwd = pitch.parent!.getWorldDirection(tmpB);
   let aimF = fit.handF, aimY = m.foot;
   for (let i = 0; i < PRONE_IK_PASSES; i++) {
     const back = m.forward - aimF, down = m.shoulder - aimY;
@@ -273,7 +321,7 @@ function layProne(rig: CharacterRig, root: Group, pitch: Group, pose: RigPose, a
   root.updateMatrixWorld(true);
   const hand = Math.min(lowest(rig.leftArm.current), lowest(rig.rightArm.current));
   root.position.y = -Math.min(hand, m.foot);
-  root.position.x = -fit.centerX;                                   // 撐起時的平板置中，上下動時不左右滑
+  root.position.x -= fit.centerX;                                   // 撐起時的平板置中，上下動時不左右滑
 }
 
 /** 深蹲蹲到底時 poseToRig 的下沉量（合成器標準深蹲約 0.55 腿長）；拿來換算蹲的深淺 0–1。 */
@@ -394,6 +442,7 @@ function DemoRig({ exercise, rig, root, pitch, hipY, soleY, mode, reps, cheering
   const knees = useMemo(() => ({ left: createLegBender(), right: createLegBender() }), []);
   // 手臂伸縮（只有伏地挺身用得到；用過才需要在其他姿勢把手臂換回原長）
   const arms = useMemo(() => ({ left: createArmStretcher(), right: createArmStretcher(), used: false }), []);
+  const prone = useRef({ e: -1, hip: 0 });
   useEffect(() => () => {
     knees.left.dispose();
     knees.right.dispose();
@@ -436,7 +485,7 @@ function DemoRig({ exercise, rig, root, pitch, hipY, soleY, mode, reps, cheering
       clock.current += dt;
       const t = clock.current / REP_SECONDS;
       const side = Math.floor(t) % 2 === 0 ? 'L' : 'R';         // 高抬腿左右輪流；其他動作不看
-      frame = demoPose(exercise, pingPong(t % 1), side) as PoseFrame;
+      frame = demoPose(exercise, exercise === 'pushup' ? pushupRhythm(t % 1) : pingPong(t % 1), side) as PoseFrame;
     }
     const pose = poseToRig(frame, ref, prev.current);
     prev.current = pose;
@@ -445,7 +494,7 @@ function DemoRig({ exercise, rig, root, pitch, hipY, soleY, mode, reps, cheering
       knees.left.apply(rig.leftLeg.current, 0, hipY - soleY);
       knees.right.apply(rig.rightLeg.current, 0, hipY - soleY);
       arms.used = true;
-      layProne(rig, root.current, pitch.current, pose, arms);
+      layProne(rig, root.current, pitch.current, pose, arms, prone.current, dt);
       return;
     }
     if (arms.used) {
