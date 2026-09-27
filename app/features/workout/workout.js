@@ -41,6 +41,27 @@ function syncSlots() {
   root.querySelectorAll('[data-slot]').forEach(el => { map[el.dataset.slot] = el; });
   CTX.slots.set(map);
 }
+/* 整合版事件（Slice 7）：陪伴主角跟著計次動、對話框說台詞。只有宿主提供 ctx.events 時才發；舊版沒有，完全不影響。
+   type：rep（每計一下，含沒算到）／phase（ready 準備、work 進行、rest 休息、end 結束）／milestone（last3 剩 3 下、target 本組達標） */
+export function emitLive(events, list) {
+  if (!events?.emit || !list?.length) return 0;
+  for (const e of list) events.emit(e.type, e.payload);
+  return list.length;
+}
+function emitPhase(phase, set, ex) {
+  emitLive(CTX?.events, [{ type: 'phase', payload: { phase, exercise: ex?.id, setIdx: set?.idx ?? 1, totalSets: set?.total ?? 1 } }]);
+}
+/** 這一幀計次後要發的事件（純函式）。set＝組數狀態（baseValid 為本組起點的累計有效次數）。 */
+export function liveRepEvents(res, set) {
+  if (!res?.repCountedThisFrame || !set) return [];
+  const total = res.reps?.valid ?? 0;
+  const setValid = Math.max(0, total - (set.baseValid || 0));
+  const valid = !!res.repValidThisFrame;
+  const list = [{ type: 'rep', payload: { valid, setValid, target: set.target, total } }];
+  if (valid && setValid >= set.target) list.push({ type: 'milestone', payload: { kind: 'target', setIdx: set.idx, totalSets: set.total } });
+  else if (valid && set.target - setValid === 3) list.push({ type: 'milestone', payload: { kind: 'last3', setIdx: set.idx, totalSets: set.total } });
+  return list;
+}
 /** 結束訓練後要逐項領取的獎勵（骨架階段：金幣與經驗取自我方結算；碎片由遊戲端決定，Slice 9 起改走 ctx.game.settle）。 */
 export function previewAwards(session) {
   return [
@@ -457,6 +478,7 @@ async function startLive(ex, doWarmup) {
   CTX.setChrome(false);
   root.innerHTML = liveShell(ex);
   syncSlots();
+  emitPhase('ready', null, ex);
   const canvas = root.querySelector('#lv-canvas');
   const ctx = canvas.getContext('2d');
   const statusEl = root.querySelector('#lv-status');
@@ -906,6 +928,7 @@ function initSetState(run) {
   run.lastFrameTs = performance.now();
   run.skipRest = false;
   setCdMode('count');
+  emitPhase('work', run.set, run.ex);
 }
 // 倒數欄雙態成對切換（R1 版型：時間態=#m-cd+倒數標籤／次數態=lv-set-progress+lv-set-label，互斥）
 function setCdMode(mode) {
@@ -929,6 +952,7 @@ function enterRest(run) {
     el.querySelector('.lv-rest-skip').onclick = () => { if (live !== run) return; run.skipRest = true; };
   }
   setCdMode('time');
+  emitPhase('rest', set, run.ex);
   beep(720, 0.16);
   if (run.voice) CTX.coach.say(`第 ${set.idx} 組完成，休息 ${set.restSec} 秒`, 'mid');
 }
@@ -941,6 +965,7 @@ function enterWork(run) {
   run.skipRest = false; run.warn10 = false; run.lastBeepSec = null;
   const rest = root.querySelector('#lv-rest'); if (rest) rest.hidden = true;
   setCdMode('count');
+  emitPhase('work', set, run.ex);
   beep(880, 0.2, 0.24);
   if (run.voice) CTX.coach.say(`第 ${set.idx} 組，開始！`, 'high');
 }
@@ -1198,6 +1223,7 @@ function handleResult(res, now, lm) {
   // 撤銷偵測要看「上一幀畫面上的有效次數」，不論 HUD 在不在都要更新
   const revoked = live.shownValid != null && res.reps.valid < live.shownValid;
   live.shownValid = res.reps.valid;
+  emitLive(CTX.events, liveRepEvents(res, live.set));
 
   // —— 教練訊息（語音 + 字幕）——
   if (res.visible === false) {
@@ -1345,6 +1371,7 @@ function finishLive() {
   const wasVoice = live.voice;
   const summary = live.detector.summary();
   const durationSec = Math.max(1, live.elapsedMs / 1000);
+  emitPhase('end', live.set, ex);
   stopLive();
 
   const session = CTX.store.commitSession({

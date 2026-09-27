@@ -36,7 +36,7 @@
     "test:placement": "tsx scripts/test-placement-precision.ts",
     "test:utility-cards": "tsx scripts/test-utility-cards.ts",
     "test:workout-rewards": "tsx scripts/test-workout-rewards.ts",
-    "test:fitness": "tsx scripts/test-fitness-shadow-css.ts && tsx scripts/test-fitness-contract.ts && tsx scripts/test-fitness-pose-to-rig.ts && tsx scripts/test-fitness-wallet.ts && tsx scripts/test-fitness-coach-poses.ts",
+    "test:fitness": "tsx scripts/test-fitness-shadow-css.ts && tsx scripts/test-fitness-contract.ts && tsx scripts/test-fitness-pose-to-rig.ts && tsx scripts/test-fitness-wallet.ts && tsx scripts/test-fitness-coach-poses.ts && tsx scripts/test-fitness-cheer.ts",
     "test:weekly-tasks": "tsx scripts/test-weekly-tasks.ts",
     "test:npc-social": "tsx scripts/test-npc-social.ts",
     "test:object-lifecycle": "tsx scripts/test-object-lifecycle.ts",

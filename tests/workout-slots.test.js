@@ -34,3 +34,53 @@ test('領獎預覽: 舊存檔沒有 xpGain 時以有效次數推算（同結算�
   eq(a[1].amount, 35, '與 renderResult 相同的 validReps × 5');
   eq(a[0].amount, 0, '0 仍保留，是否跳過由 Slice 2 的 awardQueue 決定');
 });
+
+// —— Slice 7：陪伴主角的事件（ctx.events）——
+import { emitLive, liveRepEvents } from '../app/features/workout/workout.js';
+
+const SET = { idx: 1, total: 3, target: 10, baseValid: 0 };
+const counted = (valid, ok = true) => ({ repCountedThisFrame: true, repValidThisFrame: ok, reps: { valid } });
+
+test('陪伴事件: 沒有 ctx.events（舊版）時不發送、不報錯', () => {
+  eq(emitLive(undefined, [{ type: 'rep', payload: {} }]), 0, 'events 未定義');
+  eq(emitLive(null, [{ type: 'rep', payload: {} }]), 0, 'events 為 null');
+  eq(emitLive({}, [{ type: 'rep', payload: {} }]), 0, '沒有 emit 方法');
+});
+
+test('陪伴事件: 有 ctx.events 時依序送出', () => {
+  const got = [];
+  const n = emitLive({ emit: (type, payload) => got.push([type, payload]) }, liveRepEvents(counted(1), SET));
+  eq(n, 1); eq(got.length, 1);
+  eq(got[0][0], 'rep'); eq(got[0][1].setValid, 1); eq(got[0][1].valid, true);
+});
+
+test('陪伴事件: 沒有計次的幀不發 rep', () => {
+  eq(liveRepEvents({ repCountedThisFrame: false, reps: { valid: 4 } }, SET).length, 0);
+  eq(liveRepEvents(counted(1), null).length, 0, '還沒進入組數狀態（準備中）');
+  eq(liveRepEvents(null, SET).length, 0);
+});
+
+test('陪伴事件: 次數以「本組」計，第二組從 0 起算', () => {
+  const ev = liveRepEvents(counted(13), { idx: 2, total: 3, target: 10, baseValid: 10 });
+  eq(ev[0].payload.setValid, 3, '累計 13、本組起點 10 → 本組第 3 下');
+  eq(ev[0].payload.total, 13, '累計次數照給');
+});
+
+test('陪伴事件: 沒算到的那一下也發 rep（valid=false），不觸發里程碑', () => {
+  const ev = liveRepEvents(counted(7, false), SET);
+  eq(ev.length, 1); eq(ev[0].payload.valid, false);
+});
+
+test('陪伴事件: 剩最後 3 下、本組達標各發一次里程碑', () => {
+  const last3 = liveRepEvents(counted(7), SET);
+  eq(last3.length, 2); eq(last3[1].type, 'milestone'); eq(last3[1].payload.kind, 'last3');
+  const hit = liveRepEvents(counted(10), SET);
+  eq(hit[1].payload.kind, 'target', '第 10 下達標');
+  eq(liveRepEvents(counted(8), SET).length, 1, '剩 2 下不再重複提醒');
+});
+
+test('陪伴事件: 目標 ≤ 3 下的組不發「剩 3 下」', () => {
+  const small = { idx: 1, total: 1, target: 3, baseValid: 0 };
+  eq(liveRepEvents(counted(1), small).length, 1, '剩 2 下');
+  eq(liveRepEvents(counted(3), small)[1].payload.kind, 'target');
+});

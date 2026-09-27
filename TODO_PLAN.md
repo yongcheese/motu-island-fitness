@@ -79,7 +79,7 @@
 
 ## 進度總覽
 - 總 Slice 數：13
-- 已完成：6 / 13
+- 已完成：7 / 13
 - 平行組：P1 = {Slice 2, Slice 3}（兩者都只新增純函式檔與測試檔，檔案兩兩不相交、互不依賴）
 
 ---
@@ -279,7 +279,7 @@
 - **依賴**：Slice 1
 - **平行組**：獨立
 
-### [ ] Slice 7 — 訓練中加入跟著使用者動的主角與加油對話框
+### [x] Slice 7 — 訓練中加入跟著使用者動的主角與加油對話框
 - **目標**：右上角的主角隨使用者計次做同一個動作，並用遊戲組對話框說鼓勵的話。
 - **範圍內**：
   - 陪伴插槽掛 `FitnessCharacter`（mode＝sync：每收到 `rep` 事件播一次該動作循環；說話時改做加油動作）
@@ -287,15 +287,34 @@
   - 對話框用遊戲組 `HintBubble`（名字小字＋內容＋箭頭），`role="status"`
   - `workout.js` 透過 `ctx.events` 發 `rep`／`phase`／`milestone`
 - **範圍外**：語音（沿用我方語音教練）、動畫細修。
-- **改動檔案**：`motu-app/src/components/fitness/CompanionCoach.tsx`（新增）、`motu-app/src/components/fitness/cheerLines.ts`（新增）、`motu-app/scripts/test-fitness-cheer.ts`（新增）、`motu-app/src/components/fitness/FitnessHost.tsx`、`app/features/workout/workout.js`
+- **改動檔案**：`motu-app/src/components/fitness/CompanionCoach.tsx`（新增）、`motu-app/src/components/fitness/cheerLines.ts`（新增）、`motu-app/scripts/test-fitness-cheer.ts`（新增）、`motu-app/src/components/fitness/FitnessHost.tsx`、`app/features/workout/workout.js`；施工時追加（見施工決策）：`motu-app/src/components/fitness/FitnessCharacter.tsx`、`motu-app/package.json`、`tests/workout-slots.test.js`
 - **設計要點**：主角與對話框不遮擋相機中央區域與骨架；台詞 ≤ 16 字。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [ ] 每計一下主角做一下；達標、休息時說對應台詞
-  - [ ] 事件只在 `ctx.events` 存在時發送，舊版不受影響
+  - [x] 每計一下主角做一下；達標、休息時說對應台詞
+  - [x] 事件只在 `ctx.events` 存在時發送，舊版不受影響
 - **測試策略**：`scripts/test-fitness-cheer.ts` — 各情境台詞、不連續重複、未知事件回 null；`tests/workout-slots.test.js` — 計次時發出 `rep` 事件、次數正確。
 - **完成定義**：`npm test`＋測試＋`tsc --noEmit` PASS＋截圖
 - **對外介面**：
+  - 訓練頁可發的 ctx 欄位（新增，選配）：`ctx.events.emit(type, payload)`。事件：
+    - `phase`：`{ phase: 'ready'|'work'|'rest'|'end', exercise, setIdx, totalSets }`；`ready` 在 `startLive` 交出插槽的同一刻發（早於陪伴元件掛上），`work` 在每組開始（含第 1 組）、`rest` 進休息、`end` 在 `finishLive` 結算前。
+    - `rep`：`{ valid, setValid, target, total }`，每計一下都發（含沒算到的 `valid:false`）；`setValid` 為本組有效次數。
+    - `milestone`：`{ kind: 'last3'|'target', setIdx, totalSets }`，只在有效的那一下發；目標 ≤3 的組不發 `last3`。
+  - `app/features/workout/workout.js`：export `emitLive(events, list) → 送出筆數`（沒有 `emit` 回 0）、`liveRepEvents(res, set) → 事件陣列`（純函式）。
+  - `motu-app/src/components/fitness/cheerLines.ts`：`cheerLine(event: unknown, state?) → { line: string|null; state: CheerState }`（不說話或認不得回 `line:null`，狀態一律用回傳值）；`initialCheerState()`；型別 `CheerEvent`、`CheerState { lastLine; missStreak; turn }`、`CheerResult`、`CheerPhase`、`CheerMilestone`；常數 `CHEER_LINES`、`CHEER_MAX_CHARS`(16)、`MISS_STREAK_LIMIT`(3)、`PRAISE_EVERY`(5)。
+  - `motu-app/src/components/fitness/CompanionCoach.tsx`：`CompanionCoach({ feed })`（掛 `companion` 插槽）；`createCompanionFeed() → CompanionFeed { emit; subscribe(fn) → unsubscribe; lastPhase() }`、型別 `CompanionEvent { type; payload }`、`CompanionListener`；常數 `LINE_MIN_MS`(1600)、`LINE_SHOW_MS`(3200)、`LINE_QUEUE`(2)。對話框名字＝`profile.displayName`（空則「島嶼主角」）。
+  - `motu-app/src/components/fitness/FitnessCharacter.tsx`：props 擴充為 `FitnessCharacter({ exercise, mode?: 'loop'|'sync', reps?, cheering? })`、export 型別 `FitnessCharacterMode`。`sync`：`reps` 每加一做一下（1.0 秒，最多排隊 2 下），`cheering` 時雙手舉高揮動；仍共用同一個 renderer。
+  - `FitnessHost.tsx`：`ctx.events` → 陪伴訊息；`companion` 插槽改掛 `CompanionCoach`（`CompanionSkeleton`／`HeroSkeleton` 已無使用者，骨架檔統一在全部換完後刪）。
+  - `motu-app/package.json`：`test:fitness` 串接 `scripts/test-fitness-cheer.ts`。
+- **施工決策**：
+  - **追加改 `FitnessCharacter.tsx`**：Slice 4 對外介面要求陪伴主角沿用共用 renderer、不可自開 `<Canvas>`，因此 sync 模式只能加在這支檔案。`tests/workout-slots.test.js` 原本就在測試策略內；`package.json` 照 Slice 5／6 慣例串 script（保留 CRLF，整檔差異已還原）。
+  - **主角只在「有效」的一下做動作**：沒算到的那一下仍發 `rep`（`valid:false`），供「連續失誤 3 次」台詞使用，但主角不跟做。驗收寫的「每計一下」＝畫面上的有效次數。
+  - 大部分計次不說話，只有每 5 下、剩 3 下、達標、休息、組開始、結束、連續 3 下沒算到才開口，避免對話框一直閃、蓋過語音教練。台詞輪替、同句不連續。
+  - 台詞最少停留 1.6 秒、最多排 2 句：實機發現第 12 下的「達標」與「休息」同一幀發生，原本後一句直接蓋掉前一句，改排隊後兩句依序出現。
+  - 陪伴欄靠右對齊、箭頭自畫對準主角中線（樣式同 `HintBubble` 的 arrow）：原本置中對齊時，對話框出現／消失會讓主角左右跳；實測改後主角位置固定。
+- **UI QA 紀錄**（無頭瀏覽器，整合版 :3000，無相機 → 以拒絕相機進示範模式）：深蹲一整場（3 組×12 下）逐 0.2 秒記錄：準備 →「第一下，穩穩來！」→ 第 5 下「5 下達成，繼續！」→ 第 9 下「最後 3 下，撐住！」→ 第 10 下 → 第 12 下「漂亮，這組完成！」→ 1.6 秒後「休息一下，深呼吸」→ 第 2 組「第 2 組開始，加油！」且次數從本組 0 起算 → 結束「全部完成，辛苦了！」（領獎遮罩下）。1440×900 與 390×844 截圖：主角與對話框在右上，不壓相機中央的示範人物；主角做深蹲。舊版 :8080 示範模式計次正常、0 個插槽、console 0 error。整合版 console 只剩遊戲組原有 favicon.ico 404。`vite build` PASS。截圖 `.playwright-mcp/slice7-*.png`（已被 .gitignore 排除）。
+  - 已知留給後續：陪伴主角在 112×128 框裡只有約 40px 高，偏小（Slice 12）；伏地挺身時主角是漂在空中的平板（Slice 3 已知）；深蹲單節式腿看起來像坐下（Slice 4 已知）；真實相機下尚未實機驗證；減少動畫模式下的主角與加油動作（Slice 13）。
+- **審查紀錄**：2026-09-27 slice-reviewer 第 1 輪 **PASS**（觸發條件：L 檔、新增 export／ctx 介面、改 `package.json`、改動檔案與 Slice 4 交集）。審查員建議把追加的改動檔案回填看板（已補）。
 - **依賴**：Slice 4、Slice 6
 - **平行組**：獨立
 

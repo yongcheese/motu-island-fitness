@@ -9,6 +9,11 @@
  *   - 模型：`CharacterModel` ＋ 玩家選的 `useCharacterModel()`；
  *   - 動作：我方合成器 `demoPose` 產生示範姿勢 → Slice 3 `poseToRig` → 直接寫進關節。
  *
+ * 兩種動法（`mode`）：
+ *   - `loop`（推薦卡）：不停循環示範動作；
+ *   - `sync`（訓練中陪伴，Slice 7）：平常站著，`reps` 每加一就做一下；`cheering` 時雙手舉高揮動（加油）。
+ *     做到一半又來一下就排隊接著做（最多排 2 下，使用者做得比主角快時不會越欠越多）。
+ *
  * WebGL 建不起來（不支援或建立時丟錯）就退回遊戲組的 `AvatarIcon` 頭像。
  *
  * 整個頁面只有一個 renderer（{@link getShared}），不是每次掛載開一個 `<Canvas>`：
@@ -34,6 +39,14 @@ import { demoPose } from '@fitness/core/synth.js';
 
 /** 一下動作的秒數（與我方示範模式的節奏相近，縮圖裡看得清楚）。 */
 const REP_SECONDS = 1.8;
+/** 陪伴模式跟做一下的秒數：比示範快，使用者一下約 1.5–2 秒，主角要在下一下之前做完。 */
+const SYNC_REP_SECONDS = 1.0;
+/** 陪伴模式最多排隊幾下。 */
+const SYNC_MAX_QUEUE = 2;
+/** 加油動作：開合跳手臂舉過頭的區段來回揮（d 在 0.7～1 之間），一來一回的秒數。 */
+const CHEER_SECONDS = 0.7;
+
+export type FitnessCharacterMode = 'loop' | 'sync';
 /** 角色轉 3/4 側面：正對鏡頭時深蹲大腿往前抬的量完全看不到。 */
 const TURN_Y = -0.55;
 
@@ -70,24 +83,55 @@ class WebglBoundary extends Component<{ onFail: () => void; children: ReactNode 
   }
 }
 
+/** 0→1→0 的往返，同我方合成器。 */
+const pingPong = (phase: number) => (phase < 0.5 ? phase * 2 : (1 - phase) * 2);
+
 /** 每幀把示範姿勢寫進角色關節。模型只擁有幾何，動的一律從這裡寫（同 Avatar.tsx 的分工）。 */
-function DemoRig({ exercise, rig, root, hipY }: {
+function DemoRig({ exercise, rig, root, hipY, mode, reps, cheering }: {
   exercise: string;
   rig: CharacterRig;
   root: React.RefObject<THREE.Group | null>;
   hipY: number;
+  mode: FitnessCharacterMode;
+  reps: number;
+  cheering: boolean;
 }) {
   const ref = useMemo(() => rigReference(demoPose(exercise, 0) as PoseFrame), [exercise]);
   const prev = useRef<RigPose | null>(null);
   const clock = useRef(0);
+  // 陪伴模式：看過的下數、排隊中的下數、這一下做到哪（-1＝沒在做）、做過幾下（高抬腿換腳）
+  const sync = useRef({ seen: reps, queue: 0, t: -1, done: 0, cheer: 0 });
+  const live = useRef({ reps, cheering });
+  live.current = { reps, cheering };
 
   useFrame((_, delta) => {
-    clock.current += Math.min(delta, 0.1);
-    const t = clock.current / REP_SECONDS;
-    const phase = t % 1;
-    const d = phase < 0.5 ? phase * 2 : (1 - phase) * 2;        // 0→1→0，同我方合成器的往返
-    const side = Math.floor(t) % 2 === 0 ? 'L' : 'R';           // 高抬腿左右輪流；其他動作不看
-    const pose = poseToRig(demoPose(exercise, d, side) as PoseFrame, ref, prev.current);
+    const dt = Math.min(delta, 0.1);
+    let frame: PoseFrame;
+    if (mode === 'sync') {
+      const s = sync.current;
+      const { reps: n, cheering: cheer } = live.current;
+      if (n < s.seen) s.seen = n;                                  // 重開一場：計數歸零
+      if (n > s.seen) { s.queue = Math.min(SYNC_MAX_QUEUE, s.queue + n - s.seen); s.seen = n; }
+      if (s.t < 0 && s.queue > 0) { s.queue -= 1; s.t = 0; }
+      if (s.t >= 0) {
+        s.t += dt / SYNC_REP_SECONDS;
+        if (s.t >= 1) { s.t = -1; s.done += 1; }
+      }
+      if (s.t >= 0) {
+        frame = demoPose(exercise, pingPong(s.t), s.done % 2 === 0 ? 'L' : 'R') as PoseFrame;
+      } else if (cheer) {
+        s.cheer += dt / CHEER_SECONDS;
+        frame = demoPose('jumpingjack', 0.7 + 0.3 * pingPong(s.cheer % 1)) as PoseFrame;
+      } else {
+        frame = demoPose(exercise, 0) as PoseFrame;
+      }
+    } else {
+      clock.current += dt;
+      const t = clock.current / REP_SECONDS;
+      const side = Math.floor(t) % 2 === 0 ? 'L' : 'R';         // 高抬腿左右輪流；其他動作不看
+      frame = demoPose(exercise, pingPong(t % 1), side) as PoseFrame;
+    }
+    const pose = poseToRig(frame, ref, prev.current);
     prev.current = pose;
 
     const set = (g: THREE.Group | null, e: { x: number; y: number; z: number }) => {
@@ -106,7 +150,13 @@ function DemoRig({ exercise, rig, root, hipY }: {
 }
 
 /** 畫布內容。穿著由外層傳入：持久 root 不在 App 的 React 樹裡，接不到 AppContext。 */
-function Stage({ exercise, equippedKey }: { exercise: string; equippedKey: string }) {
+function Stage({ exercise, equippedKey, mode, reps, cheering }: {
+  exercise: string;
+  equippedKey: string;
+  mode: FitnessCharacterMode;
+  reps: number;
+  cheering: boolean;
+}) {
   const modelId = useCharacterModel();
 
   const outfit = useMemo(
@@ -145,7 +195,7 @@ function Stage({ exercise, equippedKey }: { exercise: string; equippedKey: strin
           </Suspense>
         </group>
       </group>
-      <DemoRig exercise={exercise} rig={rig} root={root} hipY={hipY} />
+      <DemoRig exercise={exercise} rig={rig} root={root} hipY={hipY} mode={mode} reps={reps} cheering={cheering} />
     </>
   );
 }
@@ -188,7 +238,15 @@ function reconfigure() {
   return s.ready.then(() => s.root.configure({ ...BASE, size: s.size, frameloop: s.hosts > 0 ? 'always' : 'never' }));
 }
 
-export function FitnessCharacter({ exercise }: { exercise: string }) {
+export function FitnessCharacter({ exercise, mode = 'loop', reps = 0, cheering = false }: {
+  exercise: string;
+  /** `loop` 循環示範（預設）；`sync` 跟著 `reps` 一次做一下。 */
+  mode?: FitnessCharacterMode;
+  /** 陪伴模式：累計下數，每加一主角做一下。 */
+  reps?: number;
+  /** 陪伴模式：正在說話 → 做加油動作。 */
+  cheering?: boolean;
+}) {
   const { profile } = useApp();
   // 以裝備 id 清單當 key：profile 每次更新都是新物件，直接依賴它會讓畫面白重畫（同 Avatar.tsx）
   const equippedKey = (profile?.equippedItems ?? []).join('|');
@@ -228,11 +286,11 @@ export function FitnessCharacter({ exercise }: { exercise: string }) {
     s.ready
       .then(() => s.root.render(
         <WebglBoundary onFail={() => { renderBroken = true; setFailed(true); }}>
-          <Stage exercise={exercise} equippedKey={equippedKey} />
+          <Stage exercise={exercise} equippedKey={equippedKey} mode={mode} reps={reps} cheering={cheering} />
         </WebglBoundary>,
       ))
       .catch(() => setFailed(true));
-  }, [exercise, equippedKey, failed]);
+  }, [exercise, equippedKey, mode, reps, cheering, failed]);
 
   if (failed) {
     return (

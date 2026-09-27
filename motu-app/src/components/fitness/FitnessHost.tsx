@@ -11,6 +11,9 @@
  *
  * 遊戲端餘額（金幣、碎片、經驗、等級）由這裡從 profile 發布，資源列與健身頁本體
  * （ctx.game.balances／subscribe）讀的是同一份，見 FitnessWallet.tsx。
+ *
+ * 訓練中的事件（每計一下、階段、里程碑）由健身頁呼叫 ctx.events.emit 送出，
+ * 轉給右上角的陪伴主角與對話框，見 CompanionCoach.tsx。
  */
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -22,11 +25,8 @@ import { FitnessCharacter } from './FitnessCharacter';
 import { FitnessWallet, createBalanceFeed } from './FitnessWallet';
 import { balancesFromProfile } from './gameContract';
 import { CoachBackdrop } from './CoachBackdrop';
-import {
-  ClaimSkeleton,
-  CompanionSkeleton,
-  type ClaimAward,
-} from './skeleton/FitnessSkeleton';
+import { CompanionCoach, createCompanionFeed } from './CompanionCoach';
+import { ClaimSkeleton, type ClaimAward } from './skeleton/FitnessSkeleton';
 
 import workout from '@fitness/features/workout/workout.js';
 import { store } from '@fitness/state/store.js';
@@ -77,6 +77,8 @@ export function FitnessHost() {
   useEffect(() => {
     balanceFeed.publish(balancesFromProfile(profile));
   }, [balanceFeed, profile]);
+  // 訓練中的事件：整個宿主生命週期一條，陪伴主角訂閱
+  const [companionFeed] = useState(createCompanionFeed);
   // 遊戲端的分頁列只在主頁出現，其他頁面各自有右上角的關閉鍵回島嶼（同健康頁、設定頁）；全螢幕訓練時隱藏
   const [chrome, setChromeState] = useState(true);
 
@@ -128,6 +130,7 @@ export function FitnessHost() {
         appRef.current.setIsWorkoutActive(!visible);
       },
       slots: { set: (map: Slots) => setSlots({ ...map }) },
+      events: { emit: companionFeed.emit },
       game: {
         balances: balanceFeed.balances,
         subscribe: balanceFeed.subscribe,
@@ -155,7 +158,7 @@ export function FitnessHost() {
       {/* 推薦卡的主角做的是推薦卡那個動作（卡片上的 data-rec-id） */}
       {portal('hero', <FitnessCharacter exercise={slots.hero?.closest('[data-rec-id]')?.getAttribute('data-rec-id') ?? 'squat'} />)}
       {portal('backdrop', <CoachBackdrop />)}
-      {portal('companion', <CompanionSkeleton />)}
+      {portal('companion', <CompanionCoach feed={companionFeed} />)}
       {overlay &&
         chrome &&
         !claim &&
