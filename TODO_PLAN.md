@@ -79,7 +79,7 @@
 
 ## 進度總覽
 - 總 Slice 數：13
-- 已完成：5 / 13
+- 已完成：6 / 13
 - 平行組：P1 = {Slice 2, Slice 3}（兩者都只新增純函式檔與測試檔，檔案兩兩不相交、互不依賴）
 
 ---
@@ -243,7 +243,7 @@
 - **依賴**：Slice 4
 - **平行組**：獨立
 
-### [ ] Slice 6 — 訓練畫面換成亮色背景並讓阿肌做健身動作
+### [x] Slice 6 — 訓練畫面換成亮色背景並讓阿肌做健身動作
 - **目標**：訓練中相機畫面周圍不再是單調深青，而是明亮背景＋教練阿肌輪流做深蹲、開合跳。
 - **範圍內**：
   - `CoachSprite.tsx` 新增 `pose="squat"`、`pose="jack"` 兩個循環動作（沿用他既有的畫法規則：雙層描邊、各部位獨立節奏；既有 `idle`／`cheer` 不變）
@@ -253,11 +253,29 @@
 - **設計要點**：背景低對比、不遮相機；阿肌大小不超過畫面高度 35%。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [ ] 訓練中背景為亮色、阿肌依序做深蹲與開合跳，動作可辨識
-  - [ ] 新手引導的阿肌（`idle`／`cheer`）外觀不變
+  - [x] 訓練中背景為亮色、阿肌依序做深蹲與開合跳，動作可辨識
+  - [x] 新手引導的阿肌（`idle`／`cheer`）外觀不變
 - **測試策略**：`scripts/test-fitness-coach-poses.ts` — 姿勢清單包含 squat／jack、未知姿勢退回 idle（純資料部分）；實機截圖比對新手引導未退步。
 - **完成定義**：`tsc --noEmit` PASS＋測試 PASS＋截圖
 - **對外介面**：
+  - `motu-app/src/components/UI/CoachSprite.tsx`（遊戲組檔案，不變量 5 允許新增姿勢）：
+    - `CoachSprite({ className?, pose?: CoachPose })`：`CoachPose = 'idle'|'cheer'|'squat'|'jack'`；不認得的姿勢退回 `idle`。
+    - export `COACH_POSES`、`COACH_EXERCISE_POSES`（`['squat','jack']`）、型別 `CoachExercisePose`、`resolveCoachPose(p: unknown) → CoachPose`。
+    - export `COACH_EXERCISES: Record<CoachExercisePose, CoachExercise>`（`frames`／`times`／`duration` 秒／`hop`）、型別 `CoachFrame`（`drop`、`knee`、`ankle`、`shoe`、`elbow`、`fist`，x 為離中線距離）、`COACH_SHOULDER`、`COACH_HIP`、`coachLimbPaths(frame, dir)`。深蹲一循環 2.2 秒、開合跳 1.3 秒。
+  - `motu-app/src/components/fitness/CoachBackdrop.tsx`：
+    - `CoachBackdrop()`（無 props）：掛在 `backdrop` 插槽；自行找同一個 `.lv-wrap` 裡的 `video`（讀 `videoWidth/Height`，沒有影像以 4:3 估算）與 `.lv-ctrls`（上緣當阿肌腳底上限），ResizeObserver＋video `loadedmetadata`／`resize` 重算。
+    - export `coachPlacement(StageMetrics) → CoachPlacement { size, left, top, area:'side'|'below' }`、`COACH_MAX_HEIGHT_RATIO`（0.35）、`COACH_MIN_SIZE`（72）、`COACH_ROTATION`（深蹲 6.6 秒 → 開合跳 6.5 秒）、`nextRotationIndex(i)`。
+  - `FitnessHost.tsx`：`backdrop` 插槽改掛 `CoachBackdrop`（`BackdropSkeleton` 已無使用者，骨架檔統一在全部換完後刪）。
+  - `motu-app/package.json`：`test:fitness` 串接 `scripts/test-fitness-coach-poses.ts`。
+- **施工決策**：
+  - 健身姿勢不沿用 idle 的「繞 viewBox 支點旋轉」：蹲下時上半身要整體下移，旋轉支點寫死在 viewBox 座標上，身體一移就轉錯點。改成每個關鍵影格直接給關節座標、四肢以 `d` 補間，軀幹／頭／頭帶尾巴只平移；保留雙層描邊、頭帶、腕帶。
+  - 為了共用軀幹、頭的畫法，把 idle 分支內聯的 JSX 原樣抽成常數（`defs`／`halo`／`tailsArt`／`torsoArt`／`headArt`／`sparkles`），idle／cheer 輸出以動工前原檔產生的基準 `scripts/fixtures/coach-sprite-baseline.json` 逐字比對（審查員另以 `git show HEAD` 版本獨立重產驗證基準確實來自原檔）。
+  - 開合跳原本兩格內插時拳頭從臉前穿過（實機逐格截圖發現），加一格「雙手平舉」讓手臂畫弧，並加測試鎖住。
+  - 阿肌位置依「相機實際比例＋畫面尺寸＋控制鈕位置」計算：寬螢幕站在相機左側空白、手機直式站在相機下方與控制鈕之間；擠不下時縮到 72px，被相機蓋住一部分也不會反過來遮到相機（背景層在相機之下）。
+  - **`app/features/workout/workout.css` 未改動**（原列於改動檔案）：背景透出所需的 `.lv-fx #lv-video { background: transparent; }` 在 Slice 1 已加好，實機確認整個訓練畫面透出亮色背景。
+- **UI QA 紀錄**（無頭瀏覽器，整合版 :3000，**無實體相機**，停在「啟動相機中…」狀態，阿肌位置以 4:3 估算）：1440×900 阿肌 88px 寬站在左側 120px 空白、腳底在控制鈕上方；390×844 阿肌 97px 在相機區下緣（568）之下、控制鈕上緣（688）之上（實測 top 574、底 674）。放大逐格截圖確認深蹲（屈膝外推、雙拳收胸前）與開合跳（平舉→過頭、腳打開）可辨識，輪播深蹲→開合跳→深蹲正常。以 `replay-newbie-tour` 重播新手引導，阿肌仍是原本的雙手二頭肌姿勢。console 只剩遊戲組原有 favicon.ico 404 與遊戲音效的 AudioContext 自動播放警告（自動化導覽無使用者手勢造成）。截圖 `.playwright-mcp/slice6-*.png`（已被 .gitignore 排除）。
+  - 已知留給後續：真實相機下的位置尚未實機驗證（需有相機的電腦；16:9 相機時左右無空白，阿肌會縮到 72px 並被相機蓋住一部分）；手機寬度下教練提示字（`.lv-coach`，置中、最寬 80%）文字長時可能與左側阿肌重疊（Slice 8 的「互不重疊」範圍）；1440 寬時阿肌只有 88px（空白就這麼寬）。
+- **審查紀錄**：2026-09-27 slice-reviewer 第 1 輪 **PASS**（觸發條件：L 檔、改遊戲組共用元件 `CoachSprite.tsx`、新增 export、改 `package.json`）。審查員建議回填對外介面（已補）。
 - **依賴**：Slice 1
 - **平行組**：獨立
 

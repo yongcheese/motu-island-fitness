@@ -21,8 +21,8 @@ import { toShadowCss } from './fitnessStyles';
 import { FitnessCharacter } from './FitnessCharacter';
 import { FitnessWallet, createBalanceFeed } from './FitnessWallet';
 import { balancesFromProfile } from './gameContract';
+import { CoachBackdrop } from './CoachBackdrop';
 import {
-  BackdropSkeleton,
   ClaimSkeleton,
   CompanionSkeleton,
   type ClaimAward,
@@ -154,7 +154,7 @@ export function FitnessHost() {
       {portal('wallet', <FitnessWallet feed={balanceFeed} />)}
       {/* 推薦卡的主角做的是推薦卡那個動作（卡片上的 data-rec-id） */}
       {portal('hero', <FitnessCharacter exercise={slots.hero?.closest('[data-rec-id]')?.getAttribute('data-rec-id') ?? 'squat'} />)}
-      {portal('backdrop', <BackdropSkeleton />)}
+      {portal('backdrop', <CoachBackdrop />)}
       {portal('companion', <CompanionSkeleton />)}
       {overlay &&
         chrome &&

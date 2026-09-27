@@ -73,14 +73,122 @@ function useBlink() {
   return blinking;
 }
 
+/* ------------------------------------------------------------------------ *
+ * 健身組整合（合體第二階段 Slice 6）：訓練畫面背景的阿肌要示範健身動作，
+ * 新增 `squat`（深蹲）與 `jack`（開合跳）兩個循環姿勢。既有 `idle`／`cheer`
+ * 的畫法與節奏一律不動（scripts/test-fitness-coach-poses.ts 以原檔輸出比對）。
+ *
+ * 健身姿勢不沿用上面那套「各部位繞解剖點旋轉」的做法：蹲下時整個上半身要往下移，
+ * 而旋轉支點是寫死在 viewBox 座標上的，身體一移就轉錯點。所以健身姿勢改成
+ * 「每個關鍵影格直接給關節座標」，四肢畫成路徑、以 `d` 影格補間；軀幹與頭只做
+ * 平移（平移不看支點）。同樣保留雙層描邊（先描邊色粗線、再膚色細線）與頭帶、
+ * 腕帶這些辨識特徵，看起來仍是同一個阿肌。
+ * ------------------------------------------------------------------------ */
+
+export const COACH_POSES = ['idle', 'cheer', 'squat', 'jack'] as const;
+export type CoachPose = (typeof COACH_POSES)[number];
+/** 會做健身動作的姿勢（背景輪播用）。 */
+export const COACH_EXERCISE_POSES = ['squat', 'jack'] as const;
+export type CoachExercisePose = (typeof COACH_EXERCISE_POSES)[number];
+
+/** 不認得的姿勢一律退回 `idle`（呼叫端傳錯字時不會畫出空白）。 */
+export function resolveCoachPose(pose: unknown): CoachPose {
+  return (COACH_POSES as readonly unknown[]).includes(pose) ? (pose as CoachPose) : 'idle';
+}
+
+/** 右半邊的關節位置（x 為離中線 70 的距離，y 為 viewBox 座標）；左半邊鏡射。 */
+type Joint = readonly [number, number];
+export interface CoachFrame {
+  /** 軀幹、頭、肩、髖一起往下移多少（蹲下）。 */
+  drop: number;
+  knee: Joint;
+  ankle: Joint;
+  /** 鞋子中心離中線的距離（鞋底固定在 y=136）。 */
+  shoe: number;
+  elbow: Joint;
+  fist: Joint;
+}
+export interface CoachExercise {
+  frames: readonly CoachFrame[];
+  /** 各影格在一個循環中的位置（0–1，與 frames 等長）。 */
+  times: readonly number[];
+  /** 一個循環幾秒。 */
+  duration: number;
+  /** 整隻角色的小跳（開合跳換腳的瞬間離地），百分比；沒有則為 null。 */
+  hop: readonly string[] | null;
+}
+
+/** 肩（三角肌）與髖關節的固定位置，同 idle 的 dx=27、hx=8。 */
+export const COACH_SHOULDER: Joint = [27, 71];
+export const COACH_HIP: Joint = [8, 98];
+
+const STAND_ARMS = { elbow: [31, 88], fist: [30, 103] } as const;
+
+export const COACH_EXERCISES: Record<CoachExercisePose, CoachExercise> = {
+  // 深蹲：站 → 蹲（膝蓋往外推、大腿接近水平、雙手收到胸前）→ 停一下 → 站。腳底全程不動。
+  squat: {
+    frames: [
+      { drop: 0, knee: [10.5, 116], ankle: [12, 133], shoe: 14, ...STAND_ARMS },
+      { drop: 15, knee: [22, 114], ankle: [12.5, 133], shoe: 14, elbow: [36, 100], fist: [8, 92] },
+      { drop: 15, knee: [22, 114], ankle: [12.5, 133], shoe: 14, elbow: [36, 100], fist: [8, 92] },
+      { drop: 0, knee: [10.5, 116], ankle: [12, 133], shoe: 14, ...STAND_ARMS },
+    ],
+    times: [0, 0.42, 0.58, 1],
+    duration: 2.2,
+    hop: null,
+  },
+  // 開合跳：併腿手放下 → 跳開、雙手舉過頭 → 併回。換腳的中途小跳一下。
+  // 中間夾一格「雙手平舉」：手臂要從身側畫弧上去，直接內插的話拳頭會從臉前面穿過。
+  jack: {
+    frames: [
+      { drop: 0, knee: [9, 116], ankle: [9.5, 133], shoe: 11.5, ...STAND_ARMS },
+      { drop: 0, knee: [12, 116], ankle: [16, 133], shoe: 18, elbow: [44, 70], fist: [58, 64] },
+      { drop: 0, knee: [15, 116], ankle: [22, 132], shoe: 25, elbow: [40, 52], fist: [28, 16] },
+      { drop: 0, knee: [12, 116], ankle: [16, 133], shoe: 18, elbow: [44, 70], fist: [58, 64] },
+      { drop: 0, knee: [9, 116], ankle: [9.5, 133], shoe: 11.5, ...STAND_ARMS },
+    ],
+    times: [0, 0.25, 0.5, 0.75, 1],
+    duration: 1.3,
+    hop: ['0%', '-2.5%', '0%', '-2.5%', '0%'],
+  },
+};
+
+const at = (dir: number, [x, y]: Joint, drop = 0) => [70 + dir * x, y + drop] as const;
+const lerp = (a: readonly [number, number], b: readonly [number, number], t: number) =>
+  [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t] as const;
+const pt = ([x, y]: readonly [number, number]) => `${+x.toFixed(2)} ${+y.toFixed(2)}`;
+
+/** 一個影格的四肢路徑（dir = -1 左、1 右）。每個影格的指令結構相同，Motion 才能逐點補間。 */
+export function coachLimbPaths(frame: CoachFrame, dir: number) {
+  const shoulder = at(dir, COACH_SHOULDER, frame.drop);
+  const hip = at(dir, COACH_HIP, frame.drop);
+  const elbow = at(dir, frame.elbow);
+  const fist = at(dir, frame.fist);
+  const knee = at(dir, frame.knee);
+  const ankle = at(dir, frame.ankle);
+  return {
+    upper: `M${pt(shoulder)} L${pt(elbow)}`,
+    fore: `M${pt(elbow)} L${pt(fist)}`,
+    // 拳頭＝極短線段配圓端點，圓的大小由線寬決定（同 idle 拳頭的 r）
+    fist: `M${pt(fist)} L${pt([fist[0] + 0.01, fist[1]])}`,
+    // 腕帶在前臂靠拳頭那一段，位置同 idle（肘到拳約六成處）
+    band: `M${pt(lerp(elbow, fist, 0.56))} L${pt(lerp(elbow, fist, 0.7))}`,
+    thigh: `M${pt(hip)} L${pt(knee)}`,
+    calf: `M${pt(knee)} L${pt(ankle)}`,
+  };
+}
+
 export function CoachSprite({
   className = '',
   /** `cheer` deepens the flex, widens the grin and shuts his eyes happily. */
-  pose = 'idle',
+  pose: requestedPose = 'idle',
 }: {
   className?: string;
-  pose?: 'idle' | 'cheer';
+  /** `squat`／`jack`：健身組整合新增的示範動作循環。 */
+  pose?: CoachPose;
 }) {
+  const pose = resolveCoachPose(requestedPose);
+  const exercise = pose === 'squat' || pose === 'jack' ? COACH_EXERCISES[pose] : null;
   // Gradient/clip ids must be unique per instance — a duplicate id anywhere in
   // the document silently repoints every `url(#…)` at the first match.
   const uid = useId().replace(/:/g, '');
@@ -148,6 +256,299 @@ export function CoachSprite({
   const line = '#C08049';
   const shade = '#D79A69'; // interior creases, one step lighter than the outline
 
+  // 健身組整合：以下幾段畫法由 idle／cheer 與健身姿勢共用（輸出與原檔逐字相同）。
+  const defs = (
+    <defs>
+      <radialGradient id={glow} cx="50%" cy="50%" r="52%">
+        <stop offset="0%" stopColor="#FFF1D4" stopOpacity="0.8" />
+        <stop offset="55%" stopColor="#FFE9C4" stopOpacity="0.24" />
+        <stop offset="100%" stopColor="#FFE9C4" stopOpacity="0" />
+      </radialGradient>
+      <linearGradient id={skin} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#FBD8B0" />
+        <stop offset="100%" stopColor="#E9AE7B" />
+      </linearGradient>
+      <linearGradient id={tank} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#34AD9D" />
+        <stop offset="100%" stopColor="#1F7A70" />
+      </linearGradient>
+      {/* Hair and headband are cut to the skull instead of being drawn to fit
+          it by eye — an eyeballed cap leaves a sliver of scalp on one side at
+          some sizes and overhangs on the other. */}
+      <clipPath id={headClip}>
+        <circle cx="70" cy="40" r="20.5" />
+      </clipPath>
+    </defs>
+  );
+
+  const halo = (
+    <>
+      {/* Halation behind him — sells "the spotlight is on this guy" far more
+          cheaply than an SVG blur filter, which would rasterize every frame. */}
+      <motion.circle
+        cx="70"
+        cy="72"
+        r="63"
+        fill={`url(#${glow})`}
+        animate={{ opacity: [0.7, 1, 0.7], scale: [0.97, 1.04, 0.97] }}
+        transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+        style={pivot(70, 72)}
+      />
+    </>
+  );
+
+  const tailsArt = (
+    <>
+      <path d="M85 35 C95 38, 102 44, 101 54" stroke="#E8836A" strokeWidth="3.8" strokeLinecap="round" fill="none" />
+      <path d="M85 40 C94 45, 97 52, 93 60" stroke="#E8836A" strokeWidth="2.9" strokeLinecap="round" fill="none" opacity="0.9" />
+      <path d="M92 39 C97 42, 100 46, 100 50" stroke="#F2A18C" strokeWidth="1.2" strokeLinecap="round" fill="none" opacity="0.85" />
+    </>
+  );
+
+  const torsoArt = (
+    <>
+      {/* The V: half-width 28 at the delts, 19 at the ribs, 15 at the waist.
+          Monotonically narrowing — the moment it bulges below the ribs the
+          whole figure turns into a barrel. */}
+      {/* The hip line sits at y≈101 rather than 106: the viewBox is full at
+          the bottom (the soles are already within half a unit of it), so the
+          only way to lend the legs length is to give the trunk less. */}
+      <path
+        d="M58 61 C50 62, 43 65, 42 71 C41 78, 45 85, 51 91 C54 94, 55 97, 55.5 101
+             L84.5 101 C85 97, 86 94, 89 91 C95 85, 99 78, 98 71 C97 65, 90 62, 82 61 Z"
+        fill={`url(#${skin})`}
+        stroke={line}
+        strokeWidth="2.3"
+        strokeLinejoin="round"
+      />
+
+      {/* Abs, exposed under a cropped stringer (y≈83–94). Light strokes rather
+          than outlined blocks — at 84px wide, drawn blocks turn to mud. */}
+      <path d="M70 83 V94" stroke={shade} strokeWidth="1.7" strokeLinecap="round" opacity="0.8" />
+      <path d="M63.5 86.5 H76.5" stroke={shade} strokeWidth="1.6" strokeLinecap="round" opacity="0.62" />
+      <path d="M64.5 90.5 H75.5" stroke={shade} strokeWidth="1.5" strokeLinecap="round" opacity="0.5" />
+      {/* Obliques — the two short diagonals that actually sell a narrow waist */}
+      <path d="M57 84 Q59.5 89 62 94" stroke={shade} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.5" />
+      <path d="M83 84 Q80.5 89 78 94" stroke={shade} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.5" />
+
+      {/* Tank top — a stringer. The neckline is a notch cut into this ONE
+          path, so the chest showing through it is the torso already drawn
+          underneath. Painting a skin-coloured patch on top of a closed vest
+          instead is what produced the bib-shaped blob in the previous pass. */}
+      {/* A shallow scoop, not a deep V, and a hem that only just lifts in the
+          middle. Both were overdone in the previous pass and the combination
+          of plunging neckline + high arced hem + narrow waist underneath read
+          as a sports bra rather than a men's stringer. */}
+      <path
+        d="M44.5 70 C48 65, 53 64.5, 58.5 66 C62.5 69, 66.5 71.5, 70 72.2
+             C73.5 71.5, 77.5 69, 81.5 66 C87 64.5, 92 65, 95.5 70
+             C97 76, 95 82, 91 86 Q70 83, 49 86 C45 82, 43 76, 44.5 70 Z"
+        fill={`url(#${tank})`}
+        stroke="#17605A"
+        strokeWidth="1.9"
+        strokeLinejoin="round"
+      />
+      {/* Hem light, and the fold where the fabric crosses the ribs */}
+      <path d="M51 84 Q70 81, 89 84" stroke="#7ED0C4" strokeWidth="1.7" strokeLinecap="round" fill="none" opacity="0.55" />
+      <path d="M58 70 C57 75, 57.5 80, 59 83.5" stroke="#17605A" strokeWidth="1.3" strokeLinecap="round" fill="none" opacity="0.4" />
+      <path d="M82 70 C83 75, 82.5 80, 81 83.5" stroke="#17605A" strokeWidth="1.3" strokeLinecap="round" fill="none" opacity="0.4" />
+
+      {/* Pecs, in the skin showing through the neckline */}
+      <path d="M70 66 V71.8" stroke={shade} strokeWidth="1.7" strokeLinecap="round" opacity="0.6" />
+      <path d="M63 66 Q66.5 70, 69.4 71.3" stroke={shade} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.45" />
+      <path d="M77 66 Q73.5 70, 70.6 71.3" stroke={shade} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.45" />
+
+      {/* Shorts */}
+      <path
+        d="M52.5 93 C60 96.5, 80 96.5, 87.5 93 L88.5 104 C84 107.5, 78.5 106.5, 76.5 102
+             L70 99.5 L63.5 102 C61.5 106.5, 56 107.5, 51.5 104 Z"
+        fill="#264653"
+        stroke="#152B33"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
+      {/* Waistband */}
+      <path d="M53 96.5 Q70 100, 87 96.5" stroke="#5FBDAF" strokeWidth="1.9" strokeLinecap="round" fill="none" opacity="0.75" />
+    </>
+  );
+
+  const headArt = (
+    <>
+      {/* Neck — short and thick, and present at all, which the previous pass
+          was not: a head sitting straight on the traps reads as a snowman. */}
+      <path d="M62.5 50 H77.5 V62 Q70 66.5 62.5 62 Z" fill={`url(#${skin})`} stroke={line} strokeWidth="1.9" strokeLinejoin="round" />
+      <path d="M64 60 Q70 63.5 76 60" stroke={shade} strokeWidth="1.4" strokeLinecap="round" fill="none" opacity="0.55" />
+
+      {/* Ears, which cost four lines and do more for "this is a person" than
+          any amount of muscle detail. */}
+      <ellipse cx="49.8" cy="42.5" rx="3.7" ry="5.2" fill={`url(#${skin})`} stroke={line} strokeWidth="1.7" />
+      <ellipse cx="90.2" cy="42.5" rx="3.7" ry="5.2" fill={`url(#${skin})`} stroke={line} strokeWidth="1.7" />
+
+      <circle cx="70" cy="40" r="20.5" fill={`url(#${skin})`} stroke={line} strokeWidth="2.2" />
+
+      {/* Hair + headband, both cut to the skull. The band sits low on the
+          FOREHEAD rather than over the crown, which is what leaves a real
+          haircut visible above it. */}
+      <g clipPath={`url(#${headClip})`}>
+        <path d="M48 30 A22 22 0 0 1 92 30 Z" fill="#264653" />
+        <path d="M56.5 24 C62 20, 71 19, 79 22" stroke="#4A6169" strokeWidth="2.8" strokeLinecap="round" fill="none" />
+        {/* Sideburns, tapering down past the band */}
+        <path d="M50 30 V44 L54 36 Z" fill="#264653" />
+        <path d="M90 30 V44 L86 36 Z" fill="#264653" />
+
+        {/* The band rides the FOREHEAD. Sat any lower it eats the brows and
+            clips the tops of the eyes, and the face loses the half of itself
+            that carries the expression. */}
+        <path d="M48 29.5 H92 V36.5 H48 Z" fill="#E8836A" />
+        <path d="M48 30.4 H92" stroke="#F2A18C" strokeWidth="1.5" opacity="0.85" />
+      </g>
+      {/* Spiky crown, outside the clip so it can break the skull line. Drawn
+          as one path whose base sits INSIDE the hair cap, so it merges into
+          the haircut instead of perching on top as two loose horns. */}
+      <path d="M56 28 L60 13.5 L65.5 24 L70 11.5 L75 24 L80 14 L84 28 Z" fill="#264653" />
+
+      {/* Face */}
+      {eyesShut ? (
+        <>
+          <path d="M58.2 45.5 Q62.5 41.6 66.8 45.5" stroke="#264653" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+          <path d="M73.2 45.5 Q77.5 41.6 81.8 45.5" stroke="#264653" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+        </>
+      ) : (
+        <>
+          <ellipse cx="62.5" cy="46" rx="3.3" ry="3.9" fill="#264653" />
+          <ellipse cx="77.5" cy="46" rx="3.3" ry="3.9" fill="#264653" />
+          <circle cx="63.8" cy="44.4" r="1.3" fill="#FFFFFF" />
+          <circle cx="78.8" cy="44.4" r="1.3" fill="#FFFFFF" />
+        </>
+      )}
+      {/* Brows sit just under the band — the whole difference between "cute"
+          and "cute and certain". */}
+      <path d="M57.4 41.6 Q62.5 39.2 67.2 41.4" stroke="#264653" strokeWidth="2.6" strokeLinecap="round" fill="none" />
+      <path d="M82.6 41.6 Q77.5 39.2 72.8 41.4" stroke="#264653" strokeWidth="2.6" strokeLinecap="round" fill="none" />
+      <ellipse cx="55.5" cy="51" rx="4.5" ry="2.7" fill="#E8836A" opacity="0.36" />
+      <ellipse cx="84.5" cy="51" rx="4.5" ry="2.7" fill="#E8836A" opacity="0.36" />
+
+      {/* Grin — opens up for the finish. The idle shape is also written as a
+          plain `d`, so the mouth exists before Motion's first frame (and in
+          any non-JS render); `animate` alone leaves the path dataless. */}
+      <motion.path
+        d="M64 52 Q70 58.5 76 52"
+        // 健身組整合：沒有 initial 時 Motion 第一幀讀不到起點，console 會報「attribute d: "undefined"」
+        initial={{ d: 'M64 52 Q70 58.5 76 52' }}
+        animate={{ d: cheering ? 'M62 51.5 Q70 62 78 51.5' : 'M64 52 Q70 58.5 76 52' }}
+        transition={{ duration: 0.3, ease: 'easeOut' }}
+        stroke="#264653"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        fill="none"
+      />
+    </>
+  );
+
+  const sparkles = (
+    <>
+      {[
+        { x: 10, y: 40, s: 1, d: 0 },
+        { x: 130, y: 44, s: 0.85, d: 1.2 },
+        { x: 22, y: 112, s: 0.7, d: 2.3 },
+        { x: 118, y: 106, s: 0.9, d: 0.7 },
+      ].map((tw) => (
+        // The placement `translate` has to live on a plain wrapper <g>: Motion
+        // drives SVG transforms through the CSS `transform` property, which
+        // wholesale overrides a `transform` *attribute* on the same element —
+        // put both on the star itself and every sparkle collapses onto 0,0.
+        <g key={`${tw.x}-${tw.y}`} transform={`translate(${tw.x} ${tw.y})`}>
+          <motion.path
+            d="M0 -6 Q1 -1 6 0 Q1 1 0 6 Q-1 1 -6 0 Q-1 -1 0 -6 Z"
+            fill="#F5D08A"
+            style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
+            animate={{ scale: [0, tw.s, 0], rotate: [0, 90, 180], opacity: [0, 1, 0] }}
+            transition={{ duration: 2.4, delay: tw.d, repeat: Infinity, ease: 'easeInOut' }}
+          />
+        </g>
+      ))}
+    </>
+  );
+
+  if (exercise) {
+    // 健身姿勢：四肢逐影格給座標、以 `d` 補間；軀幹、頭只平移。見檔案上方說明。
+    const beat = { duration: exercise.duration, times: [...exercise.times], repeat: Infinity, ease: 'easeInOut' as const };
+    const drops = exercise.frames.map((f) => f.drop);
+    const limbs = [-1, 1].map((dir) => {
+      const paths = exercise.frames.map((f) => coachLimbPaths(f, dir));
+      // 第一個影格同時寫成 `d` 與 initial，Motion 第一幀之前（及非 JS 輸出）路徑就存在
+      const limb = (key: keyof ReturnType<typeof coachLimbPaths>) => {
+        const d = paths.map((p) => p[key]);
+        return { d: d[0], initial: { d: d[0] }, animate: { d }, transition: beat };
+      };
+      return { dir, limb, shoeX: exercise.frames.map((f) => dir * (f.shoe - exercise.frames[0].shoe)) };
+    });
+    const shoe0 = exercise.frames[0].shoe;
+
+    return (
+      <motion.svg
+        viewBox="0 0 140 144"
+        fill="none"
+        aria-hidden="true"
+        className={className}
+        style={{ transformOrigin: '50% 88%', willChange: 'transform' }}
+        // 同 idle：整隻的位移放在根 <svg> 上；開合跳換腳時小跳，深蹲不跳
+        animate={{ x: '0%', y: exercise.hop ? [...exercise.hop] : '0%', rotate: 0 }}
+        transition={
+          exercise.hop
+            ? { duration: exercise.duration, times: [0, 0.25, 0.5, 0.75, 1], repeat: Infinity, ease: 'easeInOut' }
+            : { duration: 0.3 }
+        }
+      >
+        {defs}
+        {halo}
+
+        {/* 頭帶尾巴：畫在最底層，跟著頭一起下蹲（健身姿勢不擺動，動感交給全身） */}
+        <motion.g initial={{ y: drops[0] }} animate={{ y: drops }} transition={beat}>
+          {tailsArt}
+        </motion.g>
+
+        {/* 腿：先所有描邊、再所有膚色，接縫處才不會有描邊橫過 */}
+        {limbs.map(({ dir, limb, shoeX }) => (
+          <g key={`leg${dir}`}>
+            <motion.path {...limb('thigh')} stroke={line} strokeWidth="18.9" strokeLinecap="round" />
+            <motion.path {...limb('calf')} stroke={line} strokeWidth="15.4" strokeLinecap="round" />
+            <motion.path {...limb('thigh')} stroke={`url(#${skin})`} strokeWidth="15.5" strokeLinecap="round" />
+            <motion.path {...limb('calf')} stroke={`url(#${skin})`} strokeWidth="12" strokeLinecap="round" />
+            <motion.g initial={{ x: shoeX[0] }} animate={{ x: shoeX }} transition={beat}>
+              <ellipse cx={70 + dir * shoe0} cy="136" rx="10.5" ry="5.5" fill="#FFFFFF" stroke="#D8D4C8" strokeWidth="1.8" />
+              <path d={`M${70 + dir * shoe0 - 9} 137 H${70 + dir * shoe0 + 9}`} stroke="#2A9D8F" strokeWidth="2.4" strokeLinecap="round" />
+            </motion.g>
+          </g>
+        ))}
+
+        <motion.g initial={{ y: drops[0] }} animate={{ y: drops }} transition={beat}>
+          {torsoArt}
+        </motion.g>
+
+        {/* 手臂在軀幹前、頭之後；描邊與膚色同 idle 的線寬，腕帶保留（阿肌的辨識特徵） */}
+        {limbs.map(({ dir, limb }) => (
+          <g key={`arm${dir}`}>
+            <motion.path {...limb('upper')} stroke={line} strokeWidth="20.4" strokeLinecap="round" />
+            <motion.path {...limb('fore')} stroke={line} strokeWidth="16.9" strokeLinecap="round" />
+            <motion.path {...limb('fist')} stroke={line} strokeWidth="20.2" strokeLinecap="round" />
+            <motion.path {...limb('upper')} stroke={`url(#${skin})`} strokeWidth="17" strokeLinecap="round" />
+            <motion.path {...limb('fore')} stroke={`url(#${skin})`} strokeWidth="13.5" strokeLinecap="round" />
+            <motion.path {...limb('fist')} stroke={`url(#${skin})`} strokeWidth="16.8" strokeLinecap="round" />
+            <motion.path {...limb('band')} stroke="#17605A" strokeWidth="13.6" />
+            <motion.path {...limb('band')} stroke="#2A9D8F" strokeWidth="11.2" />
+          </g>
+        ))}
+
+        <motion.g initial={{ y: drops[0] }} animate={{ y: drops }} transition={beat}>
+          {headArt}
+        </motion.g>
+
+        {sparkles}
+      </motion.svg>
+    );
+  }
+
   return (
     // viewBox is cropped tight to the drawn content (hair spikes at the top,
     // soles at the bottom) — leftover empty box would shrink him inside the
@@ -183,39 +584,9 @@ export function CoachSprite({
       animate={dance}
       transition={danceBeat}
     >
-      <defs>
-        <radialGradient id={glow} cx="50%" cy="50%" r="52%">
-          <stop offset="0%" stopColor="#FFF1D4" stopOpacity="0.8" />
-          <stop offset="55%" stopColor="#FFE9C4" stopOpacity="0.24" />
-          <stop offset="100%" stopColor="#FFE9C4" stopOpacity="0" />
-        </radialGradient>
-        <linearGradient id={skin} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#FBD8B0" />
-          <stop offset="100%" stopColor="#E9AE7B" />
-        </linearGradient>
-        <linearGradient id={tank} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#34AD9D" />
-          <stop offset="100%" stopColor="#1F7A70" />
-        </linearGradient>
-        {/* Hair and headband are cut to the skull instead of being drawn to fit
-            it by eye — an eyeballed cap leaves a sliver of scalp on one side at
-            some sizes and overhangs on the other. */}
-        <clipPath id={headClip}>
-          <circle cx="70" cy="40" r="20.5" />
-        </clipPath>
-      </defs>
+      {defs}
 
-      {/* Halation behind him — sells "the spotlight is on this guy" far more
-          cheaply than an SVG blur filter, which would rasterize every frame. */}
-      <motion.circle
-        cx="70"
-        cy="72"
-        r="63"
-        fill={`url(#${glow})`}
-        animate={{ opacity: [0.7, 1, 0.7], scale: [0.97, 1.04, 0.97] }}
-        transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-        style={pivot(70, 72)}
-      />
+      {halo}
 
       {/* ---- Headband tails. Drawn first, so they stream out from BEHIND the
               head — which is what stops them reading as a long ponytail, the
@@ -226,9 +597,7 @@ export function CoachSprite({
         animate={{ rotate: [-9, 9, -9] }}
         transition={{ duration: 1.15, repeat: Infinity, ease: 'easeInOut' }}
       >
-        <path d="M85 35 C95 38, 102 44, 101 54" stroke="#E8836A" strokeWidth="3.8" strokeLinecap="round" fill="none" />
-        <path d="M85 40 C94 45, 97 52, 93 60" stroke="#E8836A" strokeWidth="2.9" strokeLinecap="round" fill="none" opacity="0.9" />
-        <path d="M92 39 C97 42, 100 46, 100 50" stroke="#F2A18C" strokeWidth="1.2" strokeLinecap="round" fill="none" opacity="0.85" />
+        {tailsArt}
       </motion.g>
 
       {/* ---- Legs and trainers. Drawn before the torso so the shorts' hem
@@ -280,68 +649,7 @@ export function CoachSprite({
         animate={{ scale: [1, 1.035, 1] }}
         transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
       >
-        {/* The V: half-width 28 at the delts, 19 at the ribs, 15 at the waist.
-            Monotonically narrowing — the moment it bulges below the ribs the
-            whole figure turns into a barrel. */}
-        {/* The hip line sits at y≈101 rather than 106: the viewBox is full at
-            the bottom (the soles are already within half a unit of it), so the
-            only way to lend the legs length is to give the trunk less. */}
-        <path
-          d="M58 61 C50 62, 43 65, 42 71 C41 78, 45 85, 51 91 C54 94, 55 97, 55.5 101
-             L84.5 101 C85 97, 86 94, 89 91 C95 85, 99 78, 98 71 C97 65, 90 62, 82 61 Z"
-          fill={`url(#${skin})`}
-          stroke={line}
-          strokeWidth="2.3"
-          strokeLinejoin="round"
-        />
-
-        {/* Abs, exposed under a cropped stringer (y≈83–94). Light strokes rather
-            than outlined blocks — at 84px wide, drawn blocks turn to mud. */}
-        <path d="M70 83 V94" stroke={shade} strokeWidth="1.7" strokeLinecap="round" opacity="0.8" />
-        <path d="M63.5 86.5 H76.5" stroke={shade} strokeWidth="1.6" strokeLinecap="round" opacity="0.62" />
-        <path d="M64.5 90.5 H75.5" stroke={shade} strokeWidth="1.5" strokeLinecap="round" opacity="0.5" />
-        {/* Obliques — the two short diagonals that actually sell a narrow waist */}
-        <path d="M57 84 Q59.5 89 62 94" stroke={shade} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.5" />
-        <path d="M83 84 Q80.5 89 78 94" stroke={shade} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.5" />
-
-        {/* Tank top — a stringer. The neckline is a notch cut into this ONE
-            path, so the chest showing through it is the torso already drawn
-            underneath. Painting a skin-coloured patch on top of a closed vest
-            instead is what produced the bib-shaped blob in the previous pass. */}
-        {/* A shallow scoop, not a deep V, and a hem that only just lifts in the
-            middle. Both were overdone in the previous pass and the combination
-            of plunging neckline + high arced hem + narrow waist underneath read
-            as a sports bra rather than a men's stringer. */}
-        <path
-          d="M44.5 70 C48 65, 53 64.5, 58.5 66 C62.5 69, 66.5 71.5, 70 72.2
-             C73.5 71.5, 77.5 69, 81.5 66 C87 64.5, 92 65, 95.5 70
-             C97 76, 95 82, 91 86 Q70 83, 49 86 C45 82, 43 76, 44.5 70 Z"
-          fill={`url(#${tank})`}
-          stroke="#17605A"
-          strokeWidth="1.9"
-          strokeLinejoin="round"
-        />
-        {/* Hem light, and the fold where the fabric crosses the ribs */}
-        <path d="M51 84 Q70 81, 89 84" stroke="#7ED0C4" strokeWidth="1.7" strokeLinecap="round" fill="none" opacity="0.55" />
-        <path d="M58 70 C57 75, 57.5 80, 59 83.5" stroke="#17605A" strokeWidth="1.3" strokeLinecap="round" fill="none" opacity="0.4" />
-        <path d="M82 70 C83 75, 82.5 80, 81 83.5" stroke="#17605A" strokeWidth="1.3" strokeLinecap="round" fill="none" opacity="0.4" />
-
-        {/* Pecs, in the skin showing through the neckline */}
-        <path d="M70 66 V71.8" stroke={shade} strokeWidth="1.7" strokeLinecap="round" opacity="0.6" />
-        <path d="M63 66 Q66.5 70, 69.4 71.3" stroke={shade} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.45" />
-        <path d="M77 66 Q73.5 70, 70.6 71.3" stroke={shade} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.45" />
-
-        {/* Shorts */}
-        <path
-          d="M52.5 93 C60 96.5, 80 96.5, 87.5 93 L88.5 104 C84 107.5, 78.5 106.5, 76.5 102
-             L70 99.5 L63.5 102 C61.5 106.5, 56 107.5, 51.5 104 Z"
-          fill="#264653"
-          stroke="#152B33"
-          strokeWidth="1.7"
-          strokeLinejoin="round"
-        />
-        {/* Waistband */}
-        <path d="M53 96.5 Q70 100, 87 96.5" stroke="#5FBDAF" strokeWidth="1.9" strokeLinecap="round" fill="none" opacity="0.75" />
+        {torsoArt}
       </motion.g>
 
       {/* ---- Arms, front double biceps. Drawn after the torso (they are in
@@ -448,98 +756,12 @@ export function CoachSprite({
         animate={{ rotate: [-1.6, 1.6, -1.6], y: [0, -1.2, 0] }}
         transition={{ duration: 3.6, repeat: Infinity, ease: 'easeInOut' }}
       >
-        {/* Neck — short and thick, and present at all, which the previous pass
-            was not: a head sitting straight on the traps reads as a snowman. */}
-        <path d="M62.5 50 H77.5 V62 Q70 66.5 62.5 62 Z" fill={`url(#${skin})`} stroke={line} strokeWidth="1.9" strokeLinejoin="round" />
-        <path d="M64 60 Q70 63.5 76 60" stroke={shade} strokeWidth="1.4" strokeLinecap="round" fill="none" opacity="0.55" />
-
-        {/* Ears, which cost four lines and do more for "this is a person" than
-            any amount of muscle detail. */}
-        <ellipse cx="49.8" cy="42.5" rx="3.7" ry="5.2" fill={`url(#${skin})`} stroke={line} strokeWidth="1.7" />
-        <ellipse cx="90.2" cy="42.5" rx="3.7" ry="5.2" fill={`url(#${skin})`} stroke={line} strokeWidth="1.7" />
-
-        <circle cx="70" cy="40" r="20.5" fill={`url(#${skin})`} stroke={line} strokeWidth="2.2" />
-
-        {/* Hair + headband, both cut to the skull. The band sits low on the
-            FOREHEAD rather than over the crown, which is what leaves a real
-            haircut visible above it. */}
-        <g clipPath={`url(#${headClip})`}>
-          <path d="M48 30 A22 22 0 0 1 92 30 Z" fill="#264653" />
-          <path d="M56.5 24 C62 20, 71 19, 79 22" stroke="#4A6169" strokeWidth="2.8" strokeLinecap="round" fill="none" />
-          {/* Sideburns, tapering down past the band */}
-          <path d="M50 30 V44 L54 36 Z" fill="#264653" />
-          <path d="M90 30 V44 L86 36 Z" fill="#264653" />
-
-          {/* The band rides the FOREHEAD. Sat any lower it eats the brows and
-              clips the tops of the eyes, and the face loses the half of itself
-              that carries the expression. */}
-          <path d="M48 29.5 H92 V36.5 H48 Z" fill="#E8836A" />
-          <path d="M48 30.4 H92" stroke="#F2A18C" strokeWidth="1.5" opacity="0.85" />
-        </g>
-        {/* Spiky crown, outside the clip so it can break the skull line. Drawn
-            as one path whose base sits INSIDE the hair cap, so it merges into
-            the haircut instead of perching on top as two loose horns. */}
-        <path d="M56 28 L60 13.5 L65.5 24 L70 11.5 L75 24 L80 14 L84 28 Z" fill="#264653" />
-
-        {/* Face */}
-        {eyesShut ? (
-          <>
-            <path d="M58.2 45.5 Q62.5 41.6 66.8 45.5" stroke="#264653" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-            <path d="M73.2 45.5 Q77.5 41.6 81.8 45.5" stroke="#264653" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-          </>
-        ) : (
-          <>
-            <ellipse cx="62.5" cy="46" rx="3.3" ry="3.9" fill="#264653" />
-            <ellipse cx="77.5" cy="46" rx="3.3" ry="3.9" fill="#264653" />
-            <circle cx="63.8" cy="44.4" r="1.3" fill="#FFFFFF" />
-            <circle cx="78.8" cy="44.4" r="1.3" fill="#FFFFFF" />
-          </>
-        )}
-        {/* Brows sit just under the band — the whole difference between "cute"
-            and "cute and certain". */}
-        <path d="M57.4 41.6 Q62.5 39.2 67.2 41.4" stroke="#264653" strokeWidth="2.6" strokeLinecap="round" fill="none" />
-        <path d="M82.6 41.6 Q77.5 39.2 72.8 41.4" stroke="#264653" strokeWidth="2.6" strokeLinecap="round" fill="none" />
-        <ellipse cx="55.5" cy="51" rx="4.5" ry="2.7" fill="#E8836A" opacity="0.36" />
-        <ellipse cx="84.5" cy="51" rx="4.5" ry="2.7" fill="#E8836A" opacity="0.36" />
-
-        {/* Grin — opens up for the finish. The idle shape is also written as a
-            plain `d`, so the mouth exists before Motion's first frame (and in
-            any non-JS render); `animate` alone leaves the path dataless. */}
-        <motion.path
-          d="M64 52 Q70 58.5 76 52"
-          // 健身組整合：沒有 initial 時 Motion 第一幀讀不到起點，console 會報「attribute d: "undefined"」
-          initial={{ d: 'M64 52 Q70 58.5 76 52' }}
-          animate={{ d: cheering ? 'M62 51.5 Q70 62 78 51.5' : 'M64 52 Q70 58.5 76 52' }}
-          transition={{ duration: 0.3, ease: 'easeOut' }}
-          stroke="#264653"
-          strokeWidth="2.6"
-          strokeLinecap="round"
-          fill="none"
-        />
+        {headArt}
       </motion.g>
 
       {/* ---- Effort sparkles. Staggered so they never pop together, and pushed
               out to the corners the arms don't reach. ---- */}
-      {[
-        { x: 10, y: 40, s: 1, d: 0 },
-        { x: 130, y: 44, s: 0.85, d: 1.2 },
-        { x: 22, y: 112, s: 0.7, d: 2.3 },
-        { x: 118, y: 106, s: 0.9, d: 0.7 },
-      ].map((tw) => (
-        // The placement `translate` has to live on a plain wrapper <g>: Motion
-        // drives SVG transforms through the CSS `transform` property, which
-        // wholesale overrides a `transform` *attribute* on the same element —
-        // put both on the star itself and every sparkle collapses onto 0,0.
-        <g key={`${tw.x}-${tw.y}`} transform={`translate(${tw.x} ${tw.y})`}>
-          <motion.path
-            d="M0 -6 Q1 -1 6 0 Q1 1 0 6 Q-1 1 -6 0 Q-1 -1 0 -6 Z"
-            fill="#F5D08A"
-            style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
-            animate={{ scale: [0, tw.s, 0], rotate: [0, 90, 180], opacity: [0, 1, 0] }}
-            transition={{ duration: 2.4, delay: tw.d, repeat: Infinity, ease: 'easeInOut' }}
-          />
-        </g>
-      ))}
+      {sparkles}
     </motion.svg>
   );
 }
