@@ -125,14 +125,14 @@ const PRONE_MAX = 1.5;
 /** 下到最低時頭的最低點至少離地多少（世界單位，頭直徑約 1）：頭貼地看起來像臉朝下摔倒，不像撐著。 */
 const PRONE_HEAD_GAP = 0.03;
 /** 撐起時比下到底少傾倒多少（弧度）：整個平板繞腳尖上下擺，這就是一下伏地挺身的幅度。 */
-const PRONE_SWING = 0.32;
+const PRONE_SWING = 0.55;
 /** 合成器伏地挺身下到底時 poseToRig 的手臂伸直程度（實測 0.744）；拿來換算下壓深淺 0–1。 */
 const PRONE_BOTTOM_REACH = 0.744;
 /**
  * 壓到最低時頭縮成原本的幾倍（卡通的擠壓）：Q 版大頭是平板倒不平的唯一原因，
  * 壓低時頭縮小、身體就能趴得更平；撐起時回到原本大小。
  */
-const PRONE_HEAD_SQUASH = 0.7;
+const PRONE_HEAD_SQUASH = 0.8;
 /** 手臂 IK 修正幾輪（見 layProne）。 */
 const PRONE_IK_PASSES = 3;
 /** 趴地時頭往上抬的比例（臉朝前方而不是朝地板）。 */
