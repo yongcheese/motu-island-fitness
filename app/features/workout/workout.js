@@ -809,10 +809,14 @@ function liveShell(ex) {
         <span>深度</span>
       </div>
       ${slotHtml(CTX.slots, 'companion')}
-      <div class="lv-next" id="lv-next" hidden></div>
+      <!-- Slice 8：動作指引與教練提示（含「找不到人」）收進同一欄。舊版此欄 display: contents，兩者照舊各自定位；
+           整合版由下往上堆疊在控制鈕上方，提示折行變高時指引自動上推，手機再讓出左側阿肌、右側深度量表 -->
+      <div class="lv-prompts">
+        <div class="lv-next" id="lv-next" hidden></div>
+        <div class="lv-coach" id="lv-coach"></div>
+      </div>
       <div class="lv-repflash" id="lv-repflash"></div>
       <div class="lv-status" id="lv-status"></div>
-      <div class="lv-coach" id="lv-coach"></div>
       <!-- Slice3 R1 靜態版型（預設 hidden、零邏輯；gate 判定/組數切換歸 R3 接線輪） -->
       ${gateHtml()}
       ${restHtml({ setIdx: 1, totalSets: 3, restSec: 45, nextReps: 12 })}

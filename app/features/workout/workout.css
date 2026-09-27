@@ -685,7 +685,14 @@
 .lv-fx .m-v { font-size: clamp(26px, 7vw, 38px); line-height: 1.15; }
 .lv-fx .m-k { font-size: clamp(13px, 3.4vw, 16px); margin-top: 4px; }
 .lv-fx .lv-ctrls { bottom: var(--lv-ctrls-bottom); }
-.lv-fx .lv-coach { bottom: calc(var(--lv-ctrls-bottom) + 48px + 16px); }
+/* Slice 8：提示欄（動作指引＋教練提示）。舊版不包一層（display: contents），整合版堆在控制鈕上方：
+   教練提示貼底、動作指引疊在它上面，長句折行時指引跟著上推，兩者不會重疊。 */
+.lv-prompts { display: contents; }
+.lv-fx .lv-prompts { position: absolute; left: 16px; right: 16px; bottom: calc(var(--lv-ctrls-bottom) + 48px + 16px); z-index: 4;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+.lv-fx .lv-prompts .lv-coach { position: static; transform: none; max-width: min(100%, 640px); }
+.lv-fx .lv-prompts .lv-next { position: static; transform: none; max-width: 100%; white-space: normal; }
+.lv-fx .lv-prompts .lv-next[data-p="hit"] { transform: scale(1.06); }
 /* 示範模式的 3D 展示台只畫在控制鈕上方，底部讓給控制鈕與數據列；底色透明，讓亮色背景（阿肌）透出 */
 .lv-fx .lv-avatar3d { bottom: calc(var(--lv-ctrls-bottom) + 48px + 12px); background: transparent;
   /* 展示台下緣被裁平，用淡出收邊，看起來像站在舞台上而不是被切掉 */
@@ -705,6 +712,12 @@
   .fx-slot-wallet { padding-right: 0; }
   /* 手機：左上資訊卡已佔滿寬度，陪伴主角移到資訊卡下方的右側 */
   .lv-fx .fx-slot-companion { top: calc(env(safe-area-inset-top) + 150px); transform: scale(.85); transform-origin: top right; }
+  /* Slice 8：阿肌站在相機下方左側（CoachBackdrop 限寬 ≤30vw、距左 16px），深度量表在右側 ——
+     提示欄讓出左右兩欄，不蓋住阿肌也不碰量表 */
+  .lv-fx .lv-prompts { left: calc(16px + 30vw + 8px); right: 64px; }
+  /* 陪伴主角（含兩行台詞）約佔 150～340px，量表改從它下方開始、軌道縮短，不再壓到主角 */
+  .lv-fx .lv-gauge { top: calc(env(safe-area-inset-top) + 340px); transform: none; }
+  .lv-fx .lv-gauge-track { height: min(160px, 22vh); }
 }
 /* 整合版容器：app.css 在 ≥960px 會把 #app 排成「256px 左側欄＋主區」的 grid，舊版靠 shell.css 取消；
    整合版沒有載入 shell.css（外殼是遊戲端的），那一欄空著會把整頁往右推 —— 同樣取消，#view 滿版置中 */
