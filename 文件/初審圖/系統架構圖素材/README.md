@@ -27,6 +27,6 @@
 - 在 penpot.app 登入 → 建專案與檔案 → 把此 SVG 拖進畫布 → 右上 Share／邀請成員為 Editor。
 
 ## Google 簡報共編版（採用）
-- `系統架構圖_Google簡報.pptx`：26 個元素各為一張透明背景 PNG（3 倍解析、可個別移動／替換），23 段文字為可編輯文字方塊（字型 Huninn）。
+- `系統架構圖_Google簡報.pptx`：頁面為 Google 簡報預設 16:9（10×5.625 吋，避免匯入時被縮放造成重疊）；26 個元素各為一張透明背景 PNG（3 倍解析、可個別移動／替換），23 段文字為可編輯文字方塊（字型 Huninn）。
 - 上傳到 Google 雲端硬碟 → 右鍵「選擇開啟工具 → Google 簡報」即轉成可共編的 Google 簡報。
 - 重新產生：`產生程式/render_png.cjs`（npm i sharp，SVG→PNG）→ `產生程式/build_pptx.py`（python-pptx）。
