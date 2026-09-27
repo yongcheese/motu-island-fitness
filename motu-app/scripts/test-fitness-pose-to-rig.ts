@@ -235,6 +235,40 @@ console.log('\n缺點與異常輸入（不得產生 NaN）');
 }
 
 // ---------------------------------------------------------------------------
+console.log('\n伏地挺身趴地欄位（截圖急件：主角趴地撐起，不漂浮）');
+{
+  const deg = (r: number) => (r * 180) / Math.PI;
+  const seq: { frames: PoseLandmark[][] } = makeSequence('pushup', { reps: 2, variant: 'clean' }) as never;
+  const poses = seq.frames.map((f) => poseToRig(f));
+  const pitches = poses.map((p) => deg(p.groundPitch));
+  ok(`標準伏地挺身全程俯仰 70°–95°（${fmt(Math.min(...pitches))}°–${fmt(Math.max(...pitches))}°）`,
+    pitches.every((v) => v >= 70 && v <= 95));
+  const top = poseToRig(frame('pushup', 0)), bottom = poseToRig(frame('pushup', 1));
+  ok(`頂端手臂伸直、底部彎曲（${fmt(top.armReach)} → ${fmt(bottom.armReach)}）`,
+    top.armReach > 0.95 && bottom.armReach < 0.85);
+  ok('下壓越深手臂越彎', poseToRig(frame('pushup', 0.5)).armReach > bottom.armReach);
+  ok('伏地挺身既有欄位不變：軀幹角＝趴地俯仰', Math.abs(top.torso.x - top.groundPitch) < 1e-9);
+
+  for (const id of ['squat', 'jumpingjack', 'highknees']) {
+    const s: { frames: PoseLandmark[][] } = makeSequence(id, { reps: 2 }) as never;
+    const ref = rigReference(s.frames[0]);
+    ok(`${id}（正面機位）：趴地俯仰恆為 0、手臂伸直度恆為 1`,
+      s.frames.every((f) => { const p = poseToRig(f, ref); return p.groundPitch === 0 && p.armReach === 1; }));
+  }
+
+  // 邊界：側身站著（側面機位但軀幹直立）不是趴地
+  const upright: PoseLandmark[] = Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5, visibility: 0 }));
+  const put = (i: number, x: number, y: number) => { upright[i] = { x, y, visibility: 1 }; };
+  put(LM.NOSE, 0.53, 0.12);
+  put(LM.LEFT_SHOULDER, 0.5, 0.25); put(LM.RIGHT_SHOULDER, 0.505, 0.25);
+  put(LM.LEFT_HIP, 0.5, 0.55); put(LM.RIGHT_HIP, 0.505, 0.55);
+  put(LM.LEFT_ELBOW, 0.5, 0.4); put(LM.LEFT_WRIST, 0.5, 0.52);
+  put(LM.LEFT_KNEE, 0.5, 0.72);
+  const u = poseToRig(upright);
+  ok('側身站立：側面機位但不算趴地', u.view === 'side' && u.groundPitch === 0 && u.armReach === 1);
+  ok('看不到人：趴地欄位為預設值', poseToRig(null).groundPitch === 0 && poseToRig(null).armReach === 1);
+}
+
 console.log('\n整段序列（含雜訊、平移、縮放）');
 {
   for (const id of ['squat', 'pushup', 'jumpingjack', 'highknees']) {

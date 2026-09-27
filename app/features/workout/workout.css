@@ -698,6 +698,22 @@
   /* 展示台下緣被裁平，用淡出收邊，看起來像站在舞台上而不是被切掉 */
   -webkit-mask-image: linear-gradient(to bottom, #000 82%, transparent); mask-image: linear-gradient(to bottom, #000 82%, transparent); }
 @media (max-width: 620px) { .lv-fx { --lv-hud-h: 84px; } }
+/* 截圖急件：動作卡、說明頁、示範舞台的示範人物改成島嶼主角（插槽，宿主畫進 2D 畫布） */
+.wk2-figure { position: absolute; inset: 0; transition: transform var(--motu-duration-slow) var(--motu-ease-out); }
+.wk2:hover .wk2-figure { transform: scale(1.05); }
+.wk2-figure .fx-slot, .wk-demo3d .fx-slot-intro, .lv-avatar3d .fx-slot-stage { position: absolute; inset: 0; }
+/* 落地陰影：主角畫布是透明的，沒有這一圈像飄在半空。三處用同一台相機，腳底固定落在框高約 79–80% 處
+   （同陪伴主角 Slice 12 實測）；陰影寬度跟著框高（主角身高約為框高 63%），伏地挺身趴著所以拉長 */
+.wk2-figure .fx-slot, .fx-slot-intro, .fx-slot-stage { container-type: size; }
+.wk2-figure .fx-slot::before, .fx-slot-intro::before, .fx-slot-stage::before {
+  content: ''; position: absolute; left: 50%; bottom: calc(20.5% - 2.5cqh); width: 34cqh; height: 5cqh; transform: translateX(-50%);
+  border-radius: 50%; background: radial-gradient(closest-side, rgba(38, 70, 83, .22), transparent); pointer-events: none; }
+.fx-slot-card-pushup::before, [data-ex="pushup"] > .fx-slot-intro::before, [data-ex="pushup"] > .fx-slot-stage::before { width: 72cqh; }
+.wk2-figure .fx-slot > *, .fx-slot-intro > *, .fx-slot-stage > * { position: relative; }
+/* 示範舞台：島嶼主角腳底就是地面，不再需要舊公仔的淡出收邊。
+   位置：「+1」在畫面中央偏上（top 32%），主角排在它下方、提示欄（最多兩顆膠囊）之上，三者不重疊 */
+.lv-fx .lv-avatar3d:has(.fx-slot-stage) { -webkit-mask-image: none; mask-image: none;
+  top: 40%; bottom: calc(var(--lv-ctrls-bottom) + 48px + 16px + 104px); }
 /* 整合版結算：獎勵已在領獎序列領過，表現卡佔滿整列，延伸數據在達標率下方另起一列 */
 .wk-sum > .wk-sum-hero:has(.wk-sum-more) { grid-column: 1 / -1; flex-wrap: wrap; }
 .wk-sum-more { flex: 1 1 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 2px dashed var(--motu-color-border); }

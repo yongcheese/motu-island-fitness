@@ -15,6 +15,10 @@
  *
  * 訓練中的事件（每計一下、階段、里程碑）由健身頁呼叫 ctx.events.emit 送出，
  * 轉給右上角的陪伴主角與對話框，見 CompanionCoach.tsx。
+ *
+ * 示範人物（截圖急件）：動作卡（插槽 `card-<動作>`）、動作說明頁（`intro`）、示範模式中央（`stage`）
+ * 也畫島嶼主角。示範模式每幀的合成 landmarks 以 `demoFrame` 事件送來，這裡直接寫進 ref 給主角讀，
+ * 不經 React state、也不轉給陪伴主角（每秒 30 次，不能讓畫面跟著重畫）。
  */
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -22,7 +26,7 @@ import { X } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { View } from '../../types';
 import { toShadowCss } from './fitnessStyles';
-import { FitnessCharacter } from './FitnessCharacter';
+import { FitnessCharacter, type PoseFeed } from './FitnessCharacter';
 import { FitnessWallet, createBalanceFeed } from './FitnessWallet';
 import { balancesFromProfile, type Award, type FitnessBalances, type FitnessSession } from './gameContract';
 import { CoachBackdrop } from './CoachBackdrop';
@@ -81,6 +85,8 @@ export function FitnessHost() {
   }, [balanceFeed, profile]);
   // 訓練中的事件：整個宿主生命週期一條，陪伴主角訂閱
   const [companionFeed] = useState(createCompanionFeed);
+  // 示範模式中央主角的幀來源
+  const [demoFeed] = useState<PoseFeed>(() => ({ current: null }));
   // 結束訓練發獎：整個宿主生命週期一個（同一次訓練只發一次），每次呼叫讀最新的 profile
   const settle = useFitnessSettle(profile, grantFragments);
   // 發獎「之前」的餘額：領獎資源列從這裡加上每一項（發獎後的 profile 可能被遊戲端暫時多疊一次，見 claimMachine.ts）
@@ -136,7 +142,12 @@ export function FitnessHost() {
         appRef.current.setIsWorkoutActive(!visible);
       },
       slots: { set: (map: Slots) => setSlots({ ...map }) },
-      events: { emit: companionFeed.emit },
+      events: {
+        emit: (type: string, payload: unknown) => {
+          if (type === 'demoFrame') demoFeed.current = (payload as { landmarks?: PoseFeed['current'] })?.landmarks ?? null;
+          else companionFeed.emit(type, payload);
+        },
+      },
       game: {
         balances: balanceFeed.balances,
         subscribe: balanceFeed.subscribe,
@@ -163,12 +174,20 @@ export function FitnessHost() {
 
   const portal = (name: string, node: React.ReactNode) =>
     slots[name] ? createPortal(node, slots[name], name) : null;
+  // 插槽所屬的動作：寫在插槽外層的 data-ex 上（說明頁、示範舞台）
+  const exOf = (name: string) => slots[name]?.closest('[data-ex]')?.getAttribute('data-ex') ?? 'squat';
 
   return (
     <div ref={hostRef} className="absolute inset-0">
       {portal('wallet', <FitnessWallet feed={balanceFeed} />)}
       {/* 推薦卡的主角做的是推薦卡那個動作（卡片上的 data-rec-id） */}
       {portal('hero', <FitnessCharacter exercise={slots.hero?.closest('[data-rec-id]')?.getAttribute('data-rec-id') ?? 'squat'} />)}
+      {/* 動作卡：插槽名稱就帶著動作 id */}
+      {Object.keys(slots)
+        .filter((name) => name.startsWith('card-'))
+        .map((name) => portal(name, <FitnessCharacter exercise={name.slice(5)} />))}
+      {portal('intro', <FitnessCharacter exercise={exOf('intro')} />)}
+      {portal('stage', <FitnessCharacter exercise={exOf('stage')} mode="feed" feed={demoFeed} />)}
       {portal('backdrop', <CoachBackdrop />)}
       {portal('companion', <CompanionCoach feed={companionFeed} />)}
       {overlay &&

@@ -51,6 +51,10 @@ export function emitLive(events, list) {
 function emitPhase(phase, set, ex) {
   emitLive(CTX?.events, [{ type: 'phase', payload: { phase, exercise: ex?.id, setIdx: set?.idx ?? 1, totalSets: set?.total ?? 1 } }]);
 }
+/** 示範模式每幀送給中央島嶼主角的事件（純函式；沒有幀就不送）。 */
+export function demoFrameEvents(landmarks) {
+  return landmarks ? [{ type: 'demoFrame', payload: { landmarks } }] : [];
+}
 /** 這一幀計次後要發的事件（純函式）。set＝組數狀態（baseValid 為本組起點的累計有效次數）。 */
 export function liveRepEvents(res, set) {
   if (!res?.repCountedThisFrame || !set) return [];
@@ -191,6 +195,7 @@ function renderMenu(activeGroup = 'all') {
     listEl.querySelectorAll('.wk2[role="button"]').forEach(c => {
       c.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); c.click(); } };
     });
+    syncSlots();       // 整合版：篩選／搜尋重畫卡片後，新卡片的插槽交給宿主（舊卡片的主角跟著撤掉）
     startCardAnims();
   };
   renderCards(list);
@@ -310,7 +315,7 @@ function cardHtml(e) {
   return `
     <div class="wk2" data-id="${e.id}" role="button" tabindex="0" aria-label="${e.name}：查看動作說明" style="--accent:${ACCENT[e.group] || 'var(--green)'}">
       <div class="wk2-hero">
-        <canvas class="wk2-canvas" data-ex="${e.id}"></canvas>
+        ${cardFigureHtml(e.id)}
         <span class="wk2-badge">${grp}</span>
       </div>
       <div class="wk2-body">
@@ -325,6 +330,16 @@ function cardHtml(e) {
         </div>
       </div>
     </div>`;
+}
+/* 動作卡的示範人物：舊版是我方 3D 公仔（startCardAnims 畫進 canvas）；
+   整合版改成插槽 card-<動作>，由宿主畫島嶼主角（截圖急件，原 Slice 14／17），不建立我方公仔。 */
+export function cardFigureHtml(id, slots = CTX?.slots) {
+  if (slots) return `<div class="wk2-figure">${slotHtml(slots, 'card-' + id)}</div>`;
+  return `<canvas class="wk2-canvas" data-ex="${id}"></canvas>`;
+}
+/* 動作說明頁的示範人物區：整合版放插槽 intro（data-ex 讓宿主知道是哪個動作）。 */
+export function introFigureHtml(id, slots = CTX?.slots) {
+  return `<div id="wk-demo" class="wk-demo3d" data-ex="${id}">${slotHtml(slots, 'intro')}</div>`;
 }
 // 動作圖示：對照 icons.js 的 EMOJI_ICON（原本的 emoji 註記在右側，方便回查）
 function exIcon(id, size) {
@@ -353,7 +368,7 @@ function renderIntro(ex) {
     <div class="fade-in wk-intro">
       <button class="wk-back" id="wk-back">‹ 返回</button>
       <div class="wk-hero card">
-        <div id="wk-demo" class="wk-demo3d"></div>
+        ${introFigureHtml(ex.id)}
         <div class="wk-hero-badge">${exIcon(ex.id, 16)} ${ex.name}</div>
       </div>
       <h1 class="h1">${ex.name}</h1>
@@ -383,7 +398,8 @@ function renderIntro(ex) {
   root.querySelector('#wk-back').onclick = () => renderMenu();
   root.querySelector('#wk-warm').onchange = (e) => CTX.store.updatePrefs({ warmup: e.target.checked });
   root.querySelector('#wk-start').onclick = () => startLive(ex, root.querySelector('#wk-warm').checked);
-  animDemo(ex.id, root.querySelector('#wk-demo'));
+  if (CTX.slots) syncSlots();          // 整合版：島嶼主角由宿主畫進插槽，不建立我方公仔
+  else animDemo(ex.id, root.querySelector('#wk-demo'));
 }
 function stat(ic, k, v) { return `<div class="wk-stat card"><div class="k">${icon(ic, { size: 16 })} ${k}</div><div class="v">${v}</div></div>`; }
 function judgeText(id) {
@@ -1091,9 +1107,16 @@ async function runDemoLoop(ex) {
   stage.className = 'lv-avatar3d';
   wrap.insertBefore(stage, root.querySelector('#lv-canvas'));
   live.avatarEl = stage;
-  live.avatar = createAvatar3D(stage);
-  live.avatar.setView(EX_VIEW[ex.id]);   // 每動作專屬視角（伏地挺身=側面）
-  live.avatar.resize();
+  if (CTX.slots) {
+    // 整合版：中央由島嶼主角演出（宿主畫進插槽 stage），每幀以 demoFrame 事件收到引擎正在判定的那一幀
+    stage.dataset.ex = ex.id;
+    stage.innerHTML = slotHtml(CTX.slots, 'stage');
+    syncSlots();
+  } else {
+    live.avatar = createAvatar3D(stage);
+    live.avatar.setView(EX_VIEW[ex.id]);   // 每動作專屬視角（伏地挺身=側面）
+    live.avatar.resize();
+  }
   // 組合序列：clean ×4 + 一次作弊 + clean ×4 …
   const cheat = { squat: 'half', jumpingjack: 'armsonly', highknees: 'sitting', pushup: 'sag' }[ex.id] || 'half';
   const build = () => {
@@ -1134,7 +1157,8 @@ async function runDemoLoop(ex) {
         const lm = live.frames[idx];
         const m = live.meta[idx];
         live.ctx.clearRect(0, 0, live.canvas.width, live.canvas.height);
-        live.avatar.render(pose3d(ex.id, m.d, m.side));   // 3D 公仔以「真 3D 編排姿勢」重現同一時間軸
+        if (live.avatar) live.avatar.render(pose3d(ex.id, m.d, m.side));   // 3D 公仔以「真 3D 編排姿勢」重現同一時間軸
+        else emitLive(CTX.events, demoFrameEvents(lm));                     // 整合版：島嶼主角照同一幀演出
         // 這一幀沒有新的結算要處理時，只刷新 HUD：拿掉結算旗標再交出去 ——
         // 60fps 下約每兩個 rAF 才餵一幀合成資料，直接重交 lastResult 會把同一下再閃一次、再嗶一次
         if (live.lastResult && !handledLast) handleResult({ ...live.lastResult, repCountedThisFrame: false, repValidThisFrame: false }, now, lm);

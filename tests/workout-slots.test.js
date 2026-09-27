@@ -84,3 +84,34 @@ test('陪伴事件: 目標 ≤ 3 下的組不發「剩 3 下」', () => {
   eq(liveRepEvents(counted(1), small).length, 1, '剩 2 下');
   eq(liveRepEvents(counted(3), small)[1].payload.kind, 'target');
 });
+
+// —— 截圖急件：動作卡、說明頁、示範舞台改畫島嶼主角 ——
+import { cardFigureHtml, introFigureHtml, demoFrameEvents } from '../app/features/workout/workout.js';
+
+test('示範人物: 舊版（沒有插槽）動作卡仍是我方公仔的 canvas，輸出與改前逐字相同', () => {
+  eq(cardFigureHtml('squat', null), '<canvas class="wk2-canvas" data-ex="squat"></canvas>');
+  eq(cardFigureHtml('pushup', undefined), '<canvas class="wk2-canvas" data-ex="pushup"></canvas>');
+});
+
+test('示範人物: 整合版動作卡是 card-<動作> 插槽，不再有 wk2-canvas', () => {
+  const html = cardFigureHtml('jumpingjack', host);
+  assert(html.includes('data-slot="card-jumpingjack"'), '插槽名稱帶動作 id，宿主靠它決定示範哪個動作');
+  assert(!html.includes('wk2-canvas'), '整合版不建立我方公仔的畫布（startCardAnims 找不到就不開 renderer）');
+});
+
+test('示範人物: 說明頁舊版只有空的展示窗（公仔由 animDemo 畫進去），與改前逐字相同', () => {
+  eq(introFigureHtml('squat', null), '<div id="wk-demo" class="wk-demo3d" data-ex="squat"></div>');
+});
+
+test('示範人物: 整合版說明頁有 intro 插槽，外層帶動作 id', () => {
+  const html = introFigureHtml('highknees', host);
+  assert(html.includes('data-ex="highknees"') && html.includes('data-slot="intro"'));
+});
+
+test('示範人物: 示範模式每幀送出 demoFrame（整合版才有 events，舊版不送）', () => {
+  const lm = [{ x: 0.5, y: 0.5 }];
+  const ev = demoFrameEvents(lm);
+  eq(ev.length, 1); eq(ev[0].type, 'demoFrame'); assert(ev[0].payload.landmarks === lm, '原封送出同一幀，不複製');
+  eq(demoFrameEvents(null).length, 0, '沒有幀就不送');
+  eq(emitLive(undefined, demoFrameEvents(lm)), 0, '舊版沒有 ctx.events');
+});

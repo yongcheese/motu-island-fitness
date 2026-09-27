@@ -56,6 +56,18 @@ export interface RigPose {
    * 呼叫端乘上角色自己的腿長，再從軀幹的 `position.y` 扣掉。只在正面機位計算，側面為 0。
    */
   torsoDrop: number;
+  /**
+   * 趴地俯仰（弧度）：側面機位且身體接近水平（伏地挺身）時＝人體「髖→肩」連線偏離鉛直的角度，
+   * 其他情況為 0。呼叫端看到非 0 就把整個角色繞腳底往前傾倒、讓手腳貼地，而不是只轉軀幹
+   * （四肢與軀幹是平行節點，只轉軀幹會變成一塊漂在半空中的平板）。
+   * 這是人的角度；Q 版角色頭大腿短，實際能傾倒多少由呼叫端依模型比例決定。
+   */
+  groundPitch: number;
+  /**
+   * 手臂伸直程度：側面機位「肩→腕」直線距離 ÷（上臂＋前臂），1＝完全伸直（伏地挺身頂端），
+   * 越小越彎（下壓）。角色的手臂沒有手肘，呼叫端以此決定手臂傾斜多少來讓肩膀降低。其他情況為 1。
+   */
+  armReach: number;
   /** 這一幀用哪種機位解讀；`none`＝關鍵點不足，整幀回站姿。 */
   view: RigView;
 }
@@ -89,6 +101,8 @@ const VIS_MIN = 0.4;
 const SIDE_VIEW_RATIO = 0.35;
 /** 雙肩距離低於此值（畫面寬的比例）就無法判斷身形。 */
 const MIN_SHOULDER_SPAN = 0.02;
+/** 側面機位軀幹偏離鉛直超過此角度才算趴地（伏地挺身平板約 80°；站著側身、彎腰都遠低於此）。 */
+const PRONE_MIN = (55 * Math.PI) / 180;
 
 type Side = 'left' | 'right';
 
@@ -101,6 +115,8 @@ export function standingRig(): RigPose {
     leftArm: zero(), rightArm: zero(),
     leftLeg: zero(), rightLeg: zero(),
     torsoDrop: 0,
+    groundPitch: 0,
+    armReach: 1,
     view: 'none',
   };
 }
@@ -325,5 +341,21 @@ function sideRig(
   pose.rightArm = armR ?? armL ?? zero();
   pose.leftLeg = legL ?? legR ?? zero();
   pose.rightLeg = legR ?? legL ?? zero();
+
+  if (pose.torso.x >= PRONE_MIN) {
+    pose.groundPitch = pose.torso.x;
+    // 手臂伸直程度：取三點都看得到的那一側
+    for (const [s, e, w] of [
+      [LM.LEFT_SHOULDER, LM.LEFT_ELBOW, LM.LEFT_WRIST],
+      [LM.RIGHT_SHOULDER, LM.RIGHT_ELBOW, LM.RIGHT_WRIST],
+    ]) {
+      const ps = pick(frame, s), pe = pick(frame, e), pw = pick(frame, w);
+      const bone = ps && pe && pw ? dist(ps, pe) + dist(pe, pw) : 0;
+      if (bone > 1e-9) {
+        pose.armReach = clamp(dist(ps!, pw!) / bone, 0, 1);
+        break;
+      }
+    }
+  }
   return pose;
 }
