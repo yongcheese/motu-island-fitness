@@ -115,3 +115,19 @@ test('示範人物: 示範模式每幀送出 demoFrame（整合版才有 events�
   eq(demoFrameEvents(null).length, 0, '沒有幀就不送');
   eq(emitLive(undefined, demoFrameEvents(lm)), 0, '舊版沒有 ctx.events');
 });
+
+// —— 示範模式只給開發測試用（2026-09-27 使用者裁示：正式版不要有）——
+import { demoAllowed } from '../app/features/workout/workout.js';
+
+test('示範模式: 整合版宿主說不開（ctx.demo = false）→ 不給', () => {
+  eq(demoAllowed({ demo: false }), false);
+});
+
+test('示範模式: 開發測試（npm run dev:demo，ctx.demo = true）→ 給', () => {
+  eq(demoAllowed({ demo: true }), true);
+});
+
+test('示範模式: 舊版 :8080（ctx 沒有 demo 欄位）照舊開放，輸出不變', () => {
+  eq(demoAllowed({}), true);
+  eq(demoAllowed(null), true);
+});

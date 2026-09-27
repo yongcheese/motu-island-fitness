@@ -16,6 +16,9 @@
  * 訓練中的事件（每計一下、階段、里程碑）由健身頁呼叫 ctx.events.emit 送出，
  * 轉給右上角的陪伴主角與對話框，見 CompanionCoach.tsx。
  *
+ * 示範模式（相機失敗時用合成動作跑訓練）只在開發測試時開放：`npm run dev:demo` 啟動才有，
+ * 一般 `npm run dev`、正式 build 都沒有（ctx.demo = false，見 workout.js 的 demoAllowed）。
+ *
  * 示範人物（截圖急件）：動作卡（插槽 `card-<動作>`）、動作說明頁（`intro`）、示範模式中央（`stage`）
  * 也畫島嶼主角。示範模式每幀的合成 landmarks 以 `demoFrame` 事件送來，這裡直接寫進 ref 給主角讀，
  * 不經 React state、也不轉給陪伴主角（每秒 30 次，不能讓畫面跟著重畫）。
@@ -127,6 +130,8 @@ export function FitnessHost() {
       coach,
       // MediaPipe wasm／模型由 server.ts 掛在站台根目錄的 /vendor（不依賴頁面網址剛好在根目錄）
       assetRoot: '/vendor',
+      // 示範模式只給我們開發測試用（npm run dev:demo），正式版不出現
+      demo: import.meta.env.VITE_FITNESS_DEMO === '1',
       navigate: (id: string) => {
         if (id === 'island') appRef.current.setCurrentView(View.HOME);
       },

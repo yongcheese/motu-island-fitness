@@ -1071,19 +1071,27 @@ function runCameraLoop(run) {
   live.raf = requestAnimationFrame(loop);
 }
 
+/**
+ * 示範模式開不開放：宿主的 ctx.demo 說了算。整合版（給評審、正式使用）預設 false —— 相機失敗只剩
+ * 「重新嘗試相機」；開發測試用 `npm run dev:demo` 啟動才有。舊版 :8080 是我們自己的測試版，
+ * ctx 沒有這個欄位，照舊開放。
+ */
+export const demoAllowed = (ctx) => ctx?.demo !== false;
+
 function offerDemo(ex, statusEl, err) {
   try { live?.cam?.stop(); } catch { }
   if (live) live.cam = null;
+  const demo = demoAllowed(CTX);
   statusEl.innerHTML = `
     <div class="lv-demo-prompt">
       <span class="wk-ic-disc">${icon('camera', { size: 24 })}</span>
       <p>${cameraErrorMsg(err)}</p>
       <div class="lv-demo-actions">
         <button class="btn" id="lv-retry">${icon('refresh-cw')} 重新嘗試相機</button>
-        <button class="btn secondary" id="lv-demo-go">${icon('play')} 改用示範模式</button>
+        ${demo ? `<button class="btn secondary" id="lv-demo-go">${icon('play')} 改用示範模式</button>` : ''}
       </div>
     </div>`;
-  root.querySelector('#lv-demo-go').onclick = () => { statusEl.innerHTML = ''; runDemoLoop(ex); };
+  if (demo) root.querySelector('#lv-demo-go').onclick = () => { statusEl.innerHTML = ''; runDemoLoop(ex); };
   root.querySelector('#lv-retry').onclick = () => {
     const warm = CTX.store.getState().prefs.warmup;
     live = null;                 // 讓 startLive 重建

@@ -578,6 +578,13 @@
 - `test-fitness-views.ts`：視角斷言隨需求改寫（深蹲從「近正面」改鎖「偏側面」，需求變更申報）；新增腿彎膝蓋 8 項（膝蓋以上不動、腳底位置、共用幾何不被改、包圍盒更新、歸零回原形、卸載換回、零件重掛接手）。其中「包圍盒」一項首次撰寫時期望值用錯座標系（網格座標沒換回腿座標），改正期望值後通過，非弱化。
 - 驗證：我方 511/511；整合版 tsc 0、test:fitness 全綠（views 27/27）、遊戲組測試全數 exit 0、vite build 成功；1440／390 實機 WebGL context 全程 3、無水平捲動、console 只有原有 favicon 404。特寫 `.playwright-mcp/pose-v7-sheet.png`（全四動作）、`pose-v8-squat-zoom.png`（深蹲側面）、`fix-v8-demo-sheet.png`（390 示範模式）。
 
+**示範模式只留給開發測試（2026-09-27，使用者裁示：「分兩版，一版有示範模式給我們自己測試，另一版沒有；開發測試時再叫出來」）**：
+- 整合版：宿主傳 `ctx.demo = import.meta.env.VITE_FITNESS_DEMO === '1'`，預設 false → 相機失敗畫面只剩「重新嘗試相機」，沒有「改用示範模式」。正式 build 時此值編譯成常數 false。
+- 開發測試：`npm run dev:demo`（`motu-app/scripts/dev-demo.ts` 設環境變數後啟動同一支 server.ts；用腳本而不是 `VAR=1 cmd`，Windows 才能跑）。
+- 舊版 :8080：ctx 沒有 demo 欄位 → 照舊開放（它本來就是我們的測試版，輸出逐字不變）。
+- 測試：`tests/workout-slots.test.js` 新增 3 項（514/514）；實機 390：一般 dev 沒有按鈕、dev:demo 有按鈕且示範模式照常（context 3、無水平捲動）；vite build、遊戲組測試、tsc、test:fitness 全綠。
+- 注意：企劃書要拍訓練畫面而沒有相機時，用 `npm run dev:demo` 啟動；`.playwright-mcp/shot-fix.mjs` 的 demo 流程也要在 dev:demo 下跑。
+
 **未做／未量（照實記錄）**：
 - 未停 Slice 14 骨架關卡、未逐 Slice 派 slice-reviewer（使用者裁示）；也未做收尾批次審。
 - 未量：heap 10 輪、各情境 fps（含 CPU 降速）、「+1 與主角最低點時間差 ≤200ms」的取樣量測（主角與引擎吃同一幀，理論上同步，但沒有量）、1920 寬截圖、頭頂留白／腳底比例的元素量測。
