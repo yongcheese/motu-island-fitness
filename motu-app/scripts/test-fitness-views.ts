@@ -13,8 +13,8 @@
 import {
   BASE_FOV, MIN_VIEW_ASPECT, VIEW_YAW, atlasSize, createViewRegistry, drawable, fovFor, growAtlas, pixelSize, sourceRect, viewYaw,
 } from '../src/components/fitness/characterViews';
-import { BoxGeometry, Group, Mesh } from 'three';
-import { createLegBender } from '../src/components/fitness/limbBend';
+import { BoxGeometry, CylinderGeometry, Group, Mesh, SphereGeometry } from 'three';
+import { createArmStretcher, createLegBender, measureArm, minStretch } from '../src/components/fitness/limbBend';
 
 let checks = 0;
 let failures = 0;
@@ -137,6 +137,40 @@ console.log('\n腿彎膝蓋');
   again.apply(leg2, 0.6, L);
   ok('零件重掛：接手新的網格，舊網格換回原始幾何', mesh3.geometry !== shared && mesh2.geometry === shared && old !== mesh3.geometry);
   again.dispose();
+}
+
+{
+  // 伏地挺身的手臂（09-28 使用者說手不自然）：只伸縮手掌上方的手腕，圓球手掌整顆平移不變形
+  console.log('\n手臂伸縮');
+  const arm = new Group();
+  const upper = new Mesh(new CylinderGeometry(0.04, 0.04, 0.12, 8, 6));
+  upper.position.y = -0.06;
+  const handGeo = new SphereGeometry(0.08, 16, 12);
+  const hand = new Mesh(handGeo);
+  hand.position.y = -0.19;
+  arm.add(upper, hand);
+  const shape = measureArm(arm)!;
+  ok('量到手臂最低點', Math.abs(shape.bottom + 0.27) < 1e-6, String(shape.bottom));
+  ok('手掌頂端在球頂或更高（拉伸區不碰到手掌）', shape.handTop >= -0.11 - 1e-6 && shape.handTop < -0.05, String(shape.handTop));
+  const src = Float32Array.from(handGeo.getAttribute('position').array as Float32Array);
+  const upSrc = Float32Array.from(upper.geometry.getAttribute('position').array as Float32Array);
+  const s = createArmStretcher();
+  const tip = s.apply(arm, shape, 0.07);
+  ok('拉長：最低點往下 0.07', Math.abs(tip.y - (shape.bottom - 0.07)) < 1e-9, String(tip.y));
+  const hp = hand.geometry.getAttribute('position').array as Float32Array;
+  let rigid = 0;
+  for (let i = 0; i < src.length; i += 3) rigid = Math.max(rigid, Math.abs(hp[i + 1] - (src[i + 1] - 0.07)) + Math.abs(hp[i] - src[i]) + Math.abs(hp[i + 2] - src[i + 2]));
+  ok('手掌整顆平移、不變形', rigid < 1e-6, String(rigid));
+  const up = upper.geometry.getAttribute('position').array as Float32Array;
+  let topMoved = 0;
+  for (let i = 0; i < upSrc.length; i += 3) if (upSrc[i + 1] - 0.06 > shape.handTop / 2) topMoved = Math.max(topMoved, Math.abs(up[i + 1] - upSrc[i + 1]));
+  ok('肩膀那一段不動', topMoved < 1e-9, String(topMoved));
+  const short = s.apply(arm, shape, -1);
+  ok('縮短有下限（不讓皮膚穿出袖口）', Math.abs(short.y - (shape.bottom - minStretch(shape))) < 1e-9, String(short.y));
+  s.apply(arm, shape, 0);
+  ok('伸縮歸零＝回到原形', (hand.geometry.getAttribute('position').array as Float32Array).every((v, i) => Math.abs(v - src[i]) < 1e-6));
+  s.dispose();
+  ok('卸載換回原本的幾何', hand.geometry === handGeo);
 }
 
 console.log(`\n${checks - failures}/${checks} 通過`);
