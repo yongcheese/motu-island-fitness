@@ -21,3 +21,7 @@
 ## Figma 共編版
 - Figma 檔：https://www.figma.com/design/hl6bNm5NWqJEB1j7kAW8pI（由 `系統架構圖_Figma分層.svg` 匯入）。
 - 匯入後為 27 個具名圖層＋23 個可編輯文字圖層（字型 Huninn）；要重新匯入，把 `系統架構圖_Figma分層.svg` 拖進 Figma 即可。
+
+## Penpot 共編版（免費）
+- 使用 `系統架構圖_Penpot分層.svg`（與 Figma 版相同，只把阿肌的巢狀 <svg> 攤平成群組，避免匯入位移）。
+- 在 penpot.app 登入 → 建專案與檔案 → 把此 SVG 拖進畫布 → 右上 Share／邀請成員為 Editor。
