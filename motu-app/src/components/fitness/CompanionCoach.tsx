@@ -11,12 +11,21 @@
  * 所以「第 10 下稱讚」還沒停夠時接著來的「達標」「休息」兩句都說得到。
  *
  * 語音仍由我方語音教練負責，這裡只有字；容器 `role="status" aria-live="polite"`，報讀不打斷語音。
+ *
+ * 對話框進出場（Slice 13）：淡入＋由下往上浮 6px＋微放大，200ms 進、150ms 出；換句時先收再出。
+ * 減少動畫時只剩淡入淡出。這支元件只在訓練中掛上，所以也由它開關效能量測（perfGuard）。
  */
 import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useApp } from '../../context/AppContext';
 import { HintBubble } from '../UI/DesignKit';
 import { FitnessCharacter } from './FitnessCharacter';
 import { cheerLine, initialCheerState, type CheerState } from './cheerLines';
+import { perfGuard, usePrefersReducedMotion } from './perfGuard';
+
+/** 對話框進場／出場秒數（設計要點 150–300ms）。 */
+export const BUBBLE_IN_S = 0.2;
+export const BUBBLE_OUT_S = 0.15;
 
 /** 一句台詞最少顯示多久才能被下一句換掉。 */
 export const LINE_MIN_MS = 1600;
@@ -70,6 +79,7 @@ export function CompanionCoach({ feed }: { feed: CompanionFeed }) {
   const [exercise, setExercise] = useState(() => exerciseOf(feed.lastPhase()) ?? 'squat');
   const [reps, setReps] = useState(0);
   const [line, setLine] = useState<string | null>(null);
+  const reduced = usePrefersReducedMotion();
 
   const cheer = useRef<CheerState>(initialCheerState());
   const shownAt = useRef(0);
@@ -124,6 +134,12 @@ export function CompanionCoach({ feed }: { feed: CompanionFeed }) {
     };
   }, [feed]);
 
+  // 訓練中量幀率：掉到底線以下時由裝飾讓路（阿肌、主角畫布，見 perfGuard.ts）
+  useEffect(() => {
+    perfGuard.start();
+    return () => perfGuard.stop();
+  }, []);
+
   // 台詞停留一段時間後收起（台詞不會連續重複，所以每換一句就重新計時）
   useEffect(() => {
     if (!line) return;
@@ -136,15 +152,24 @@ export function CompanionCoach({ feed }: { feed: CompanionFeed }) {
   return (
     <div className="pointer-events-none flex flex-col items-end gap-2">
       <div role="status" aria-live="polite" className="flex min-h-[3.75rem] items-end">
-        {line && (
-          <div className="relative">
-            <HintBubble className="px-4 py-2.5 max-w-[15rem]">
-              <p className="mb-1 text-[11px] font-black leading-none text-island-teal-dark">{name}</p>
-              <p className="text-sm font-bold leading-snug text-island-navy">{line}</p>
-            </HintBubble>
-            <span className="absolute right-[50px] lg:right-[66px] -bottom-[6px] w-3 h-3 bg-white border-b border-r border-island-line rotate-45 pointer-events-none" />
-          </div>
-        )}
+        {/* 換句時先收再出（mode="wait"）：兩句疊在一起會看不清；台詞至少停 1.6 秒，收＋出 0.35 秒不會吃掉閱讀時間 */}
+        <AnimatePresence mode="wait" initial={false}>
+          {line && (
+            <motion.div
+              key={line}
+              className="relative origin-bottom-right"
+              initial={reduced ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: BUBBLE_IN_S, ease: 'easeOut' } }}
+              exit={reduced ? { opacity: 0, transition: { duration: BUBBLE_OUT_S } } : { opacity: 0, y: 4, scale: 0.98, transition: { duration: BUBBLE_OUT_S, ease: 'easeIn' } }}
+            >
+              <HintBubble className="px-4 py-2.5 max-w-[15rem]">
+                <p className="mb-1 text-[11px] font-black leading-none text-island-teal-dark">{name}</p>
+                <p className="text-sm font-bold leading-snug text-island-navy">{line}</p>
+              </HintBubble>
+              <span className="absolute right-[50px] lg:right-[66px] -bottom-[6px] w-3 h-3 bg-white border-b border-r border-island-line rotate-45 pointer-events-none" />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
       {/* 寬螢幕放大一級，和左下阿肌的比例相當（原本 1920 寬時主角只有阿肌的一半高）；箭頭跟著對準新的中線 */}
       <div className="relative h-32 w-28 lg:h-40 lg:w-36">

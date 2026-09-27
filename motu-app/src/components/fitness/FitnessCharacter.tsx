@@ -22,6 +22,11 @@
  * 所以每卸載一個畫布就留下一整個 renderer 與 WebGL context（實測進出健身頁 10 次留下 10 個）。
  * 遊戲組的島嶼畫布從不卸載，所以沒遇過。這裡改成同一個 canvas 在各次掛載之間搬家，
  * 沒有任何掛載點時停止繪製（frameloop 'never'），不銷毀。
+ *
+ * 減少動畫與效能（Slice 13，見 perfGuard.ts）：
+ *   - 減少動畫開啟時不播循環：推薦卡主角定格在動作的中段（看得出是哪個動作）、加油改成雙手舉高不揮；
+ *     陪伴模式「使用者做一下、主角跟一下」是對使用者動作的回應，不是循環，照做；
+ *   - 訓練中掉幀到降級等級 2 時，畫布像素比降到 LOW_DPR（原本 1–2）。
  */
 import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createRoot, useFrame, type ReconcilerRoot, type RenderProps } from '@react-three/fiber';
@@ -36,6 +41,7 @@ import { AvatarIcon } from '../UI/AvatarIcon';
 import { tuneRenderer } from '../../lib/rendererTuning';
 import { poseToRig, rigReference, type PoseFrame, type RigPose } from './poseToRig';
 import { demoPose } from '@fitness/core/synth.js';
+import { useMotionPlan } from './perfGuard';
 
 /** 一下動作的秒數（與我方示範模式的節奏相近，縮圖裡看得清楚）。 */
 const REP_SECONDS = 1.8;
@@ -45,6 +51,10 @@ const SYNC_REP_SECONDS = 1.0;
 const SYNC_MAX_QUEUE = 2;
 /** 加油動作：開合跳手臂舉過頭的區段來回揮（d 在 0.7～1 之間），一來一回的秒數。 */
 const CHEER_SECONDS = 0.7;
+/** 不播循環時定格的深度：動作中段，姿勢明顯但不是最極端的那一格。 */
+const STILL_DEPTH = 0.6;
+/** 不播循環時加油的定格：雙手舉過頭。 */
+const STILL_CHEER_DEPTH = 0.85;
 
 export type FitnessCharacterMode = 'loop' | 'sync';
 /** 角色轉 3/4 側面：正對鏡頭時深蹲大腿往前抬的量完全看不到。 */
@@ -87,7 +97,7 @@ class WebglBoundary extends Component<{ onFail: () => void; children: ReactNode 
 const pingPong = (phase: number) => (phase < 0.5 ? phase * 2 : (1 - phase) * 2);
 
 /** 每幀把示範姿勢寫進角色關節。模型只擁有幾何，動的一律從這裡寫（同 Avatar.tsx 的分工）。 */
-function DemoRig({ exercise, rig, root, hipY, mode, reps, cheering }: {
+function DemoRig({ exercise, rig, root, hipY, mode, reps, cheering, loops }: {
   exercise: string;
   rig: CharacterRig;
   root: React.RefObject<THREE.Group | null>;
@@ -95,6 +105,8 @@ function DemoRig({ exercise, rig, root, hipY, mode, reps, cheering }: {
   mode: FitnessCharacterMode;
   reps: number;
   cheering: boolean;
+  /** false：不播循環（減少動畫）。 */
+  loops: boolean;
 }) {
   const ref = useMemo(() => rigReference(demoPose(exercise, 0) as PoseFrame), [exercise]);
   const prev = useRef<RigPose | null>(null);
@@ -119,12 +131,16 @@ function DemoRig({ exercise, rig, root, hipY, mode, reps, cheering }: {
       }
       if (s.t >= 0) {
         frame = demoPose(exercise, pingPong(s.t), s.done % 2 === 0 ? 'L' : 'R') as PoseFrame;
+      } else if (cheer && !loops) {
+        frame = demoPose('jumpingjack', STILL_CHEER_DEPTH) as PoseFrame;
       } else if (cheer) {
         s.cheer += dt / CHEER_SECONDS;
         frame = demoPose('jumpingjack', 0.7 + 0.3 * pingPong(s.cheer % 1)) as PoseFrame;
       } else {
         frame = demoPose(exercise, 0) as PoseFrame;
       }
+    } else if (!loops) {
+      frame = demoPose(exercise, STILL_DEPTH, 'L') as PoseFrame;
     } else {
       clock.current += dt;
       const t = clock.current / REP_SECONDS;
@@ -150,12 +166,13 @@ function DemoRig({ exercise, rig, root, hipY, mode, reps, cheering }: {
 }
 
 /** 畫布內容。穿著由外層傳入：持久 root 不在 App 的 React 樹裡，接不到 AppContext。 */
-function Stage({ exercise, equippedKey, mode, reps, cheering }: {
+function Stage({ exercise, equippedKey, mode, reps, cheering, loops }: {
   exercise: string;
   equippedKey: string;
   mode: FitnessCharacterMode;
   reps: number;
   cheering: boolean;
+  loops: boolean;
 }) {
   const modelId = useCharacterModel();
 
@@ -195,7 +212,7 @@ function Stage({ exercise, equippedKey, mode, reps, cheering }: {
           </Suspense>
         </group>
       </group>
-      <DemoRig exercise={exercise} rig={rig} root={root} hipY={hipY} mode={mode} reps={reps} cheering={cheering} />
+      <DemoRig exercise={exercise} rig={rig} root={root} hipY={hipY} mode={mode} reps={reps} cheering={cheering} loops={loops} />
     </>
   );
 }
@@ -221,6 +238,8 @@ let shared: {
   ready: Promise<unknown>;
   hosts: number;
   size: { width: number; height: number; top: number; left: number };
+  /** 降級時的像素比；null＝照 BASE（1–2）。 */
+  dpr: number | null;
 } | null = null;
 function getShared() {
   if (!shared) {
@@ -228,14 +247,16 @@ function getShared() {
     canvas.style.display = 'block';
     const root = createRoot(canvas);
     const size = { width: 1, height: 1, top: 0, left: 0 };
-    shared = { canvas, root, size, hosts: 0, ready: root.configure({ ...BASE, size, frameloop: 'never' }) };
+    shared = { canvas, root, size, dpr: null, hosts: 0, ready: root.configure({ ...BASE, size, frameloop: 'never' }) };
   }
   return shared;
 }
 /** 依目前掛載點數決定要不要繪製；尺寸跟著最新的掛載點。 */
 function reconfigure() {
   const s = getShared();
-  return s.ready.then(() => s.root.configure({ ...BASE, size: s.size, frameloop: s.hosts > 0 ? 'always' : 'never' }));
+  return s.ready.then(() =>
+    s.root.configure({ ...BASE, dpr: s.dpr ?? BASE.dpr, size: s.size, frameloop: s.hosts > 0 ? 'always' : 'never' }),
+  );
 }
 
 export function FitnessCharacter({ exercise, mode = 'loop', reps = 0, cheering = false }: {
@@ -252,6 +273,16 @@ export function FitnessCharacter({ exercise, mode = 'loop', reps = 0, cheering =
   const equippedKey = (profile?.equippedItems ?? []).join('|');
   const box = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(() => renderBroken || !webglAvailable());
+  const { loops, heroDpr } = useMotionPlan();
+
+  // 掉幀降級：畫布像素比跟著降／回復（共用畫布，誰掛著就以誰的設定為準；各掛載點讀同一份降級等級）
+  useEffect(() => {
+    if (failed) return;
+    const s = getShared();
+    if (s.dpr === heroDpr) return;
+    s.dpr = heroDpr;
+    reconfigure().catch(() => setFailed(true));
+  }, [heroDpr, failed]);
 
   // 把共用畫布搬進這次的掛載點；離開時搬走並在沒有人用時停止繪製
   useEffect(() => {
@@ -289,11 +320,11 @@ export function FitnessCharacter({ exercise, mode = 'loop', reps = 0, cheering =
     s.ready
       .then(() => s.root.render(
         <WebglBoundary onFail={() => { renderBroken = true; setFailed(true); }}>
-          <Stage exercise={exercise} equippedKey={equippedKey} mode={mode} reps={reps} cheering={cheering} />
+          <Stage exercise={exercise} equippedKey={equippedKey} mode={mode} reps={reps} cheering={cheering} loops={loops} />
         </WebglBoundary>,
       ))
       .catch(() => setFailed(true));
-  }, [exercise, equippedKey, mode, reps, cheering, failed]);
+  }, [exercise, equippedKey, mode, reps, cheering, loops, failed]);
 
   if (failed) {
     return (

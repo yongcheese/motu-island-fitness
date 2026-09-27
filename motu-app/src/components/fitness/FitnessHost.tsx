@@ -179,7 +179,7 @@ export function FitnessHost() {
             type="button"
             onClick={() => appRef.current.setCurrentView(View.HOME)}
             aria-label="關閉健身頁，回到島嶼"
-            className="fixed corner-safe-tr w-14 h-14 bg-white border border-island-line hover:bg-island-cream-2 rounded-2xl flex items-center justify-center text-island-navy-soft hover:text-island-navy transition-all z-50 shadow-[0_10px_24px_rgba(38,70,83,0.15)] active:scale-95 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-island-teal"
+            className="fixed corner-safe-tr w-14 h-14 bg-white border border-island-line hover:bg-island-cream-2 rounded-2xl flex items-center justify-center text-island-navy-soft hover:text-island-navy transition-all duration-200 z-50 shadow-[0_10px_24px_rgba(38,70,83,0.15)] active:scale-[0.98] hover:-translate-y-0.5 motion-reduce:hover:translate-y-0 focus-visible:outline-2 focus-visible:outline-island-teal"
           >
             <X size={28} strokeWidth={3} />
           </button>,

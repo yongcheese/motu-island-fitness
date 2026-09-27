@@ -8,10 +8,13 @@
  *     但有些鏡頭給 16:9），所以每次尺寸或相機一變就重算位置（coachPlacement，純函式可測）；
  *     真的擠不下時縮到下限，被相機蓋住一部分也不會反過來遮到相機。
  *   - 阿肌輪流示範深蹲與開合跳（CoachSprite 的 squat／jack 姿勢）。
- * 減少動畫模式與效能降級留給 Slice 13。
+ *   - 減少動畫開啟、或訓練中掉幀（perfGuard 等級 ≥ 1）時阿肌定格：停輪播，CoachSprite 的循環以
+ *     `MotionConfig skipAnimations` 直接落在第一格站姿（遊戲組元件不改，換 key 重新掛載才會生效）。
  */
 import { useEffect, useRef, useState } from 'react';
+import { MotionConfig } from 'motion/react';
 import { CoachSprite, type CoachExercisePose } from '../UI/CoachSprite';
+import { useMotionPlan } from './perfGuard';
 
 /** 阿肌 viewBox 的高寬比（140×144）。 */
 const COACH_RATIO = 144 / 140;
@@ -99,6 +102,7 @@ export function CoachBackdrop() {
   const rootRef = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<CoachPlacement | null>(null);
   const [turn, setTurn] = useState(0);
+  const { coachAnimated } = useMotionPlan();
 
   // 位置：畫面尺寸或相機比例一變就重算
   useEffect(() => {
@@ -123,11 +127,12 @@ export function CoachBackdrop() {
     };
   }, []);
 
-  // 輪播：深蹲 → 開合跳 → 深蹲…
+  // 輪播：深蹲 → 開合跳 → 深蹲…（定格時停在目前這個動作）
   useEffect(() => {
+    if (!coachAnimated) return;
     const timer = window.setTimeout(() => setTurn(nextRotationIndex), COACH_ROTATION[turn].ms);
     return () => window.clearTimeout(timer);
-  }, [turn]);
+  }, [turn, coachAnimated]);
 
   return (
     <div
@@ -152,7 +157,14 @@ export function CoachBackdrop() {
             aria-hidden="true"
             className="absolute -bottom-1 left-1/2 h-[10%] w-[78%] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(38,70,83,0.2),transparent)]"
           />
-          <CoachSprite className="relative block h-auto w-full" pose={COACH_ROTATION[turn].pose} />
+          {/* 已在跑的無限循環不會因設定改變而停，所以動／不動各用一個 key，切換時重新掛載 */}
+          <MotionConfig skipAnimations={!coachAnimated}>
+            <CoachSprite
+              key={coachAnimated ? 'live' : 'still'}
+              className="relative block h-auto w-full"
+              pose={COACH_ROTATION[turn].pose}
+            />
+          </MotionConfig>
         </div>
       )}
     </div>

@@ -15,8 +15,10 @@
  * 金額以遊戲端為準：這裡只演 settle 回傳的清單，一個數字都不自己算。資源列的起點是宿主在呼叫 settle
  * **之前**記下的餘額（原因見 claimMachine.ts 的 `claimBarValues`）。
  *
- * 減少動畫：遊戲組的 CSS 已有降級（不旋轉、不飛、只淡入），彩帶以 `disableForReducedMotion` 關掉；
- * 其餘細節（飛入改淡入、資源列不滑）留給 Slice 13。
+ * 減少動畫：遊戲組的 CSS 已有降級（不旋轉、不飛、只淡入），彩帶以 `disableForReducedMotion` 關掉。
+ * Slice 13 補齊其餘：飛入改成在目的欄位下方淡入一枚「+數量」（遊戲組 CSS 在減少動畫時把飛行顆粒整個藏起來，
+ * 沒有這一枚就看不出獎勵進了哪一欄）、資源列只淡入淡出不滑、「按任意鍵」提示固定不呼吸。
+ * 時間軸不變（狀態機與入帳時間點照舊），只換掉「怎麼動」。
  */
 import { useEffect, useId, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
@@ -28,6 +30,7 @@ import { playSound, SoundEffect } from '../../lib/soundUtils';
 import { vibrateGoldEarned } from '../../lib/vibration';
 import { levelFromXp, xpIntoLevel, XP_PER_LEVEL } from '../../utils/level';
 import type { Award, AwardKind, FitnessBalances } from './gameContract';
+import { usePrefersReducedMotion } from './perfGuard';
 import {
   acceptsInput,
   claimBarKinds,
@@ -184,6 +187,8 @@ function XpBar({ xp, className = '' }: { xp: number; className?: string }) {
 interface Flight {
   id: number;
   kind: AwardKind;
+  /** 減少動畫：不飛，在目的欄位下方淡入「+數量」（x、y 為落點，dx、dy 不用）。 */
+  still?: { amount: number };
   x: number;
   y: number;
   dx: number;
@@ -246,6 +251,9 @@ export function ClaimSequence({
   const [flights, setFlights] = useState<Flight[]>([]);
   const [hitKind, setHitKind] = useState<AwardKind | null>(null);
   const [exiting, setExiting] = useState(false);
+  const reduced = usePrefersReducedMotion();
+  const reducedRef = useRef(reduced);
+  reducedRef.current = reduced;
   const rootRef = useRef<HTMLDivElement>(null);
   const markRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -290,7 +298,9 @@ export function ClaimSequence({
       // 量兩端位置（同 DailyLoginPanel 的 useCoinFlight）：資源列在不同寬度位置不同，不能寫死
       const from = markRef.current?.getBoundingClientRect();
       const to = chipRefs.current[award.kind]?.getBoundingClientRect();
-      if (from && to) {
+      if (to && reducedRef.current) {
+        setFlights([{ id: flightId.current++, kind: award.kind, x: to.left + to.width / 2, y: to.bottom + 8, dx: 0, dy: 0, still: { amount: award.amount } }]);
+      } else if (from && to) {
         const sx = from.left + from.width / 2;
         const sy = from.top + from.height / 2;
         const ex = to.left + 12;
@@ -343,6 +353,8 @@ export function ClaimSequence({
   const kinds = claimBarKinds(awards);
   const values = claimBarValues(before, awards, state.landed);
   const ready = acceptsInput(state);
+  // 「按任意鍵」的呼吸閃爍是無限循環（遊戲組 CSS 的減少動畫區沒有處理它），減少動畫時固定顯示
+  const hintClass = reduced ? '' : 'daily-reveal-hint';
   const outro = state.phase === 'outro-in' || state.phase === 'outro' || state.phase === 'done';
   const announce = state.phase === 'ready' && award
     ? `獲得${AWARD_COPY[award.kind].name} ${award.amount}，按任意鍵領取`
@@ -423,8 +435,8 @@ export function ClaimSequence({
                 </span>
               )}
               <span
-                className={`mt-5 rounded-full bg-white/90 px-4 py-1.5 text-xs font-black tracking-[0.2em] text-island-navy-soft transition-opacity duration-200 ${state.phase === 'ready' ? 'daily-reveal-hint opacity-100' : 'opacity-0'}`}
-                style={state.phase === 'ready' ? { animationDelay: '0ms, 500ms' } : undefined}
+                className={`mt-5 rounded-full bg-white/90 px-4 py-1.5 text-xs font-black tracking-[0.2em] text-island-navy-soft transition-opacity duration-200 ${state.phase === 'ready' ? `${hintClass} opacity-100` : 'opacity-0'}`}
+                style={state.phase === 'ready' && !reduced ? { animationDelay: '0ms, 500ms' } : undefined}
               >
                 按任意鍵領取
               </span>
@@ -436,8 +448,8 @@ export function ClaimSequence({
           <div className="daily-reveal-stage">
             <span className="daily-reveal-line text-sm font-black tracking-[0.3em] text-white/90">獎勵已全部入袋</span>
             <span
-              className="daily-reveal-hint rounded-full bg-white/90 px-5 py-2 text-sm font-black tracking-[0.2em] text-island-navy-soft"
-              style={{ animationDelay: '0ms, 500ms' }}
+              className={`${hintClass} rounded-full bg-white/90 px-5 py-2 text-sm font-black tracking-[0.2em] text-island-navy-soft`}
+              style={reduced ? undefined : { animationDelay: '0ms, 500ms' }}
             >
               按下任意鍵以繼續
             </span>
@@ -449,8 +461,8 @@ export function ClaimSequence({
 
       {/* 頂端資源列：領獎時滑入，獎勵飛進這裡（樣式同遊戲組 CurrencyChips／資源列 FitnessWallet） */}
       <motion.div
-        initial={{ opacity: 0, y: -24 }}
-        animate={{ opacity: exiting ? 0 : 1, y: exiting ? -24 : 0 }}
+        initial={{ opacity: 0, y: reduced ? 0 : -24 }}
+        animate={{ opacity: exiting ? 0 : 1, y: exiting && !reduced ? -24 : 0 }}
         transition={{ duration: 0.24, ease: 'easeOut' }}
         className="pointer-events-none absolute left-1/2 top-[max(1rem,env(safe-area-inset-top))] z-10 -translate-x-1/2"
       >
@@ -473,7 +485,21 @@ export function ClaimSequence({
 
       {/* 飛行中的獎勵：裝飾用，入帳由資源列數字與報讀告知 */}
       <div className="pointer-events-none absolute inset-0 z-20" aria-hidden>
-        {flights.map((f) => (
+        {flights.map((f) =>
+          f.still ? (
+            // 減少動畫的「飛入」：只有透明度，出現、停一下、淡出，與飛行同一段時間
+            <motion.span
+              key={f.id}
+              className="absolute flex -translate-x-1/2 items-center gap-1 rounded-full bg-white px-2.5 py-1 text-xs font-black text-island-navy shadow-sm"
+              style={{ left: f.x, top: f.y }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0, 1, 1, 0] }}
+              transition={{ duration: FLIGHT_LANDED_MS / 1000, times: [0, 0.25, 0.75, 1], ease: 'linear' }}
+            >
+              <FlightMark kind={f.kind} />
+              <span className="tabular-nums">+{f.still.amount.toLocaleString()}</span>
+            </motion.span>
+          ) : (
           <span
             key={f.id}
             className="daily-coin-fly"
@@ -487,7 +513,8 @@ export function ClaimSequence({
           >
             <FlightMark kind={f.kind} />
           </span>
-        ))}
+          ),
+        )}
       </div>
 
       <p className="sr-only" aria-live="polite">

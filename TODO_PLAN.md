@@ -79,7 +79,7 @@
 
 ## 進度總覽
 - 總 Slice 數：13
-- 已完成：12 / 13
+- 已完成：13 / 13
 - 平行組：P1 = {Slice 2, Slice 3}（兩者都只新增純函式檔與測試檔，檔案兩兩不相交、互不依賴）
 
 ---
@@ -473,7 +473,7 @@
 - **依賴**：Slice 11
 - **平行組**：獨立
 
-### [ ] Slice 13 — 補齊微互動、減少動畫模式與效能底線
+### [x] Slice 13 — 補齊微互動、減少動畫模式與效能底線
 - **目標**：動畫順、會尊重「減少動畫」偏好，而且訓練中不拖慢骨架辨識。
 - **範圍內**：資源列滑入／收起、對話框進出場、`prefers-reduced-motion` 下停阿肌循環與彩帶、飛入改淡入；訓練中量測 fps，低於 24 時先暫停阿肌動畫、再降主角畫布解析度。
 - **範圍外**：新功能。
@@ -481,10 +481,32 @@
 - **設計要點**：150–300ms；按壓 `scale(.98)`。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [ ] 減少動畫開啟時無循環動畫；筆電訓練中 ≥ 24fps（實測數字寫回看板）
+  - [x] 減少動畫開啟時無循環動畫；筆電訓練中 ≥ 24fps（實測數字寫回看板）
 - **測試策略**：`scripts/test-fitness-perf.ts` — 降級決策純函式（fps 門檻、遲滯避免來回切換）。
 - **完成定義**：測試＋`tsc --noEmit` PASS＋實測 fps
+- **實測 fps**（2026-09-27，本機 Mac 筆電、系統 Chrome 無頭模式、1440×900；腳本 `.playwright-mcp/s13-perf.mjs`）：
+  - 用 Chromium 假相機（1280×960），MediaPipe wasm＋`pose_landmarker_full.task` 確實載入並逐幀推論（網路紀錄可見），陪伴主角、阿肌皆掛上；量測期間畫面停在取景關卡「尋找人體…」（假相機畫面裡沒有人，所以不會進入計次），每次量 3 秒 rAF：
+  - **一般**：58 / 60 / 60 fps（p95 幀間隔 16.7–16.8ms），阿肌在動、主角畫布 dpr 1 → **≥ 24fps 達標，不觸發降級**。
+  - **減少動畫**：60 / 60 / 60 fps；阿肌 3 次取樣皆定格、推薦卡主角截圖比對不動。定格後阿肌唯一變化是眨眼（遊戲組 `useBlink` 瞬間換圖，四肢路徑與位移不變，已逐元素比對）。
+  - **CPU 降速 12 倍**（模擬較弱筆電）：26.9–28.2 fps，落在 24–30 不動區 → 正確地不降級。
+  - **CPU 降速 30 倍**：掉到約 8–13 fps → console `[perfGuard] 幀率 8 → 降級等級 0 → 1`（阿肌定格）→ 再 2 秒 `等級 1 → 2`（主角畫布 dpr 1 → 0.75）；降級後 13–15.7 fps 仍低於底線（在這種降速下裝飾讓路救不回辨識本身的負擔）。審查員另以 25 倍重跑，順序一致。
+  - **限制（誠實揭露）**：無頭瀏覽器、假相機、未走到計次階段；**真人＋實體相機的訓練中 fps 尚未實測**，留給收尾 REQUIREMENT 第 7 節實機驗證。
+- **UI QA 紀錄**（`.playwright-mcp/s13-claim.mjs`，示範模式以網路層標成相機，原始碼未改）：減少動畫 1440 與 390（觸控）：對話框只淡入（transform none）、「按任意鍵領取」與「按下任意鍵以繼續」無呼吸動畫（animation none、opacity 1）、飛行顆粒 0 顆改為金幣欄下方淡入「+10」、資源列不滑（transform none）、金幣 100→110、進結算頁、無橫向捲動、console 0 error（favicon.ico 404 為遊戲組站台既有，與本 Slice 無關）。一般模式 1440：6 顆飛幣、提示字呼吸保留、對話框淡入＋上浮。截圖 `.playwright-mcp/s13-{normal,reduced}-*.png`。`vite build` PASS。
 - **對外介面**：
+  - `motu-app/src/components/fitness/perfGuard.ts`（新增）：純函式 `initialPerf()`、`stepPerf(state, fps|null, now) → PerfState`（狀態不變回傳同一參考）、`fpsOver(frames, now, windowMs?) → number|null`、`motionPlan(reduced, level) → { coachAnimated, loops, heroDpr }`；常數 `FPS_FLOOR`(24)、`FPS_RECOVER`(30)、`DEGRADE_HOLD_MS`(2000)、`RECOVER_HOLD_MS`(8000)、`FPS_WINDOW_MS`(1000)、`SAMPLE_MS`(500)、`LOW_DPR`(0.75)、`MAX_LEVEL`(2)；型別 `PerfLevel`、`PerfState`、`MotionPlan`。執行期單例 `perfGuard`（`start()`／`stop()` 參考計數、`level()`、`lastFps()`、`subscribe(fn)`；最後一個 stop 時回到等級 0）；hook `usePerfLevel()`、`usePrefersReducedMotion()`（跟著系統設定即時變）、`useMotionPlan()`。
+  - `CompanionCoach.tsx`：掛載期間 `perfGuard.start()`（只在訓練中量）；新增 export 常數 `BUBBLE_IN_S`(0.2)、`BUBBLE_OUT_S`(0.15)；對話框以 `AnimatePresence mode="wait"` 進出場。props 不變。
+  - `FitnessCharacter.tsx`：props 不變；依 `useMotionPlan()` 定格循環（`loops=false`）與設定共用畫布 `dpr`（等級 2 → 0.75）。
+  - `CoachBackdrop.tsx`：props 不變；`coachAnimated=false` 時停輪播並以 `MotionConfig skipAnimations`＋換 key 定格阿肌。
+  - `ClaimSequence.tsx`：props 與時間常數不變；減少動畫時飛入改「+數量」淡入、資源列不滑、提示不呼吸。
+  - `FitnessHost.tsx`：關閉鍵按壓 `active:scale-[0.98]`、`duration-200`。
+  - `motu-app/package.json`：`test:fitness` 串接 `scripts/test-fitness-perf.ts`（施工時追加，不變量 5 允許的 script 變更）。無新 storage key、無路由變更。
+- **施工決策**：
+  - 遊戲組 `CoachSprite` 不可改（不變量 5），其循環是 `motion` 的無限動畫 → 用 `MotionConfig skipAnimations` 讓動畫直接落在最後一格（＝站姿第一格），並換 key 重新掛載（已在跑的無限循環不會因設定改變而停）。
+  - 遊戲組 CSS 的減少動畫區沒有處理 `.daily-reveal-hint` 的無限呼吸 → 減少動畫時不套這個 class；且把 `.daily-coin-fly` 整個藏起來 → 自行補「+數量」淡入，否則看不出獎勵進了哪一欄。
+  - 幀率量的是主執行緒 rAF 間隔（辨識與繪製同執行緒），不改 `workout.js`（不在本 Slice 改動清單）。背景分頁不計入。
+  - 陪伴模式「使用者做一下、主角跟一下」屬於回應使用者動作而非循環，減少動畫下保留。
+- **審查紀錄**：2026-09-27 slice-reviewer 第 1 輪 **BLOCK**（程式碼無缺陷；驗收標準要求的實測數字尚未寫回看板）→ 寫回實測紀錄 → 第 2 輪 **PASS**（觸發條件：L 檔、新增 export、改動檔案與其他 Slice 交集〔`FitnessCharacter.tsx`、`CompanionCoach.tsx`、`CoachBackdrop.tsx`、`ClaimSequence.tsx`、`FitnessHost.tsx`〕、改 `package.json`、觸發過 Circuit Breaker）。審查員另以 CPU 降速 25 倍獨立重跑，降級順序一致。觀察（不阻擋）：共用畫布 dpr 為模組層級，推薦卡主角與陪伴主角若同時掛載會互相覆蓋，目前兩者分屬不同畫面、互斥。
+  - Circuit Breaker 1 次（審查 BLOCK）。
 - **依賴**：Slice 12
 - **平行組**：獨立
 
