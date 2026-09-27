@@ -78,7 +78,7 @@
 
 ## 進度總覽
 - 總 Slice 數：13
-- 已完成：1 / 13
+- 已完成：2 / 13
 - 平行組：P1 = {Slice 2, Slice 3}（兩者都只新增純函式檔與測試檔，檔案兩兩不相交、互不依賴）
 
 ---
@@ -119,7 +119,7 @@
 - **依賴**：無
 - **平行組**：獨立
 
-### [ ] Slice 2 — 定義健身頁與遊戲端的資料契約
+### [x] Slice 2 — 定義健身頁與遊戲端的資料契約
 - **目標**：把「遊戲存檔 → 健身頁看得懂的數字」與「一次訓練 → 該領哪些獎勵」變成可測的純函式。
 - **範圍內**：新增 `motu-app/src/components/fitness/gameContract.ts`：
   - `balancesFromProfile(profile)` → `{ coins, fragments, xp, level }`（用遊戲組 `getBalance`、`profileLevel`；profile 為空時全為 0）
@@ -130,11 +130,20 @@
 - **設計要點**：N/A ｜ 純邏輯
 - **UI Slice?**：NO
 - **驗收標準**：
-  - [ ] 三個函式的型別與行為符合上述定義
-  - [ ] 示範模式、0 下有效、碎片 0、profile 為 null 皆有明確結果
+  - [x] 三個函式的型別與行為符合上述定義
+  - [x] 示範模式、0 下有效、碎片 0、profile 為 null 皆有明確結果
 - **測試策略**：`scripts/test-fitness-contract.ts` — 正常一輪、0 下、只有金幣、示範模式回 null、profile null、超過遊戲端單次上限（交由 `payoutForWorkout` 截斷）。
 - **完成定義**：`npx tsx scripts/test-fitness-contract.ts` PASS＋`tsc --noEmit` PASS
 - **對外介面**：
+  - `motu-app/src/components/fitness/gameContract.ts`：
+    - `balancesFromProfile(profile: UserProfile | null | undefined) → FitnessBalances`，型別 `FitnessBalances { coins; fragments; xp; level }`（profile 為空時全 0，含等級）
+    - `completionFromSession(session: FitnessSession | null | undefined, userId: string) → WorkoutCompletion | null`；型別 `FitnessSession { id?; dateISO?; exercise; exerciseName?; durationSec; validReps; mode?: FitnessMode }`、`FitnessMode = 'camera'|'demo'|'manual'`。`mode` 不在我方 `commitSession()` 回傳值裡，**呼叫端要從 `live.mode` 補上**；只有 `mode==='camera'` 且有效次數 ≥1 才回傳事件，其餘（示範／手動／未標／0 下）一律 `null`＝不發獎、不播領獎。`workoutType` 用中文動作名（退回動作 id）；有 session id 時 `workoutId = 'fx-' + id`（重送可去重）。
+    - `awardQueue({ payout: WorkoutPayout | null | undefined, fragments: number | null | undefined }) → Award[]`，型別 `Award { kind: AwardKind; amount }`、`AwardKind = 'coins'|'xp'|'fragments'`；順序金幣→經驗→碎片，非正數剔除、取整。金額由呼叫端先用遊戲端 `payoutForWorkout`、`fragmentsForWorkout` 算好再傳入。
+  - `motu-app/package.json`：`test:fitness` 串接 `scripts/test-fitness-contract.ts`（`&&`）。
+- **施工決策**：
+  - `source` 固定 `'prototype'`（非字面「AI 相機」）：遊戲端 `WorkoutSource` 只有 prototype／external-api／admin-test，不變量 5 不允許改遊戲組型別；遊戲端發獎與驗證都不依 source 分流。Slice 9 呼叫 `reportWorkoutCompletion` 時不要自行換 source。
+  - **0 下有效 → `completionFromSession` 回 `null`**（原草稿是照發依時間計算的金幣經驗）：REQUIREMENT 第 6 節第 7 條「0 下有效則跳過領獎直接進結算」；若照發，會變成錢入帳卻沒有領獎演出。
+- **審查紀錄**：2026-09-27 slice-reviewer 第 1 輪 **PASS**（觸發條件：L 檔、新增 export 型別、改 `package.json`）。
 - **依賴**：Slice 1
 - **平行組**：P1
 
