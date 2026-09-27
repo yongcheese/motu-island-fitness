@@ -24,7 +24,8 @@
  * 所以腿在膝蓋高度彎折（limbBend.ts，逐頂點彎曲這個主角自己的腿幾何），poseToRig 的結果再改寫成
  * Q 版角色做得出來、看得懂的姿勢：深蹲是側面看臀部往後坐、大腿前抬、膝蓋彎、雙手前平舉（腳釘在原地）；
  * 開合跳從身體兩側舉成 Y 字（手臂略拉長，才不被大頭擋住）、雙腳張開、中途跳離地面；
- * 高抬腿大腿抬起、小腿下垂；伏地挺身整個角色繞腳底傾倒、手撐在肩膀下、頭離地（{@link layProne}）。
+ * 高抬腿大腿抬起、小腿下垂；伏地挺身正側面看，整個角色是一塊直平板繞腳尖上下擺、手掌釘在地上、
+ * 下壓時手肘往後彎、頭離地（{@link layProne}）。
  * 動作深淺照原本的資料（示範模式的半蹲那一下照樣蹲得比較淺），最後一律把腳底貼回地面。
  *
  * WebGL 建不起來（不支援或建立時丟錯）就退回遊戲組的 `AvatarIcon` 頭像。
@@ -60,7 +61,7 @@ import { poseToRig, rigReference, type PoseFrame, type RigPose } from './poseToR
 import { BASE_FOV, atlasSize, createViewRegistry, drawable, fovFor, growAtlas, pixelSize, sourceRect, viewYaw, type ViewSlot } from './characterViews';
 import { demoPose } from '@fitness/core/synth.js';
 import { useMotionPlan } from './perfGuard';
-import { createLegBender } from './limbBend';
+import { createLegBender, type LegBender } from './limbBend';
 
 /** 一下動作的秒數（與我方示範模式的節奏相近，縮圖裡看得清楚）。 */
 const REP_SECONDS = 1.8;
@@ -119,60 +120,132 @@ class WebglBoundary extends Component<{ onFail: () => void; children: ReactNode 
 const pingPong = (phase: number) => (phase < 0.5 ? phase * 2 : (1 - phase) * 2);
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-/** 趴地時角色最多往前傾倒多少（弧度）。實際角度由 {@link layProne} 依模型比例求出。 */
-const PRONE_MAX = 1.5;
-/** 手臂伸直程度的下限：角色手臂沒有手肘，再往後傾手就伸到腳那邊去了。 */
-const PRONE_MIN_REACH = 0.55;
+/** 伏地挺身下到最低時，平板最多往前傾倒多少（弧度，約 80°）。實際角度由 {@link fitProne} 依模型比例求出。 */
+const PRONE_MAX = 1.4;
+/** 下到最低時頭的最低點至少離地多少（世界單位，頭直徑約 1）：頭貼地看起來像臉朝下摔倒，不像撐著。 */
+const PRONE_HEAD_GAP = 0.03;
+/** 撐起時比下到底少傾倒多少（弧度）：整個平板繞腳尖上下擺，這就是一下伏地挺身的幅度。 */
+const PRONE_SWING = 0.32;
+/** 合成器伏地挺身下到底時 poseToRig 的手臂伸直程度（實測 0.744）；拿來換算下壓深淺 0–1。 */
+const PRONE_BOTTOM_REACH = 0.744;
+/** 手臂 IK 修正幾輪（見 layProne）。 */
+const PRONE_IK_PASSES = 3;
 /** 趴地時頭往上抬的比例（臉朝前方而不是朝地板）。 */
-const PRONE_HEAD_LIFT = 0.9;
-/**
- * 趴地時頭的最低點至少離地多少（世界單位，頭直徑約 1.17）：頭貼地看起來像臉朝下摔倒，不像撐著。
- */
-const PRONE_HEAD_GAP = 0.3;
-/** 手臂往腳的方向斜的量打折：Q 版手臂短，斜太多手就跑到胸口下、不像撐在肩膀正下方。 */
-const PRONE_ARM_TILT = 0.6;
+const PRONE_HEAD_LIFT = 0.85;
 const box = new Box3();
 const tmpA = new Vector3();
 const tmpB = new Vector3();
+const tmpC = new Vector3();
 const lowest = (o: Object3D | null) => (o ? box.setFromObject(o).min.y : Infinity);
 
+/** 伏地挺身的平板量測（每個主角量一次）：傾倒角、手臂長、手臂拉長倍率、水平置中量。 */
+interface ProneFit {
+  top: number;
+  bottom: number;
+  /** 手臂在肩膀到手掌最低點的長度（世界單位，未拉長）。 */
+  armLen: number;
+  /** 手臂拉長倍率：撐起時手臂伸直、垂直落在肩膀正下方，剛好撐到地面。 */
+  armScale: number;
+  /** 手掌撐地的位置（沿角色前方的水平座標，世界單位）：撐起時肩膀正下方，下壓時不動。 */
+  handF: number;
+  centerX: number;
+}
+const proneFits = new WeakMap<Group, ProneFit>();
+
+/** 擺成傾倒 p 的直平板（腿、軀幹打直，頭抬起看前方），回傳肩膀的世界高度與前後位置、腳與頭的最低點。 */
+function plank(rig: CharacterRig, root: Group, pitch: Group, p: number) {
+  pitch.rotation.x = p;
+  rig.torso.current?.rotation.set(0, 0, 0);
+  rig.leftLeg.current?.rotation.set(0, 0, 0);
+  rig.rightLeg.current?.rotation.set(0, 0, 0);
+  rig.head.current?.rotation.set(-p * PRONE_HEAD_LIFT, 0, 0);
+  root.updateMatrixWorld(true);
+  const at = rig.leftArm.current!.getWorldPosition(tmpA);
+  const forward = at.dot(pitch.parent!.getWorldDirection(tmpB));   // 視角轉過的「角色前方」（水平）
+  const foot = Math.min(lowest(rig.leftLeg.current), lowest(rig.rightLeg.current));
+  return { shoulder: at.y, forward, foot, head: lowest(rig.head.current) };
+}
+
 /**
- * 伏地挺身：把角色繞腳底往前傾倒，求一個傾倒角讓手掌與腳尖同時貼地，然後整個抬到地面上、水平置中。
- *
- * 為什麼用求的而不是直接套人的角度：Q 版角色頭大腿短（頭的半徑約等於肩高），照人的 80° 平板倒下去
- * 頭會埋進地裡、手也碰不到地。所以只從 landmarks 取「手臂伸直程度」（下壓越深手臂越往腳的方向斜，
- * 肩膀跟著降低），傾倒角以二分法找「手剛好到腳的高度、頭不低於地面」的那一點 —— 下壓時肩膀降低，
- * 求出的角度自然變大，看起來就是撐起、壓下。量高度用關節群組的包圍盒（世界座標）。
+ * 量這個主角的伏地挺身平板：下到底的傾倒角＝頭剛好不碰地的最大角（二分法）；撐起少 {@link PRONE_SWING}。
+ * 撐起時手臂要垂直伸到地面，Q 版手臂短，所以求一個拉長倍率（同開合跳的卡通伸展）。
  */
-function layProne(rig: CharacterRig, root: Group, pitch: Group, pose: RigPose) {
-  const armTilt = Math.acos(clamp(pose.armReach, PRONE_MIN_REACH, 1)) * PRONE_ARM_TILT;
-  const place = (p: number) => {
-    pitch.rotation.x = p;
-    // 手臂的世界方向＝往下、朝腳的方向斜 armTilt；關節角是相對已傾倒的身體
-    rig.leftArm.current?.rotation.set(armTilt - p, 0, 0);
-    rig.rightArm.current?.rotation.set(armTilt - p, 0, 0);
-    rig.torso.current?.rotation.set(0, 0, 0);
-    rig.leftLeg.current?.rotation.set(0, 0, 0);
-    rig.rightLeg.current?.rotation.set(0, 0, 0);
-    rig.head.current?.rotation.set(-p * PRONE_HEAD_LIFT, 0, 0);
-    root.updateMatrixWorld(true);
-    const hand = Math.min(lowest(rig.leftArm.current), lowest(rig.rightArm.current));
-    const foot = Math.min(lowest(rig.leftLeg.current), lowest(rig.rightLeg.current));
-    return { hand, foot, head: lowest(rig.head.current) };
-  };
+function fitProne(rig: CharacterRig, root: Group, pitch: Group): ProneFit | null {
+  const arm = rig.leftArm.current;
+  if (!arm || !rig.rightArm.current || !rig.head.current || !rig.leftLeg.current || !rig.rightLeg.current) return null;
+  const cached = proneFits.get(arm);
+  if (cached) return cached;
   root.position.set(0, 0, 0);
   root.scale.set(1, 1, 1);
+  rig.leftArm.current?.rotation.set(0, 0, 0);
+  rig.rightArm.current?.rotation.set(0, 0, 0);
+  const rest = plank(rig, root, pitch, 0);
+  const armLen = rest.shoulder - lowest(arm);
+  if (!Number.isFinite(armLen) || armLen <= 0) return null;
   let lo = 0, hi = PRONE_MAX;
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 12; i++) {
     const mid = (lo + hi) / 2;
-    const m = place(mid);
-    if (m.hand < m.foot || m.head < m.foot + PRONE_HEAD_GAP) hi = mid;   // 倒過頭：手低於腳、或頭快碰地
+    const m = plank(rig, root, pitch, mid);
+    if (m.head < m.foot + PRONE_HEAD_GAP) hi = mid;
     else lo = mid;
   }
-  const m = place(lo);
-  root.position.y = -Math.min(m.hand, m.foot, m.head);
+  const bottom = lo, top = Math.max(0, lo - PRONE_SWING);
+  const m = plank(rig, root, pitch, top);
   box.setFromObject(pitch);
-  root.position.x = -(box.min.x + box.max.x) / 2;                  // 趴下後身體往前延伸，置中
+  const fit = {
+    top, bottom, armLen,
+    armScale: (m.shoulder - m.foot) / armLen,
+    handF: m.forward,
+    centerX: (box.min.x + box.max.x) / 2,
+  };
+  proneFits.set(arm, fit);
+  return fit;
+}
+
+/**
+ * 伏地挺身：整個角色是一塊直的平板，繞腳尖往前傾倒；手掌撐在肩膀下方的地上。
+ *
+ * 為什麼不照人的角度：Q 版角色頭大（頭的半徑約等於肩高），照人的 80° 平板倒下去頭會埋進地裡，
+ * 手也短得碰不到地。所以傾倒角依模型比例求（{@link fitProne}），手臂拉長到撐起時剛好垂直撐地；
+ * 下壓時平板往下擺、肩膀降低並往前，手掌釘在原地，手肘往腳的方向彎（兩節等長的 IK，
+ * limbBend 在手臂中段彎折）—— 看起來就是撐起、壓下。深淺照 landmarks 的手臂伸直程度（示範模式故意做淺的那一下照樣淺）。
+ */
+function layProne(rig: CharacterRig, root: Group, pitch: Group, pose: RigPose, elbows: { left: LegBender; right: LegBender }) {
+  const fit = fitProne(rig, root, pitch);
+  if (!fit) return;
+  const d = clamp((1 - pose.armReach) / (1 - PRONE_BOTTOM_REACH), 0, 1);
+  const e = d * d * (3 - 2 * d);                                    // 兩端放慢，像撐著體重
+  const p = fit.top + (fit.bottom - fit.top) * e;
+  root.position.set(0, 0, 0);
+  root.scale.set(1, 1, 1);
+  const m = plank(rig, root, pitch, p);
+  // 兩節等長手臂的 IK：肩膀→手掌的方向（從鉛直往腳的方向偏 dir）、距離決定手肘彎多少（半角 half）。
+  // 上臂＝dir＋half（手肘朝後上方）、前臂＝dir−half。手臂中段的彎折有漸變區，實際的手比算的短一點
+  // （實測下到底手掌往後滑、離地各約 0.06），所以量出手掌實際落點、把目標反向補回去再解，迭代幾次
+  const len = fit.armLen / CHARACTER_ROOT_SCALE;
+  const fwd = pitch.parent!.getWorldDirection(tmpB);
+  let aimF = fit.handF, aimY = m.foot;
+  for (let i = 0; i < PRONE_IK_PASSES; i++) {
+    const back = m.forward - aimF, down = m.shoulder - aimY;
+    const dir = Math.atan2(back, down);
+    const half = Math.acos(clamp(Math.hypot(back, down) / (fit.armLen * fit.armScale), -1, 1));
+    let tip: Vector3 | null = null;
+    for (const [g, elbow] of [[rig.leftArm.current, elbows.left], [rig.rightArm.current, elbows.right]] as const) {
+      g?.rotation.set(dir + half - p, 0, 0);                        // 關節角是相對已傾倒的身體
+      g?.scale.set(1, fit.armScale, 1);
+      const t = elbow.apply(g, -2 * half, len);
+      if (g === rig.leftArm.current) tip = tmpC.copy(t);
+    }
+    if (!tip || i === PRONE_IK_PASSES - 1) break;
+    root.updateMatrixWorld(true);
+    rig.leftArm.current!.localToWorld(tip);
+    aimF += fit.handF - tip.dot(fwd);
+    aimY += m.foot - tip.y;
+  }
+  root.updateMatrixWorld(true);
+  const hand = Math.min(lowest(rig.leftArm.current), lowest(rig.rightArm.current));
+  root.position.y = -Math.min(hand, m.foot);
+  root.position.x = -fit.centerX;                                   // 撐起時的平板置中，上下動時不左右滑
 }
 
 /** 深蹲蹲到底時 poseToRig 的下沉量（合成器標準深蹲約 0.55 腿長）；拿來換算蹲的深淺 0–1。 */
@@ -291,10 +364,14 @@ function DemoRig({ exercise, rig, root, pitch, hipY, soleY, mode, reps, cheering
   const live = useRef({ reps, cheering });
   live.current = { reps, cheering };
   const knees = useMemo(() => ({ left: createLegBender(), right: createLegBender() }), []);
+  // 手肘（只有伏地挺身用得到；用過才需要在其他姿勢把手臂打直回來）
+  const elbows = useMemo(() => ({ left: createLegBender(), right: createLegBender(), used: false }), []);
   useEffect(() => () => {
     knees.left.dispose();
     knees.right.dispose();
-  }, [knees]);
+    elbows.left.dispose();
+    elbows.right.dispose();
+  }, [knees, elbows]);
 
   useFrame((_, delta) => {
     const dt = Math.min(delta, 0.1);
@@ -337,12 +414,19 @@ function DemoRig({ exercise, rig, root, pitch, hipY, soleY, mode, reps, cheering
     prev.current = pose;
 
     if (pose.groundPitch > 0 && root.current && pitch.current) {
-      rig.leftArm.current?.scale.set(1, 1, 1);
-      rig.rightArm.current?.scale.set(1, 1, 1);
       knees.left.apply(rig.leftLeg.current, 0, hipY - soleY);
       knees.right.apply(rig.rightLeg.current, 0, hipY - soleY);
-      layProne(rig, root.current, pitch.current, pose);
+      elbows.used = true;
+      layProne(rig, root.current, pitch.current, pose, elbows);
       return;
+    }
+    if (elbows.used) {
+      // 伏地挺身之外（例如陪伴主角加油）手臂打直；手臂長度照 fitProne 量的換算
+      const len = (rig.leftArm.current && proneFits.get(rig.leftArm.current)?.armLen) || 0;
+      if (len) {
+        elbows.left.apply(rig.leftArm.current, 0, len / CHARACTER_ROOT_SCALE);
+        elbows.right.apply(rig.rightArm.current, 0, len / CHARACTER_ROOT_SCALE);
+      }
     }
     const chibi = chibiPose(shape, pose);
     const shown = chibi.pose;

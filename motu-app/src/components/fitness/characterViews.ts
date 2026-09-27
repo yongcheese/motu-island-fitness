@@ -106,6 +106,6 @@ export const VIEW_YAW: Readonly<Record<string, number>> = Object.freeze({
   squat: -1.15,
   highknees: -0.9,
   jumpingjack: -0.15,
-  pushup: -1.0,
+  pushup: -1.57,
 });
 export const viewYaw = (exercise: string) => VIEW_YAW[exercise] ?? VIEW_YAW.squat;
