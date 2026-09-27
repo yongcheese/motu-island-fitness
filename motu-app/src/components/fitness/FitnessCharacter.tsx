@@ -262,7 +262,10 @@ export function FitnessCharacter({ exercise, mode = 'loop', reps = 0, cheering =
     el.appendChild(s.canvas);
     let alive = true;
     const fit = () => {
-      const r = el.getBoundingClientRect();
+      // 用版面尺寸而不是 getBoundingClientRect：後者含祖先的 transform，手機版陪伴主角整塊 scale(.85)，
+      // 量到的是縮小後的寬高，畫布就只填框的 85%、貼在左上角，主角偏上偏左（Slice 12 實測）。
+      // 畫布本身在框內，跟著祖先一起縮放，所以尺寸以未縮放的框為準才對。
+      const r = { width: el.clientWidth, height: el.clientHeight };
       if (!r.width || !r.height) return;
       s.size = { width: r.width, height: r.height, top: 0, left: 0 };
       reconfigure().catch(() => alive && setFailed(true));

@@ -79,7 +79,7 @@
 
 ## 進度總覽
 - 總 Slice 數：13
-- 已完成：11 / 13
+- 已完成：12 / 13
 - 平行組：P1 = {Slice 2, Slice 3}（兩者都只新增純函式檔與測試檔，檔案兩兩不相交、互不依賴）
 
 ---
@@ -444,18 +444,32 @@
 - **依賴**：Slice 10
 - **平行組**：獨立
 
-### [ ] Slice 12 — 打磨健身頁新元素的視覺
+### [x] Slice 12 — 打磨健身頁新元素的視覺
 - **目標**：主角、阿肌背景、對話框、資源列、領獎畫面與遊戲端其他畫面看起來是同一個產品。
 - **範圍內**：間距、陰影、字重、角色取景與光線、背景配色細修；1440／1920／390 截圖逐一比對遊戲端畫面。
 - **範圍外**：動畫節奏（Slice 13）。
-- **改動檔案**：`motu-app/src/components/fitness/*.tsx`、`app/features/workout/workout.css`
+- **改動檔案**：`motu-app/src/components/fitness/*.tsx`、`app/features/workout/workout.css`；實際：`CompanionCoach.tsx`、`CoachBackdrop.tsx`、`FitnessCharacter.tsx`、`workout.css`，外加測試策略指定的 `tests/contrast.test.js`
 - **設計要點**：依「設計顧問輸入」；對比組合納入 `tests/contrast.test.js`。
 - **UI Slice?**：YES
 - **驗收標準**：
-  - [ ] 三種寬度截圖無破版；新增文字／底色組合對比合格
+  - [x] 三種寬度截圖無破版；新增文字／底色組合對比合格
 - **測試策略**：`tests/contrast.test.js` 新增組合；截圖。
 - **完成定義**：`npm test`＋`tsc --noEmit` PASS＋截圖
 - **對外介面**：
+  - 無新 export、無新 storage key、無路由變更。
+  - `FitnessCharacter`：畫布尺寸改以掛載點的版面尺寸（`clientWidth`／`clientHeight`）為準，不再含祖先 transform —— 之後把主角放進有 `scale()` 的容器也會填滿框（props 不變）。
+  - `CompanionCoach`：主角框 `lg`（≥1024px）起由 112×128 放大為 144×160；對話框箭頭同步移到 `lg:right-[66px]`。下游（Slice 13 效能降級）若要縮主角畫布解析度，框尺寸以此為準。
+  - CSS：`.fx-slot-wallet` 在 ≥1100px 取消 72px 右側讓位。
+  - `tests/contrast.test.js` 新增 ⑥ 區：`islandColor(name)`／`classColor(cls, under)`（測試檔內部）；整合版新增文字／底色組合時要加進 `FX_PAIRS`。
+- **施工決策**：
+  - 改前截圖比對出的問題（`.playwright-mcp/s12-before-*`）：①資源列在 1440／1920 右緣比內容欄內縮 72px（為關閉鍵讓位，但寬螢幕欄外已放得下）→ ≥1100px 對齊內容欄；②陪伴主角在 1920 只有阿肌的一半高 → `lg` 放大一級；③主角與阿肌站在淺色背景上沒有落地感 → 各加一圈淡陰影（`rgba(38,70,83,.2)` 徑向漸層）。
+  - 對話框直角、資源列數字用深藍而非遊戲組 TopBar 的金字：前者與遊戲端 `HintBubble` 一致（島嶼主頁的互動提示同樣是直角），後者依本專案文字對比規則（金在白底 < 4.5），皆維持不改。
+  - **追加改 `FitnessCharacter.tsx`**（審查第 1 輪 BLOCK 後找到的根因）：`fit()` 原用 `getBoundingClientRect()`，含手機版陪伴主角容器的 `scale(.85)` → 畫布只填框的 85%、貼左上，主角偏上偏左、陰影對不準。改用 `clientWidth/clientHeight`。修後實測（隱藏陰影找最低深色像素）四種寬度腳底皆在框高 80–81%、陰影中心差 ≤1.7px、主角水平偏 1px。
+  - Circuit Breaker 1 次（審查 BLOCK：陰影與腳底懸空）。
+  - 截圖腳本遇到遊戲端新手引導視窗延遲跳出擋住點擊（間歇、與本 Slice 無關），腳本改為點掉視窗再進健身頁。
+- **UI QA 紀錄**（無頭瀏覽器、無相機、網路層把示範標成相機，原始碼未改；腳本 `.playwright-mcp/s12-shots.js`）：1440×900、1920×1080、390×844 各拍島嶼主頁／健身初始頁／訓練中（含對話框）／領獎揭曉／領獎資源列／結算頁，改前 `s12-before-*`、改後 `s12-after-*`；三種寬度無橫向捲動、console 0 error。陪伴主角局部量測 `s12-fix-companion-{1920,1440,768,390}.png`。`vite build` PASS。
+  - 已知留給後續：真實相機下未實機驗證；動畫節奏與減少動畫（Slice 13）。
+- **審查紀錄**：2026-09-27 slice-reviewer 第 1 輪 **BLOCK**（陪伴主角陰影與腳底懸空，三種寬度重現）→ 修正 `FitnessCharacter.tsx` 量測方式＋陰影位置 → 第 2 輪 **PASS**（觸發條件：L 檔、改動檔案與其他 Slice 交集〔`workout.css`、`CompanionCoach.tsx`〕、觸發過 Circuit Breaker）。審查員確認 `FitnessCharacter.tsx`、`CompanionCoach.tsx`、`CoachBackdrop.tsx` 皆為本專案新增檔，不受不變量 5 限制；對比測試非湊數。
 - **依賴**：Slice 11
 - **平行組**：獨立
 

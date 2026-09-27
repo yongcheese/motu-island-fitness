@@ -142,12 +142,21 @@ export function CompanionCoach({ feed }: { feed: CompanionFeed }) {
               <p className="mb-1 text-[11px] font-black leading-none text-island-teal-dark">{name}</p>
               <p className="text-sm font-bold leading-snug text-island-navy">{line}</p>
             </HintBubble>
-            <span className="absolute right-[50px] -bottom-[6px] w-3 h-3 bg-white border-b border-r border-island-line rotate-45 pointer-events-none" />
+            <span className="absolute right-[50px] lg:right-[66px] -bottom-[6px] w-3 h-3 bg-white border-b border-r border-island-line rotate-45 pointer-events-none" />
           </div>
         )}
       </div>
-      <div className="h-32 w-28">
-        <FitnessCharacter exercise={exercise} mode="sync" reps={reps} cheering={!!line} />
+      {/* 寬螢幕放大一級，和左下阿肌的比例相當（原本 1920 寬時主角只有阿肌的一半高）；箭頭跟著對準新的中線 */}
+      <div className="relative h-32 w-28 lg:h-40 lg:w-36">
+        {/* 落地陰影：主角是透明畫布，沒有這一圈看起來像飄在半空。陰影中心對準實測腳底：兩種框的腳底都在框高約 80% 處（Slice 12 以無頭瀏覽器逐像素量得） */}
+        <span
+          aria-hidden="true"
+          className="absolute bottom-[16%] left-1/2 h-3 w-16 -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(38,70,83,0.22),transparent)] lg:w-20"
+        />
+        {/* 畫布包一層 relative，才會疊在陰影上方（定位元素預設畫在一般流元素之上） */}
+        <div className="relative h-full w-full">
+          <FitnessCharacter exercise={exercise} mode="sync" reps={reps} cheering={!!line} />
+        </div>
       </div>
     </div>
   );

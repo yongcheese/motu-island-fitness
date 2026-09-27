@@ -224,3 +224,63 @@ test('shellColor 解析本身有效：找不到的選擇器會丟錯，@media �
   assert(threw, '找不到選擇器時應丟錯，而不是回傳 undefined 讓比對空轉');
   eq(shellColor('#shell .sh-tab.is-active', 'color'), T.white);
 });
+
+/* ---------- ⑥ 整合版健身頁的遊戲元件（合體第二階段整合 Slice 12）的文字／底色組合 ---------- */
+// 這些元件是 motu-app 的 React 元件，用遊戲組 Tailwind 色（--color-island-*，定義在 motu-app/src/index.css）。
+// 色值從 index.css 解析；每一組還要求 class 真的出現在元件原始碼裡 —— 之後改了 class 卻沒更新這裡，測試會紅。
+const ISLAND_CSS = readFileSync(join(root, 'motu-app/src/index.css'), 'utf8');
+function islandColor(name) {
+  if (name === 'white') return '#FFFFFF';
+  const m = ISLAND_CSS.match(new RegExp(`--color-island-${name}\\s*:\\s*(#[0-9a-fA-F]{3,8})\\s*;`));
+  if (!m) throw new Error(`index.css 找不到 --color-island-${name}`);
+  return m[1];
+}
+// class（text-island-navy、bg-white、bg-white/90…）→ 色值；有 /NN 透明度時疊在最壞底色上
+function classColor(cls, under) {
+  const m = cls.match(/^(?:text|bg)-(?:island-)?([\w-]+?)(?:\/(\d+))?$/);
+  if (!m) throw new Error(`看不懂的 class ${cls}`);
+  const c = islandColor(m[1]);
+  if (!m[2]) return c;
+  if (!under) throw new Error(`${cls} 半透明，必須指定底下的最壞底色`);
+  return over(mix(c, +m[2], 'transparent'), under);
+}
+const FX = (f) => readFileSync(join(root, 'motu-app/src/components/fitness', f), 'utf8');
+// [用在哪裡, 檔案, 文字 class, 底色 class, 半透明底色下方的最壞底色, 是否大字]
+const FX_PAIRS = [
+  ['健身初始頁資源列數字（深藍／白）', 'FitnessWallet.tsx', 'text-island-navy', 'bg-white', null, false],
+  ['陪伴主角對話框的名字 11px（深青／奶油白）', 'CompanionCoach.tsx', 'text-island-teal-dark', 'bg-island-cream', null, false],
+  ['陪伴主角台詞（深藍／奶油白）', 'CompanionCoach.tsx', 'text-island-navy', 'bg-island-cream', null, false],
+  ['領獎資源列數字（深藍／白）', 'ClaimSequence.tsx', 'text-island-navy', 'bg-white', null, false],
+  ['領獎資源列 LV（深青／白）', 'ClaimSequence.tsx', 'text-island-teal-dark', 'bg-white', null, false],
+  ['領獎資源列經驗值（深藍淡／白）', 'ClaimSequence.tsx', 'text-island-navy-soft', 'bg-white', null, false],
+  // 膠囊是白 90%，底下是揭曉舞台的暗色遮罩；最壞情況取遊戲組最深的 navy-dark
+  ['「按任意鍵」提示膠囊（深藍淡／白 90% 疊暗舞台）', 'ClaimSequence.tsx', 'text-island-navy-soft', 'bg-white/90', islandColor('navy-dark'), false],
+  ['提示訊息 toast（白字／深藍）', 'FitnessHost.tsx', 'text-white', 'bg-island-navy', null, false],
+];
+// HintBubble（遊戲組 DesignKit）的奶油白底：確認它真的是這個 class，否則上面兩組的底色就是假設
+const HINT_SURFACE = readFileSync(join(root, 'motu-app/src/components/UI/DesignKit.tsx'), 'utf8');
+
+test('整合版健身頁的遊戲元件：每一組文字／底色都達 WCAG AA（色值從遊戲組 index.css 解析）', () => {
+  assert(FX_PAIRS.length >= 8, '組合清單被刪減');
+  assert(/floating:\s*'bg-island-cream /.test(HINT_SURFACE), 'HintBubble 底色不再是 bg-island-cream，對話框兩組要重新確認');
+  const missing = FX_PAIRS.filter(([, f, fg, bg]) => {
+    const src = FX(f);
+    const has = (c) => new RegExp(`[\\s"'\`]${c.replace(/[/]/g, '\\/')}[\\s"'\`]`).test(src);
+    return !has(fg) || (!has(bg) && !(f === 'CompanionCoach.tsx' && bg === 'bg-island-cream'));
+  }).map(([where]) => where);
+  eq(missing.join(' | '), '', '以下組合的 class 已不在元件原始碼裡，清單過期');
+  const bad = FX_PAIRS.map(([where, , fg, bg, under, large]) => [where, contrastRatio(classColor(fg), classColor(bg, under)), large])
+    .filter(([, r, large]) => !passesAA(r, { large }))
+    .map(([where, r]) => `${where} = ${r.toFixed(2)}`);
+  eq(bad.join(' | '), '', '整合版對比不足');
+});
+
+test('整合版規則的反例：金、海洋青當小字在白底不合格（資源列數字因此用深藍，不照遊戲組 TopBar 的金字）', () => {
+  for (const c of ['gold', 'teal', 'teal-light', 'coral']) {
+    assert(!passesAA(contrastRatio(islandColor(c), '#FFFFFF')), `island-${c} 在白底竟然過 4.5，色票可能被改過`);
+  }
+  let threw = false;
+  try { classColor('bg-white/90'); } catch { threw = true; }
+  assert(threw, '半透明底色沒指定下方底色時應丟錯（邊界：不能假裝知道底下是什麼）');
+  eq(islandColor('cream'), '#FFFFFF');
+});

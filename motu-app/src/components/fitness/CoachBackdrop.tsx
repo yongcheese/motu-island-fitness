@@ -147,7 +147,12 @@ export function CoachBackdrop() {
 
       {place && (
         <div className="absolute" style={{ left: place.left, top: place.top, width: place.size }}>
-          <CoachSprite className="block h-auto w-full" pose={COACH_ROTATION[turn].pose} />
+          {/* 落地陰影（Slice 12）：同陪伴主角的做法，站在淺色背景上才不像飄著；寬度隨阿肌縮放 */}
+          <span
+            aria-hidden="true"
+            className="absolute -bottom-1 left-1/2 h-[10%] w-[78%] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(38,70,83,0.2),transparent)]"
+          />
+          <CoachSprite className="relative block h-auto w-full" pose={COACH_ROTATION[turn].pose} />
         </div>
       )}
     </div>

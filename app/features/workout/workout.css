@@ -717,6 +717,9 @@
 .wk-sum-dist li i { grid-column: 1 / -1; height: 6px; margin-top: 3px; border-radius: 999px; background: var(--motu-teal); min-width: 6px; }
 /* 整合版：右上角是遊戲端的關閉鍵（回島嶼），資源列讓出位置 */
 .fx-slot-wallet { padding-right: 72px; }
+/* Slice 12：內容欄限寬 880px（≥1500px 時 1040px）置中，視窗 ≥1100px 時欄外已留得下關閉鍵（右上 80px），
+   資源列不必再讓位，右緣改與下方卡片對齊（原本在 1440／1920 內縮 72px，看起來浮在半空） */
+@media (min-width: 1100px) { .fx-slot-wallet { padding-right: 0; } }
 @media (max-width: 620px) {
   /* 手機：關閉鍵固定在右上角，非全螢幕的頁面整體往下讓出一列，避免蓋住結算頁的評等章 */
   .fx-body #view:not(.full) { padding-top: 76px; }
