@@ -1,6 +1,7 @@
 // Tab2 訓練（核心）：分類 → 清單 → 簡介 → 即時偵測 → 結算。
 import { EXERCISES, PLANNED, GROUPS } from '../../core/exercises/index.js';
-import { coinsFor } from '../../core/rewards.js';
+import { coinsFor, ratePct } from '../../core/rewards.js';
+import { safetyPanelHtml, bindSafetyPanel } from './safety.js';
 import { GATE_PROGRESS as SQUAT_GATE_PROGRESS } from '../../core/exercises/squat.js';
 import { createDetector } from '../../core/engine.js';
 import { createPose, startCamera } from '../../core/pose.js';
@@ -13,7 +14,7 @@ import { planFor, planLabel } from '../../core/difficulty.js';   // Slice4 R3：
 import { coachPolicy, repCountdownCue } from '../../core/coach-policy.js';   // Slice3 修復 F3：誠實回饋決策（純函式）
 import { framingReport, createStabilityTracker, landmarkOk, HEAD_LANDMARKS, cameraHeightHint } from '../../core/framing.js';
 import { sampleVideoLuma, lightingReport } from '../../core/lighting.js';   // 光線品質：量出來並告知，不放寬判定門檻
-import { ALL_FRAME, framingPose, displaySegments, gaugeColor, phaseCueText } from '../../ui/display-colors.js';   // 顏色語意（純函式，可單測）
+import { ALL_FRAME, displaySegments, gaugeColor, phaseCueText } from '../../ui/display-colors.js';   // 顏色語意（純函式，可單測）
 import { icon } from '../../ui/icons.js';   // 合體 Slice 3：Lucide 線條圖示，取代 emoji
 
 let CTX = null;
@@ -367,34 +368,46 @@ function renderIntro(ex) {
   root.innerHTML = `
     <div class="fade-in wk-intro">
       <button class="wk-back" id="wk-back">‹ 返回</button>
-      <div class="wk-hero card">
-        ${introFigureHtml(ex.id)}
-        <div class="wk-hero-badge">${exIcon(ex.id, 16)} ${ex.name}</div>
+      <!-- 09-29：寬螢幕改左右兩欄（左＝示範人物、右＝說明與開始），手機照舊上下堆疊 -->
+      <div class="wk-intro-main">
+        <div class="wk-hero card">
+          ${introFigureHtml(ex.id)}
+          <div class="wk-hero-badge">${exIcon(ex.id, 16)} ${ex.name}</div>
+        </div>
+        <div class="wk-intro-side">
+          <h1 class="h1">${ex.name}</h1>
+          <p class="sub">${ex.meta.desc}</p>
+          <div class="wk-stats stagger">
+            ${stat('target', '部位', ex.meta.target)}
+            ${stat('repeat', '組數', `${planOf(ex).sets} 組 × ${planOf(ex).repsPerSet} 下`)}
+            ${stat('timer', '組間休息', `${planOf(ex).restSec} 秒`)}
+            ${stat('coins', '可得金幣', `${ex.baseCoinPerRep} / 有效次 · 整輪最多 ${estimateRoundCoins(ex)}`)}
+            ${stat('flame', '強度', `${ex.met} MET`)}
+            ${stat('camera', '鏡頭', ex.id === 'pushup' ? '側面' : ex.id === 'jumpingjack' ? '正面 · 需全身入鏡' : '正面')}
+          </div>
+          <div class="wk-judge card">
+            <div class="wk-judge-t">${icon('circle-check')} 判定關鍵</div>
+            <div class="wk-judge-d">${judgeText(ex.id)}</div>
+          </div>
+          <button class="wk-safe-open" id="wk-safe-open" type="button" aria-haspopup="dialog">
+            <span class="wk-safe-open-ic">${icon('lightbulb', { size: 20 })}</span>
+            <span class="wk-safe-open-t"><b>運動前須知</b><small>國健署與 WHO 的運動建議、身體不適時怎麼辦</small></span>
+            <span class="wk-safe-open-go" aria-hidden="true">›</span>
+          </button>
+          <label class="wk-toggle">
+            <span>${icon('flame')} 開始前先暖身（約 1 分鐘）</span>
+            <input type="checkbox" id="wk-warm" ${warm ? 'checked' : ''}/>
+            <i></i>
+          </label>
+          <div class="wk-cta">
+            <button class="btn" id="wk-start" style="flex:1">立即開始</button>
+          </div>
+        </div>
       </div>
-      <h1 class="h1">${ex.name}</h1>
-      <p class="sub">${ex.meta.desc}</p>
-      <div class="wk-stats stagger">
-        ${stat('target', '部位', ex.meta.target)}
-        ${stat('repeat', '組數', `${planOf(ex).sets} 組 × ${planOf(ex).repsPerSet} 下`)}
-        ${stat('timer', '組間休息', `${planOf(ex).restSec} 秒`)}
-        ${stat('coins', '可得金幣', `${ex.baseCoinPerRep} / 有效次 · 整輪最多 ${estimateRoundCoins(ex)}`)}
-        ${stat('flame', '強度', `${ex.met} MET`)}
-        ${stat('camera', '鏡頭', ex.id === 'pushup' ? '側面' : ex.id === 'jumpingjack' ? '正面 · 需全身入鏡' : '正面')}
-      </div>
-      <div class="wk-judge card">
-        <div class="wk-judge-t">${icon('circle-check')} 判定關鍵</div>
-        <div class="wk-judge-d">${judgeText(ex.id)}</div>
-      </div>
-      <label class="wk-toggle">
-        <span>${icon('flame')} 開始前先暖身（約 1 分鐘）</span>
-        <input type="checkbox" id="wk-warm" ${warm ? 'checked' : ''}/>
-        <i></i>
-      </label>
-      <div class="wk-cta">
-        <button class="btn" id="wk-start" style="flex:1">立即開始</button>
-      </div>
+      ${safetyPanelHtml()}
     </div>`;
 
+  bindSafetyPanel(root, root.querySelector('#wk-safe-open'));
   root.querySelector('#wk-back').onclick = () => renderMenu();
   root.querySelector('#wk-warm').onchange = (e) => CTX.store.updatePrefs({ warmup: e.target.checked });
   root.querySelector('#wk-start').onclick = () => startLive(ex, root.querySelector('#wk-warm').checked);
@@ -512,8 +525,6 @@ async function startLive(ex, doWarmup) {
   const statusEl = root.querySelector('#lv-status');
   // Coach HUD 元素快取（每幀更新，避免重複 querySelector）
   const hud = {
-    track: root.querySelector('#lv-track'),
-    stages: [...root.querySelectorAll('#lv-stages span')],
     gfill: root.querySelector('#lv-gfill'),
     flash: root.querySelector('#lv-repflash'),
     next: root.querySelector('#lv-next'),      // 即時動作指引（Bug2(b)）
@@ -659,7 +670,7 @@ function waitForFraming(run) {
     gate.hidden = false;
     if (live?.hud?.next) { live.hud.next.hidden = true; live.hud.next.textContent = ''; }   // 關卡期間不顯示動作指引，避免疊字
     run.skipGate = false;
-    if (run.voice) CTX.coach.say('請站進畫面中，讓我看到全身', 'high');
+    if (run.voice) CTX.coach.say('請站入鏡頭範圍，保持全身入鏡', 'high');
     let readyMs = 0, gateMs = 0, last = performance.now();
     // Slice 12：取景期間深度量表沒有意義，還會在小螢幕蓋到狀態卡 → 關卡期間隱藏
     const wrap = root?.querySelector('#lv-wrap');
@@ -697,13 +708,11 @@ function waitForFraming(run) {
         checks.forEach((el, i) => el.classList.toggle('ok', rows[i]));   // 勾選符號由 CSS 畫，文字只放部位名
         if (live.hud) {
           const miss = groups.filter((g, i) => !st.rows[i]).map(g => g.label);
-          // 取景專屬 state（不沿用訓練共用的 ok/seek/warn）：frame-ok 青／frame-adjust 橘／frame-wait 灰
-          live.hud.track.dataset.s = allOk ? 'frame-ok' : (lm ? 'frame-adjust' : 'frame-wait');
           // 訊息優先序：完全沒人 → 缺件 → 距離/取景問題（太近/留白不足）→ 軀幹還在跳 → 已就位
           // 訊息優先序刻意這樣排：光線不足會讓後面每一項都量不準，先講它沒有意義 ——
           // 但「完全看不到人」時要先講找不到人，否則使用者只會困惑「我人就在這裡」。
           const people = run.pose.peopleCount || 0;
-          const [ic, msg] = !lm ? (run.light && !run.light.ok ? ['lightbulb', run.light.text] : ['search', '尋找人體…'])
+          const [, msg] = !lm ? (run.light && !run.light.ok ? ['lightbulb', run.light.text] : ['search', '尚未偵測到人體，請站入鏡頭範圍'])
             : run.light && run.light.level === 'dark' ? ['lightbulb', run.light.text]
               : miss.length ? ['search', `看不到：${miss.join('、')}`]
                 : !report.ok ? ['ruler', report.text]
@@ -711,7 +720,8 @@ function waitForFraming(run) {
                     : people > 1 ? ['map-pin', `已就位（畫面中有 ${people} 人，已鎖定最靠近鏡頭的您）`]
                       : (run.camHint && run.camHint.high) ? ['ruler-dimension-line', run.camHint.text]
                         : ['map-pin', '已就位，準備開始'];
-          setTrack(live.hud.track, ic, msg);
+          // 左上狀態列已拿掉（使用者 09-29 要求），取景訊息改顯示在中間的提示框
+          setCoach(msg, allOk ? 'good' : 'mid');
           // 語音只講「怎麼改」，且以最高優先的那一項為準（不要三種問題輪播疊在一起）
           if (run.voice && !allOk && lm) {
             if (miss.length) CTX.coach.say(`看不到你的${miss[0]}，請調整位置`, 'mid');
@@ -773,7 +783,7 @@ function gateHtml() {
   // 改成一張狀態卡：上半是狀態（檢查清單＋2 秒進度條，都不可按），分隔線下才是唯一的操作（附後果說明的次要文字鈕）。
   return `<div class="lv-gate" id="lv-gate" hidden>
         <div class="lv-gate-inner">
-          <div class="lv-gate-t">${icon('eye', { size: 24 })} 站進畫面中，讓 AI 看見你</div>
+          <div class="lv-gate-t">${icon('camera', { size: 24 })} 取景校正：請站入鏡頭範圍</div>
           <div class="lv-gate-frame"></div>
           <div class="lv-gate-panel" role="status">
             <ul class="lv-gate-checks" aria-label="取景檢查">
@@ -819,12 +829,6 @@ function liveShell(ex) {
             <button class="lv-exit" id="lv-exit" type="button" aria-label="結束訓練">‹ 結束</button>
             <div class="lv-head-name"><span class="lv-title">${ex.name}</span><span class="lv-mode" id="lv-modebadge"></span></div>
           </div>
-          <div class="lv-head-body">
-            <span class="lv-track" id="lv-track" data-s="seek">${trackHtml('search', '尋找人體…')}</span>
-            <div class="lv-stages" id="lv-stages" role="img" aria-label="動作週期：起始、進行、達標、回復，完整走完才計次">
-              <span>起始</span><i aria-hidden="true"></i><span>進行</span><i aria-hidden="true"></i><span>達標</span><i aria-hidden="true"></i><span>回復</span>
-            </div>
-          </div>
         </div>
       </div>
       <div class="lv-zoom" id="lv-zoom" hidden>
@@ -849,7 +853,6 @@ function liveShell(ex) {
       ${gateHtml()}
       ${restHtml({ setIdx: 1, totalSets: 3, restSec: 45, nextReps: 12 })}
       <div class="lv-hud">
-        <div class="lv-metric"><div class="m-v" id="m-reps">0</div><div class="m-k">有效次數</div></div>
         <div class="lv-metric"><div class="m-v" id="m-time">0:00</div><div class="m-k">時間</div></div>
         <div class="lv-metric"><div class="m-v" id="m-rate">—</div><div class="m-k">達標率</div></div>
         <div class="lv-metric lv-cdmetric">
@@ -1055,7 +1058,6 @@ function runCameraLoop(run) {
         } else {
           setCoach('找不到人，請站到鏡頭中、保持全身入鏡', 'mid');
           if (live.hud) {
-            live.hud.track.dataset.s = 'seek'; setTrack(live.hud.track, 'search', '尋找人體…');
             // 人不在畫面時清掉動作字卡，否則會停在上一句（例如「到位了！收回來」）與「找不到人」打架
             if (live.hud.next) { live.hud.next.hidden = true; live.hud.next.textContent = ''; }
           }
@@ -1181,17 +1183,8 @@ async function runDemoLoop(ex) {
   live.raf = requestAnimationFrame(loop);
 }
 
-/* 合體 Slice 4：HUD 的圖示＋文字。追蹤膠囊每幀更新，內容沒變就不重寫 DOM（避免每幀 innerHTML）。
-   文字可能含引擎產生的字串，一律跳脫後再放進 innerHTML。 */
+/* 文字可能含引擎產生的字串，一律跳脫後再放進 innerHTML。 */
 const escHtml = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-function trackHtml(ic, text) { return `${icon(ic, { size: 16 })}<span>${escHtml(text)}</span>`; }
-function setTrack(el, ic, text) {
-  if (!el) return;
-  const key = ic + '|' + text;
-  if (el.dataset.k === key) return;
-  el.dataset.k = key;
-  el.innerHTML = trackHtml(ic, text);
-}
 function pauseHtml(paused) { return paused ? `${icon('play', { size: 18 })} 繼續` : `${icon('pause', { size: 18 })} 暫停`; }
 // 只有圖示的按鈕：名稱放在 aria-label，狀態放在 aria-pressed（原本靠 emoji 當可讀名稱）
 function setVoiceBtn(b, on) {
@@ -1222,37 +1215,13 @@ function positiveTip(now) {
   return GOOD_TIPS[_tipIdx];
 }
 
-const STAGE_OF = { READY: 0, CONCENTRIC: 1, TARGET: 2, ECCENTRIC: 3 };  // 企劃 2.3：起始→發力→達標→回復
-
-// 追蹤膠囊的短標籤（長句留給下方教練字幕，膠囊只給一眼看懂的原因）
-// 合體 Slice 4：emoji 改成 Lucide 圖示名稱，由 setTrack() 組成圖示＋文字
-const TRACK_LABEL = {
-  too_close: ['triangle-alert', '太近了，請後退'],
-  no_head: ['triangle-alert', '看不到頭部'],
-  no_headroom: ['triangle-alert', '頭頂空間不足'],
-  no_footroom: ['triangle-alert', '腳快出畫面了'],
-  turned_away: ['triangle-alert', '請正對鏡頭'],
-  too_far: ['triangle-alert', '太遠了，請往前'],
-  missing: ['triangle-alert', '入鏡不完整'],
-  no_pose: ['search', '尋找人體…'],
-};
-
 function handleResult(res, now, lm) {
   const hud = live.hud;
 
   // —— Coach HUD：把引擎每幀的內部狀態翻譯給使用者 ——
   if (hud) {
-    // 1) 追蹤狀態膠囊（永遠可見：使用者隨時知道「系統看不看得到我」）
-    //    看不到人時直接講「為什麼」（太近／看不到頭／缺哪個部位），不再只寫「入鏡不完整」。
-    if (res.visible === false) {
-      hud.track.dataset.s = 'warn';
-      setTrack(hud.track, ...(TRACK_LABEL[res.framing?.issue] || TRACK_LABEL.missing));
-    } else {
-      hud.track.dataset.s = 'ok'; setTrack(hud.track, 'activity', '追蹤中 · 33 點');
-    }
-    // 2) 動作週期燈：READY→發力→達標→回復（Slice3 補修：準備態不亮綠，只在真正做動作時亮）
-    const st = (res.visible !== false && !framingPose(res)) ? STAGE_OF[res.phase] : undefined;
-    hud.stages.forEach((el, i) => el.classList.toggle('on', i === st));
+    // 追蹤狀態膠囊與動作週期步驟條已拿掉（使用者 09-29 要求：左上只留動作名與結束鈕）；
+    // 看不到人的原因由下方教練提示框講（res.cue）。
     // 3) 深度量表：訊號即時填充 + 四段色（藍準備 → 黃進行中 → 綠達標 → 紅錯誤）
     const gpct = Math.round(Math.max(0, Math.min(1, res.signal)) * 100);
     hud.gfill.style.height = gpct + '%';
@@ -1383,12 +1352,11 @@ function drawRingAndHud() {
     setText('m-cd', Math.ceil(remain / 1000));
     checkEndingCues(remain);
   }
-  setText('m-reps', s.validReps);
   setText('m-time', fmtTime(live.elapsedMs / 1000));
   // 即時達標率：訓練當下最該讓使用者知道的是「我做的算不算數」，而非估算的熱量。
   // 尚未有任何一次結算前顯示「—」，避免 0/0 顯示成 0% 造成誤解。
   const attempts = s.validReps + s.invalidReps;
-  setText('m-rate', attempts ? Math.round(s.validReps / attempts * 100) + '%' : '—');
+  setText('m-rate', attempts ? ratePct(s.validReps / attempts) + '%' : '—');
 }
 
 // 接近結束時提醒：最後 10 秒語音＋提示、最後 3 秒每秒嗶聲、倒數欄轉紅。
@@ -1405,7 +1373,7 @@ function checkEndingCues(remainMs) {
 }
 
 function flashRep() {
-  const el = root.querySelector('#m-reps');
+  const el = root.querySelector('.lv-set-progress');   // 「有效次數」格已拿掉，改讓本組次數跳一下
   if (!el) return;
   el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
 }
@@ -1461,9 +1429,7 @@ const GRADE_ORDER = ['C', 'B', 'A', 'S'];
 export function gradeInfo(grade, validReps, invalidReps) {
   const g = GRADE_INFO[grade] ? grade : 'C';
   const total = (validReps || 0) + (invalidReps || 0);
-  // 用無條件捨去：評等門檻是「≥」，四捨五入會出現「顯示 75% 卻是 B」。
-  // 先乘 100 再除：v/t*100 會有浮點誤差（0.29*100 = 28.999…），捨去後少 1%
-  const rate = total ? Math.floor(validReps * 100 / total) : null;
+  const rate = total ? ratePct(validReps / total) : null;   // 無條件捨去，理由見 ratePct
   const next = GRADE_ORDER[GRADE_ORDER.indexOf(g) + 1];
   let hint;
   if (rate == null) hint = '這次沒有偵測到完整的動作';

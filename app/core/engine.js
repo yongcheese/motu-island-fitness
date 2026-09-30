@@ -365,7 +365,9 @@ export function createDetector(spec, opts = {}) {
     // 不這樣做的話，「一直抬同一隻腳」永遠會有第一下漏過去，「阻擋所有作弊動作」就不成立。
     let revoked = false;
     if (alt && !alternationOK && sameAsPrevAttempt && unconfirmedFirstAlt) {
-      validReps--; revoked = true; unconfirmedFirstAlt = false;
+      // 被作廢的第一下要轉記成無效：只扣有效不補無效，達標率的分母（有效＋無效）會少一下，
+      // 達標率被灌高（例：作廢 1 下後交替 8 下，應為 8/10=80% 卻會算成 8/9=88%）。
+      validReps--; invalidReps++; revoked = true; unconfirmedFirstAlt = false;
     }
     if (valid) {
       validReps++;

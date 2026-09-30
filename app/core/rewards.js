@@ -3,6 +3,10 @@
 // 原 calories.js。熱量估算（METs 模型）已於 2026-08-25 移除——該數字由公式推算，
 // 未納入個體代謝差異，亦無心率或攝氧量佐證，屬本系統無法驗證的量；
 // 對外量化資料一律改用系統可精確判定的項目（有效次數、達標率、錯誤分佈）。
+/** 達標率百分比（整數）。一律無條件捨去：評等門檻是「≥」，四捨五入會出現「顯示 75% 卻是 B 級」。
+ *  +1e-9 抵銷浮點誤差（0.29*100 = 28.999…）。訓練中 HUD、結算、追蹤頁都用這一支，數字才會一致。 */
+export function ratePct(rate) { return Math.floor(rate * 100 + 1e-9); }
+
 export function grade({ targetRate = 0, validRate = 0 }) {
   const score = (targetRate + validRate) / 2;
   if (score >= 0.9) return 'S';

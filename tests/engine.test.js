@@ -103,6 +103,13 @@ test('highknees: 一直抬同一隻腳 → 0 valid (第一下須被回溯撤銷)
     assert(s.validReps >= 0, 'validReps 不得為負（撤銷只能發生一次）');
   }
 });
+test('highknees: 被撤銷的第一下轉記為無效 —— 有效＋無效＝實際嘗試次數（達標率分母不少算）', () => {
+  for (const reps of [2, 4, 6, 12]) {
+    const { s } = run('highknees', { reps, variant: 'singleleg' });
+    eq(s.validReps + s.invalidReps, s.attempts, `singleleg ${reps} 下：有效＋無效要等於嘗試次數`);
+    eq(s.targetRate, 0, `singleleg ${reps} 下：達標率 0`);
+  }
+});
 test('highknees: 撤銷不影響正常交替 (clean 任何次數皆全數計入)', () => {
   for (const reps of [2, 6, 10]) {
     const { s } = run('highknees', { reps, variant: 'clean' });

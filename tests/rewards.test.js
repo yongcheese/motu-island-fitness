@@ -1,4 +1,5 @@
 // 結算獎勵：評級與金幣。
+import { readFileSync } from 'node:fs';
 // 原 calories.test.js。熱量估算的兩條測試已隨該功能一併移除（2026-08-25）——
 // 熱量由 METs 公式推算且無從驗證，已改以系統可精確判定的量取代。
 import { test, eq, assert } from './harness.js';
@@ -80,4 +81,19 @@ test('shardsFor／ticketsFor 為純函式：同輸入必同輸出，且不改動
   eq(s1, s2, '碎片：兩次呼叫結果應相同');
   eq(t1, t2, '抽獎券：兩次呼叫結果應相同');
   eq(JSON.stringify(input), snapshot, '不得改動傳入的物件');
+});
+
+// 09-29：達標率顯示統一無條件捨去（訓練中 HUD 原本四捨五入，會出現 HUD 75%、結算 74%／B 級）
+import { ratePct } from '../app/core/rewards.js';
+test('ratePct：無條件捨去且不受浮點誤差影響', () => {
+  eq(ratePct(0.29), 29, '0.29*100 浮點誤差不得捨成 28');
+  eq(ratePct(0.746), 74, '74.6% 顯示 74，與評等 B 一致');
+  eq(ratePct(0.75), 75); eq(ratePct(1), 100); eq(ratePct(0), 0);
+  for (let t = 1; t <= 40; t++) for (let v = 0; v <= t; v++) eq(ratePct(v / t), Math.floor(v * 100 / t), `${v}/${t}`);
+});
+test('HUD、結算、追蹤頁的達標率都走 ratePct（不再各自四捨五入）', () => {
+  for (const f of ['app/features/workout/workout.js', 'app/features/tracking/tracking.js']) {
+    const src = readFileSync(new URL('../' + f, import.meta.url), 'utf8');
+    assert(!/Math\.round\([^)]*(?:targetRate|valid\w*\s*\/)/.test(src), `${f} 還有四捨五入的達標率`);
+  }
 });

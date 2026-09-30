@@ -13,32 +13,32 @@ const rule = (sel) => { const m = css.match(new RegExp(sel.replace(/[.*+?^${}()|
 /* ---------- Slice 11：左上資訊卡 ---------- */
 const head = js.slice(js.indexOf('<div class="lv-head">'), js.indexOf('<div class="lv-zoom"'));
 
-test('Slice 11：結束鈕、動作名、模式、追蹤狀態、步驟條都收在同一張 .lv-head 卡裡', () => {
+test('09-29：左上卡只留結束鈕、動作名、模式；追蹤狀態與四步驟條已拿掉', () => {
   assert(head.length > 0, '找不到 .lv-head');
-  for (const id of ['id="lv-exit"', 'class="lv-title"', 'id="lv-modebadge"', 'id="lv-track"', 'id="lv-stages"']) assert(head.includes(id), `卡片裡缺 ${id}`);
+  for (const id of ['id="lv-exit"', 'class="lv-title"', 'id="lv-modebadge"']) assert(head.includes(id), `卡片裡缺 ${id}`);
+  for (const gone of ['lv-track', 'lv-stages', 'lv-head-body', '尋找人體']) assert(!head.includes(gone), `卡片裡還有 ${gone}`);
+  assert(!/hud\.(track|stages)/.test(js), 'JS 還在更新已移除的 hud.track／hud.stages');
+  assert(!/\.lv-(track|stages)\b/.test(css), 'CSS 還留著 .lv-track／.lv-stages 死規則');
 });
 
 test('Slice 11：舊的散落膠囊容器 .lv-hudtop 已移除（JS 與 CSS 都沒有）', () => {
   assert(!js.includes('lv-hudtop') && !css.includes('.lv-hudtop'), '還有 lv-hudtop');
 });
 
-test('Slice 11：步驟條四個階段依序排列，且 hud.stages 仍以 span 取得（計次燈接線不變）', () => {
-  const stages = head.slice(head.indexOf('id="lv-stages"'));
-  const order = ['起始', '進行', '達標', '回復'].map(t => stages.indexOf(`<span>${t}</span>`));
-  assert(order.every((v, i) => v > 0 && (i === 0 || v > order[i - 1])), `順序 ${order}`);
-  assert(js.includes(`querySelectorAll('#lv-stages span')`), 'hud.stages 選擇器變了');
+test('09-29：取景訊息改由中間提示框顯示（狀態列拿掉後仍要告訴使用者怎麼調整）', () => {
+  assert(/setCoach\(msg, allOk \? 'good' : 'mid'\)/.test(js), '取景訊息沒有接到 setCoach');
 });
 
-test('Slice 11：階段是指示器不是按鈕 —— span 沒有外框、背景、陰影', () => {
-  const r = rule('.lv-stages span');
-  assert(r, '找不到 .lv-stages span 規則');
-  for (const p of ['border:', 'background:', 'box-shadow:', 'padding:']) assert(!r.includes(p), `階段仍有 ${p}`);
+test('09-29：底部數據列拿掉「有效次數」，剩時間／達標率／本組次數三格，並放大', () => {
+  const hud = js.slice(js.indexOf('<div class="lv-hud">'), js.indexOf('<div class="lv-ctrls">'));
+  assert(!hud.includes('有效次數') && !hud.includes('m-reps'), '還有有效次數格');
+  assert((hud.match(/class="lv-metric/g) || []).length === 3, '數據格不是 3 格');
+  assert(/repeat\(3, 1fr\)/.test(rule('.lv-hud') || ''), '.lv-hud 不是三欄');
+  assert(/clamp\(32px, 9vw, 50px\)/.test(rule('.lv-fx .m-v') || ''), '整合版數字沒有放大');
 });
 
-test('Slice 11：追蹤狀態不再是獨立膠囊（沒有外框與陰影），狀態色改放小圓點', () => {
-  const r = rule('.lv-track');
-  assert(r && !r.includes('border:') && !r.includes('box-shadow:'), r);
-  assert(css.includes('.lv-track[data-s="ok"]::before'), '缺狀態圓點');
+test('09-29：中間的動作矯正提示字放大到 22px（手機 18px）', () => {
+  assert(/font-size: 22px/.test(rule('.lv-wrap .lv-coach') || ''), '提示字不是 22px');
 });
 
 test('Slice 11：結束鈕仍是可聚焦、≥44px 的按鈕，有 aria-label', () => {

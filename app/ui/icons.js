@@ -114,7 +114,7 @@ export const EMOJI_ICON = {
   '⏳': 'hourglass',                 // 等待、倒數
   '📍': 'map-pin',                   // 已就位
   '📐': 'ruler-dimension-line',      // 鏡頭角度
-  '👀': 'eye',                       // 讓 AI 看見你
+  '👀': 'eye',                       // 取景校正
   '🔊': 'volume-2',                  // 語音開
   '🎵': 'music',                     // 背景音樂
   '⏸': 'pause',                     // 暫停

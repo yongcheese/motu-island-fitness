@@ -3,6 +3,7 @@
 // 在 unmount() / 重繪前一律 .destroy()，避免重用 <canvas> 拋錯。
 
 import { store } from '../../state/store.js';
+import { ratePct } from '../../core/rewards.js';
 import { todayKey, sessionDayKey, shiftDays } from '../../core/dates.js';
 
 /* ---------------- 常數 / 主題 ---------------- */
@@ -121,7 +122,7 @@ export function computeSummary(state, today = new Date()) {
     totalValid,
     // 平均達標率取代原本的累積熱量：熱量由 MET 公式估算，未納入個體代謝差異，
     // 亦無心率或攝氧量佐證；達標率則由本系統逐次判定累計而得，是可精確計算的量。
-    avgTargetRate: totalAttempts ? Math.round(totalValid / totalAttempts * 100) : 0,
+    avgTargetRate: totalAttempts ? ratePct(totalValid / totalAttempts) : 0,
     streakCurrent: store.derived.currentStreak(),
     streakLongest: state.streak?.longest || 0,
   };
@@ -146,7 +147,7 @@ function targetRatePerDay(history, keys) {
     if (!list.length) return null;
     let v = 0, t = 0;
     for (const s of list) { v += s.validReps || 0; t += (s.validReps || 0) + (s.invalidReps || 0); }
-    return t ? Math.round(v / t * 100) : null;
+    return t ? ratePct(v / t) : null;
   });
 }
 
@@ -364,7 +365,7 @@ function weekDeltaRow(thisWeek, lastWeek) {
   const items = [
     { k: '運動時長', unit: '分', cur: Math.round(thisWeek.minutes), prev: Math.round(lastWeek.minutes) },
     { k: '有效次數', unit: '次', cur: thisWeek.valid, prev: lastWeek.valid },
-    { k: '達標率', unit: '%', cur: Math.round(thisWeek.targetRate * 100), prev: Math.round(lastWeek.targetRate * 100) },
+    { k: '達標率', unit: '%', cur: ratePct(thisWeek.targetRate), prev: ratePct(lastWeek.targetRate) },
   ];
   return `<div class="trk-deltas">${items.map(deltaPill).join('')}</div>`;
 }
@@ -429,12 +430,12 @@ function buildCompare(thisWeek, lastWeek) {
   const lastData = [
     Math.round(lastWeek.minutes),
     lastWeek.valid,
-    Math.round(lastWeek.targetRate * 100),
+    ratePct(lastWeek.targetRate),
   ];
   const thisData = [
     Math.round(thisWeek.minutes),
     thisWeek.valid,
-    Math.round(thisWeek.targetRate * 100),
+    ratePct(thisWeek.targetRate),
   ];
   makeChart(canvas, {
     type: 'bar',
@@ -535,7 +536,7 @@ function buildRate(history) {
   const canvas = ROOT.querySelector('#trk-rate');
   const { valid, invalid } = overallReps(history);
   const total = valid + invalid;
-  const pct = total ? Math.round(valid / total * 100) : 0;
+  const pct = total ? ratePct(valid / total) : 0;
 
   const centerText = {
     id: 'trkCenterText',

@@ -115,15 +115,15 @@
 .wk-hero-badge { position: absolute; left: 14px; bottom: 14px; display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: var(--motu-radius-pill); background: var(--motu-color-surface); border: 1px solid var(--motu-color-border); box-shadow: var(--motu-shadow-sm); color: var(--motu-color-text); font-weight: 800; font-size: 14px; }
 .wk-hero-badge .icon { color: var(--motu-teal-dark); }
 .wk-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0; }
-.wk-stat { padding: 12px; border-radius: var(--motu-radius-lg); }
-.wk-stat .k { color: var(--motu-color-text-muted); font-size: 11.5px; font-weight: 700; }
+.wk-stat { padding: 14px 16px; border-radius: var(--motu-radius-lg); }
+.wk-stat .k { color: var(--motu-color-text-muted); font-size: 13px; font-weight: 700; }
 .wk-stat .k .icon { color: var(--motu-teal-dark); }
-.wk-stat .v { font-weight: 800; font-size: 14px; margin-top: 3px; color: var(--motu-color-text); }
+.wk-stat .v { font-weight: 800; font-size: 16px; margin-top: 4px; color: var(--motu-color-text); }
 .wk-judge { padding: 14px 16px; border-radius: var(--motu-radius-lg); margin: 10px 0; }
-.wk-judge-t { font-weight: 800; font-size: 14px; margin-bottom: 6px; color: var(--motu-color-text); }
+.wk-judge-t { font-weight: 800; font-size: 16px; margin-bottom: 6px; color: var(--motu-color-text); }
 .wk-judge-t .icon { color: var(--motu-teal-dark); }
-.wk-judge-d { color: var(--motu-color-text-muted); font-size: 13.5px; line-height: 1.6; }
-.wk-toggle { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: var(--motu-radius-lg); background: var(--motu-color-surface); border: 1px solid var(--motu-color-border); box-shadow: var(--motu-shadow-sm); margin: 10px 0; font-weight: 700; font-size: 14px; color: var(--motu-color-text); }
+.wk-judge-d { color: var(--motu-color-text-muted); font-size: 15px; line-height: 1.6; }
+.wk-toggle { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: var(--motu-radius-lg); background: var(--motu-color-surface); border: 1px solid var(--motu-color-border); box-shadow: var(--motu-shadow-sm); margin: 10px 0; font-weight: 700; font-size: 15px; color: var(--motu-color-text); }
 .wk-toggle span { flex: 1; }
 .wk-toggle span .icon { color: var(--motu-coral); }
 /* 合體 Slice 6：原本 display:none，鍵盤完全碰不到開關 → 改成視覺隱藏但可聚焦，焦點外框畫在旁邊的開關上 */
@@ -150,11 +150,10 @@
 #lv-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .lv-top { position: absolute; top: 0; left: 0; display: flex; align-items: flex-start; padding: calc(env(safe-area-inset-top) + 12px) 16px 12px; z-index: 7; max-width: calc(100% - 72px); }   /* Slice3 R1: 頂欄(含退出鈕)永遠最上層；Slice 11：右側讓出深度量表／縮放列 */
 /* Slice 11：左上資訊卡 —— 一張白卡、三層資訊，取代原本五六顆散落的膠囊 */
-.lv-head { display: flex; flex-direction: column; gap: 10px; padding: 10px 14px 12px 10px; min-width: 250px;
+.lv-head { display: flex; flex-direction: column; gap: 10px; padding: 10px 14px 10px 10px;
   background: var(--lv-hud-bg); border: 1px solid var(--motu-color-border); border-radius: var(--motu-radius-lg); box-shadow: var(--motu-shadow-md); }
 .lv-head-row { display: flex; align-items: center; gap: 12px; }
 .lv-head-name { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.lv-head-body { display: flex; flex-direction: column; gap: 10px; padding: 10px 0 0 4px; border-top: 2px dashed var(--motu-color-border); }
 /* lumina.css 在本檔之後載入、且有同權重的 .lv-metric／.lv-btn／.lv-exit／.lv-coach／.lv-pause 規則 → 這幾個一律加 .lv-wrap 前綴 */
 .lv-wrap .lv-exit { flex: none; background: var(--motu-white); border: 1px solid var(--motu-color-border); color: var(--motu-color-text); border-radius: var(--motu-radius-pill); min-height: 44px; padding: 8px 14px; font-weight: 800; font-size: 14px; box-shadow: var(--motu-shadow-sm); cursor: pointer; }
 .lv-wrap .lv-exit:active { transform: scale(.98); }
@@ -211,7 +210,7 @@
 .lv-count.go { font-size: 64px; height: 140px; border-color: var(--frame-ok); }
 @keyframes cdpop { 0% { transform: scale(.4); opacity: 0; } 35% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); opacity: .9; } }
 /* 教練字幕：優先級只用外框色區分（珊瑚／金／海洋青），字一律深藍 */
-.lv-wrap .lv-coach { position: absolute; left: 50%; transform: translateX(-50%); bottom: 168px; max-width: 80%; text-align: center; background: var(--lv-hud-bg); color: var(--motu-color-text); border: 2px solid var(--motu-color-border); box-shadow: var(--motu-shadow-md); padding: 10px 18px; border-radius: var(--motu-radius-lg); font-weight: 800; font-size: 15px; z-index: 3; transition: opacity var(--motu-duration-base) var(--motu-ease-standard); }
+.lv-wrap .lv-coach { position: absolute; left: 50%; transform: translateX(-50%); bottom: 168px; max-width: 80%; text-align: center; background: var(--lv-hud-bg); color: var(--motu-color-text); border: 2px solid var(--motu-color-border); box-shadow: var(--motu-shadow-md); padding: 10px 18px; border-radius: var(--motu-radius-lg); font-weight: 800; font-size: 22px; line-height: 1.35; z-index: 3; transition: opacity var(--motu-duration-base) var(--motu-ease-standard); }
 .lv-coach:empty { opacity: 0; }
 .lv-coach[data-p="high"] { border-color: var(--motu-coral); }
 .lv-coach[data-p="mid"] { border-color: var(--motu-gold); }
@@ -229,19 +228,20 @@
 .lv-next[data-p="hit"] { border-color: var(--motu-teal); border-width: 3px; transform: translateX(-50%) scale(1.06); }
 .lv-next[data-p="off"] { color: var(--motu-color-text-muted); }
 @media (max-width: 480px) {
+  .lv-wrap .lv-coach { font-size: 18px; padding: 9px 14px; }
   .lv-next { font-size: 15px; bottom: 264px; padding: 7px 14px; white-space: normal; }
 }
 
-.lv-hud { position: absolute; left: 0; right: 0; bottom: 84px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 0 16px; z-index: 3; }
+.lv-hud { position: absolute; left: 0; right: 0; bottom: 84px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0 16px; z-index: 3; }
 .lv-wrap .lv-metric { background: var(--lv-hud-bg); border: 1px solid var(--motu-color-border); border-radius: var(--motu-radius-lg); padding: 10px 6px; text-align: center; box-shadow: var(--motu-shadow-md); }
-.m-v { font-weight: 900; font-size: 22px; color: var(--motu-color-text); font-variant-numeric: tabular-nums; transition: color var(--motu-duration-base) var(--motu-ease-standard); }
+.m-v { font-weight: 900; font-size: 28px; color: var(--motu-color-text); font-variant-numeric: tabular-nums; transition: color var(--motu-duration-base) var(--motu-ease-standard); }
 /* 最後 10 秒：珊瑚字在白底只有 2.7:1 → 數字維持深藍、整格換珊瑚外框與淡底，並保留閃爍 */
 .m-v.low { animation: lowpulse calc(var(--motu-duration-base) * 4) var(--motu-ease-standard) infinite; }   /* 1 秒一閃，與倒數同拍 */
 .lv-wrap .lv-metric:has(.m-v.low) { border-color: var(--motu-coral); background: color-mix(in srgb, var(--motu-coral) 14%, var(--motu-white)); }
 @keyframes lowpulse { 0%,100% { opacity: 1; } 50% { opacity: .5; } }
 .m-v.pop { animation: popv calc(var(--motu-duration-base) + var(--motu-duration-fast)) var(--motu-ease-out); }
 @keyframes popv { 0% { transform: scale(1); color: var(--motu-teal-dark); } 40% { transform: scale(1.4); color: var(--motu-teal-dark); } 100% { transform: scale(1); } }
-.m-k { font-size: 10.5px; font-weight: 700; color: var(--motu-color-text-muted); margin-top: 2px; }
+.m-k { font-size: 13px; font-weight: 700; color: var(--motu-color-text-muted); margin-top: 2px; }
 .lv-ctrls { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 16px); display: flex; gap: 10px; justify-content: center; align-items: center; z-index: 3; }
 .lv-wrap .lv-btn { display: inline-grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--motu-color-border); background: var(--lv-hud-bg); color: var(--motu-color-text); box-shadow: var(--motu-shadow-md); transition: opacity var(--motu-duration-fast) var(--motu-ease-standard), transform var(--motu-duration-fast) var(--motu-ease-standard); }
 .lv-wrap .lv-btn .icon { color: currentColor; }
@@ -357,36 +357,77 @@
   .wk-hero { height: 300px; }
 }
 
+/* ===== 09-29：開始訓練頁要「滿一點」—— 寬螢幕放寬到 1200px、左右兩欄，示範人物跟右欄一樣高 ===== */
+.wk-intro .sub { font-size: 16px; }
+.wk-intro #wk-start { min-height: 56px; font-size: 18px; }
+@media (min-width: 1000px) {
+  #view > .fade-in.wk-intro, .fade-in.wk-intro { max-width: min(1200px, calc(100% - 200px)); }
+  .wk-intro-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: stretch; }
+  .wk-intro-main .wk-hero { height: auto; min-height: 520px; margin: 4px 0 0; }
+  .wk-intro-side { display: flex; flex-direction: column; }
+  .wk-intro .h1 { font-size: 36px; margin-top: 0; }
+  .wk-intro .wk-stats { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .wk-intro .wk-stat .v { font-size: 17px; }
+  .wk-intro .wk-cta { margin-top: auto; padding-top: 8px; }
+}
+
+/* 「運動前須知」入口：整列可點的卡片（跟暖身開關同寬），右側箭頭表示會打開新內容 */
+.wk-safe-open { display: flex; align-items: center; gap: 12px; width: 100%; margin: 10px 0 0; padding: 14px 16px; text-align: left; cursor: pointer;
+  border-radius: var(--motu-radius-lg); border: 1px solid color-mix(in srgb, var(--motu-gold) 60%, var(--motu-color-border));
+  background: color-mix(in srgb, var(--motu-gold) 12%, var(--motu-color-surface)); color: var(--motu-color-text); box-shadow: var(--motu-shadow-sm);
+  font: inherit; transition: transform var(--motu-duration-fast) var(--motu-ease-standard), box-shadow var(--motu-duration-base) var(--motu-ease-standard); }
+.wk-safe-open:hover { box-shadow: var(--motu-shadow-md); }
+.wk-safe-open:active { transform: scale(.98); }
+.wk-safe-open:focus-visible { outline: 2px solid var(--motu-color-focus); outline-offset: 2px; }
+.wk-safe-open-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--motu-color-surface); flex: none; }
+.wk-safe-open-ic .icon { color: var(--motu-gold-text); }
+.wk-safe-open-t { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wk-safe-open-t b { font-size: 16px; font-weight: 800; }
+.wk-safe-open-t small { font-size: 13px; color: var(--motu-color-text-muted); font-weight: 600; }
+.wk-safe-open-go { font-size: 24px; font-weight: 800; color: var(--motu-color-text-muted); }
+
+/* 須知面板：置中卡片＋半透明遮罩，內容可捲動，「我知道了」固定在底部 */
+.wk-safe { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 16px; background: rgba(38, 70, 83, .45); }
+.wk-safe[hidden] { display: none; }
+.wk-safe-card { display: flex; flex-direction: column; width: min(720px, 100%); max-height: min(88vh, 900px); overflow: hidden;
+  background: var(--motu-color-surface); border: 1px solid var(--motu-color-border); border-radius: var(--motu-radius-panel); box-shadow: var(--motu-shadow-lg);
+  animation: wkSafeIn var(--motu-duration-base) var(--motu-ease-out); }
+@keyframes wkSafeIn { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+.wk-safe-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 20px 12px; border-bottom: 2px dashed var(--motu-color-border); }
+.wk-safe-head h2 { margin: 0; font-size: 22px; font-weight: 900; color: var(--motu-color-text); display: inline-flex; align-items: center; gap: 8px; }
+.wk-safe-head h2 .icon { color: var(--motu-gold-text); }
+.wk-safe-x { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--motu-color-border); background: var(--motu-white); color: var(--motu-color-text); font-size: 18px; cursor: pointer; flex: none; }
+.wk-safe-body { overflow-y: auto; padding: 14px 20px 8px; }
+.wk-safe-lead { margin: 0 0 12px; font-size: 14px; line-height: 1.6; color: var(--motu-color-text-muted); }
+.wk-safe-sec { margin: 0 0 14px; }
+.wk-safe-sec h3 { margin: 0 0 8px; font-size: 17px; font-weight: 800; color: var(--motu-color-text); display: flex; align-items: center; gap: 8px; }
+.wk-safe-sec h3 .icon { color: var(--motu-teal-dark); }
+.wk-safe-sec ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.wk-safe-sec li { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: var(--motu-radius-lg); background: var(--motu-color-surface-sunken);
+  font-size: 15px; line-height: 1.6; color: var(--motu-color-text); }
+.wk-safe-sec li span { flex: 1; }
+.wk-safe-src { flex: none; margin-top: 2px; padding: 2px 8px; border-radius: var(--motu-radius-pill); font-size: 12px; font-weight: 800;
+  background: var(--motu-white); border: 1px solid var(--motu-color-border); color: var(--motu-color-text-muted); }
+.wk-safe-src[data-src="hpa"], .wk-safe-src[data-src="who"] { color: var(--motu-teal-dark); border-color: var(--motu-teal); }
+.wk-safe-sec.is-app li { background: transparent; border: 1px dashed var(--motu-color-border); }
+.wk-safe-refs { margin: 4px 0 10px; padding-top: 12px; border-top: 1px solid var(--motu-color-border); font-size: 12.5px; line-height: 1.6; color: var(--motu-color-text-muted); }
+.wk-safe-refs ol { margin: 6px 0 0; padding-left: 20px; }
+.wk-safe-refs a { color: var(--motu-teal-dark); word-break: break-all; }
+.wk-safe-ok { margin: 10px 20px 18px; min-height: 52px; font-size: 17px; }
+@media (max-width: 620px) {
+  .wk-intro .wk-stats { grid-template-columns: repeat(2, 1fr); }   /* 字放大後三欄會把「股四頭肌」擠成兩行 */
+  .wk-safe { padding: 0; place-items: end stretch; }
+  .wk-safe-card { width: 100%; max-height: 92vh; border-radius: var(--motu-radius-panel) var(--motu-radius-panel) 0 0; }
+  .wk-safe-head h2 { font-size: 19px; }
+  .wk-safe-sec li { font-size: 14.5px; }
+}
+
 /* ============ v3 Coach HUD：把引擎狀態即時翻譯給使用者 ============ */
 /* 3D 人偶舞台（示範模式）：置於 video 之上、2D canvas(倒數環)之下 */
 .lv-avatar3d { position: absolute; inset: 0; background:
   radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--motu-mint) 30%, transparent), transparent 60%), var(--motu-mint-pale); }
 /* 簡介頁 3D 展示窗 */
 .wk-demo3d { position: relative; width: 100%; height: 100%; min-height: 240px; }
-
-/* 追蹤狀態（資訊卡內的一行文字，不再是另一顆膠囊）：狀態色只放在圖示前的小圓點與圖示，字一律深藍（對比 ≥4.5） */
-.lv-track { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 800; color: var(--motu-color-text); letter-spacing: .02em; }
-.lv-track::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--motu-color-border); flex: none; }
-.lv-track[data-s="ok"]::before   { background: var(--motu-teal); }
-.lv-track[data-s="warn"]::before { background: var(--motu-gold); }
-.lv-wrap .lv-track[data-s="warn"] .icon { color: var(--motu-gold-text); }
-.lv-track[data-s="seek"] { color: var(--motu-color-text-muted); }
-/* Slice3 校準 P1：取景階段專屬（藍/橘/灰，與訓練 ok/seek/warn 分離，不改訓練綠語意） */
-.lv-track[data-s="frame-ok"]::before     { background: var(--frame-ok); }
-.lv-wrap .lv-track[data-s="frame-ok"] .icon { color: var(--frame-ok); }
-.lv-track[data-s="frame-adjust"]::before { background: var(--frame-adjust); }
-.lv-wrap .lv-track[data-s="frame-adjust"] .icon { color: var(--frame-adjust); }
-.lv-track[data-s="frame-wait"]   { color: var(--motu-color-text-muted); }
-.lv-wrap .lv-track:is([data-s="seek"], [data-s="frame-wait"]) .icon { color: currentColor; }
-/* 動作週期步驟條：四個階段用細線串起來，是「現在走到哪」的指示器 —— 沒有外框、沒有陰影，不像按鈕 */
-.lv-stages { display: flex; align-items: center; gap: 0; }
-.lv-stages i { flex: 1 1 10px; min-width: 8px; height: 2px; margin: 0 4px; background: var(--motu-color-border); border-radius: 1px; }
-.lv-stages span { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--motu-color-text-muted); white-space: nowrap;
-  transition: color var(--motu-duration-fast) var(--motu-ease-standard); }
-.lv-stages span::before { content: ''; width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; border: 2px solid var(--motu-color-border); background: var(--motu-white);
-  transition: background-color var(--motu-duration-fast) var(--motu-ease-standard), border-color var(--motu-duration-fast) var(--motu-ease-standard), transform var(--motu-duration-fast) var(--motu-ease-standard); }
-.lv-stages span.on { color: var(--motu-color-text); font-weight: 900; }
-.lv-stages span.on::before { background: var(--motu-teal); border-color: var(--motu-teal-dark); transform: scale(1.3); }
 
 /* 深度量表（右側直條 + 達標線） */
 .lv-gauge { position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
@@ -435,9 +476,7 @@
 @media (max-width: 620px) {
   .lv-top { padding: calc(env(safe-area-inset-top) + 10px) 10px 10px; max-width: calc(100% - 60px); }
   .lv-head { min-width: 0; padding: 8px 12px 10px 8px; gap: 8px; }
-  .lv-head-body { gap: 8px; padding-top: 8px; }
   .lv-title { font-size: 16px; }
-  .lv-stages span { font-size: 11px; gap: 4px; }
   .lv-gauge { right: 10px; }
 }
 
@@ -635,7 +674,7 @@
   .wk-coin-fly { display: none; }
   .wk-rw-goalbar i, .wk-rw-island.hit { transition: none; }
   /* 無限循環與按壓位移：縮短時長不夠，直接關掉 */
-  .m-v.low, .motu-is-claimable,
+  .m-v.low, .motu-is-claimable, .wk-safe-card,
   .fade-in:is(.wk-intro, .wk-sum), .fade-in:has(#wk-list),
   :is(.wk-grid, .wk-stats, .wk-sum).stagger > * { animation: none; }   /* 進場延遲也要歸零，否則內容會空白一下 */
   /* 一次性彈出：終態與原本樣式相同，直接不播 */
@@ -679,11 +718,12 @@
    控制鈕移到數據列上方；教練提示與動作指引維持在控制鈕之上（Slice 8 補 RWD 細節）。
    使用者同日追加：底部四格字要放大（做動作時離螢幕遠，看不清楚）；示範模式人物的圓形展示台不可壓到四格。
    數據列高度會隨字級變，控制鈕與展示台的位置都由 --lv-hud-h 推出來，改字級只要改這一個值。 */
-.lv-fx { --lv-hud-h: 96px; --lv-ctrls-bottom: calc(env(safe-area-inset-bottom) + 12px + var(--lv-hud-h) + 12px); }
+.lv-fx { --lv-hud-h: 116px; --lv-ctrls-bottom: calc(env(safe-area-inset-bottom) + 12px + var(--lv-hud-h) + 12px); }
 .lv-fx .lv-hud { bottom: calc(env(safe-area-inset-bottom) + 12px); }
-.lv-fx .lv-metric { padding: 12px 6px; }
-.lv-fx .m-v { font-size: clamp(26px, 7vw, 38px); line-height: 1.15; }
-.lv-fx .m-k { font-size: clamp(13px, 3.4vw, 16px); margin-top: 4px; }
+.lv-fx .lv-metric { padding: 14px 8px; }
+/* 09-29：拿掉「有效次數」剩三格，數字與標籤再放大一級 */
+.lv-fx .m-v { font-size: clamp(32px, 9vw, 50px); line-height: 1.1; }
+.lv-fx .m-k { font-size: clamp(15px, 4vw, 20px); margin-top: 4px; }
 .lv-fx .lv-ctrls { bottom: var(--lv-ctrls-bottom); }
 /* Slice 8：提示欄（動作指引＋教練提示）。舊版不包一層（display: contents），整合版堆在控制鈕上方：
    教練提示貼底、動作指引疊在它上面，長句折行時指引跟著上推，兩者不會重疊。 */
@@ -697,7 +737,7 @@
 .lv-fx .lv-avatar3d { bottom: calc(var(--lv-ctrls-bottom) + 48px + 12px); background: transparent;
   /* 展示台下緣被裁平，用淡出收邊，看起來像站在舞台上而不是被切掉 */
   -webkit-mask-image: linear-gradient(to bottom, #000 82%, transparent); mask-image: linear-gradient(to bottom, #000 82%, transparent); }
-@media (max-width: 620px) { .lv-fx { --lv-hud-h: 84px; } }
+@media (max-width: 620px) { .lv-fx { --lv-hud-h: 100px; } }
 /* 截圖急件：動作卡、說明頁、示範舞台的示範人物改成島嶼主角（插槽，宿主畫進 2D 畫布） */
 .wk2-figure { position: absolute; inset: 0; transition: transform var(--motu-duration-slow) var(--motu-ease-out); }
 .wk2:hover .wk2-figure { transform: scale(1.05); }
@@ -753,3 +793,24 @@
    整合版沒有載入 shell.css（外殼是遊戲端的），那一欄空著會把整頁往右推 —— 同樣取消，#view 滿版置中 */
 .fx-body { position: absolute; inset: 0; }
 .fx-body #app { position: absolute; inset: 0; display: flex; flex-direction: column; width: auto; height: auto; max-width: none; margin: 0; }
+
+/* ===== 09-30：動作清單頁要「滿一點」（使用者截圖：1520px 寬的視窗只用了中間 1040px） =====
+   寬螢幕放寬到 1400px；卡片、推薦卡、字級跟著放大，版面不會只是拉寬變空。 */
+.wk2-coin { white-space: nowrap; flex: none; }   /* 「最多 432」不能被拆成兩行；箭頭也固定在同一行，只讓部位文字自己換行 */
+.wk2-target { min-width: 0; }
+.wk2-go { flex: none; }
+@media (min-width: 1000px) {
+  /* 左右各讓 100px：整合版右上角有遊戲的關閉鈕（固定定位），太寬會跟金幣列重疊 */
+  #view > .fade-in:has(#wk-list), .fade-in:has(#wk-list) { max-width: min(1400px, calc(100% - 200px)); }
+  .wk-grid { grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 20px; }   /* 330：1520 寬時三欄、1920 寬時四欄，部位文字不會被擠斷 */
+  .wk2-hero { height: 190px; }
+  .wk2-body { padding: 16px 20px 20px; }
+  .wk2-name { font-size: 22px; }
+  .wk2-tag { font-size: 14px; }
+  .wk2-stats { font-size: 16px; }
+  .wk-rec { padding: 20px; gap: 22px; }
+  .wk-rec-hero { width: 190px; min-height: 190px; }
+  .wk-rec-name { font-size: 26px; }
+  .wk-rec-why, .wk-rec-plan { font-size: 15px; }
+  .wk-rec-stats { font-size: 17px; }
+}
