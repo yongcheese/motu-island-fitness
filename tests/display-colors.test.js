@@ -151,10 +151,12 @@ test('display: 每個動作都必須宣告 judgedSegments（新增動作時不�
 /* ---------- 合體 Slice 4：換皮不得動到判定回饋色 ---------- */
 // 不變量 2：骨架三色與三套配色屬於判定回饋，不算樣式。以下是換皮前（2026-09-24）的數值快照，
 // 換皮過程若有人「順手」把它們改成 Motu 色票，這裡會失敗。
+// 2026-09-30 唯一一次刻意修改：dim（不判定的部位）由半透明白改為淡藍——使用者實機回報白色看起來像「沒偵測到」，
+// 經使用者裁示改色；綠／黃／紅／frame 判定色不變。
 import { PALETTES, paletteFor } from '../app/ui/display-colors.js';
 const PALETTES_BEFORE_MOTU = {
-  tricolor: { green: '#27e6a6', yellow: '#ffd23f', red: '#ff5d6c', frame: '#3aa8ff', dim: 'rgba(255,255,255,.4)' },
-  high:     { green: '#0072B2', yellow: '#F0E442', red: '#D55E00', frame: '#56B4E9', dim: 'rgba(255,255,255,.45)' },
+  tricolor: { green: '#27e6a6', yellow: '#ffd23f', red: '#ff5d6c', frame: '#3aa8ff', dim: 'rgba(58,168,255,.5)' },
+  high:     { green: '#0072B2', yellow: '#F0E442', red: '#D55E00', frame: '#56B4E9', dim: 'rgba(86,180,233,.55)' },
   mono:     { green: 'rgba(255,255,255,.34)', yellow: 'rgba(255,255,255,.72)', red: '#ffffff', frame: 'rgba(255,255,255,.5)', dim: 'rgba(255,255,255,.22)' },
 };
 test('PALETTES 三套配色與換皮前逐值相同（不變量 2）', () => {

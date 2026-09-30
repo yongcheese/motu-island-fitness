@@ -902,6 +902,9 @@ function bindLiveControls() {
     live.paused = !live.paused;
     e.currentTarget.innerHTML = pauseHtml(live.paused);   // 按鈕內有 SVG：e.target 可能是圖示，必須用 currentTarget
     if (!live.paused) live.lastFrameTs = performance.now();   // Slice3 R3 申報：累加制時鐘下 resume 重設 lastFrameTs（原 startTs 平移語義失效）
+    // 暫停時骨架停在最後一幀（畫布不再清除），鏡頭影像也必須一起定格，否則人一動骨架就對不上（實機回報）
+    const video = root.querySelector('#lv-video');
+    if (video) { if (live.paused) video.pause(); else video.play().catch(() => { }); }
   };
   root.querySelector('#lv-voice').onclick = (e) => {
     live.voice = !live.voice; CTX.coach.setEnabled(live.voice);

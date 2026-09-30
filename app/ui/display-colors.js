@@ -73,8 +73,10 @@ export function phaseCueText(res, ex) {
 // 而綠敏感度缺陷是最常見的色覺缺陷類型，這組對比對部分使用者可能難以分辨。
 // ⚠️ 本專案未對真實色覺缺陷使用者做過可用性測試，此處僅依上述配色的設計意圖選色。
 export const PALETTES = {
-  tricolor: { green: '#27e6a6', yellow: '#ffd23f', red: '#ff5d6c', frame: '#3aa8ff', dim: 'rgba(255,255,255,.4)' },
-  high:     { green: '#0072B2', yellow: '#F0E442', red: '#D55E00', frame: '#56B4E9', dim: 'rgba(255,255,255,.45)' },
+  // dim（不判定的部位）＝取景藍的淡色版：白色會被看成「沒偵測到」（實機回報：深蹲時手臂變白像沒抓到），
+  // 淡藍表示「有追蹤到、但這個動作不評分」，又與代表評分的綠／黃／紅明顯區隔。
+  tricolor: { green: '#27e6a6', yellow: '#ffd23f', red: '#ff5d6c', frame: '#3aa8ff', dim: 'rgba(58,168,255,.5)' },
+  high:     { green: '#0072B2', yellow: '#F0E442', red: '#D55E00', frame: '#56B4E9', dim: 'rgba(86,180,233,.55)' },
   // mono（單色）：不用色相區分，改用亮度與不透明度。給「顏色太多會分心」或在強光下
   // 看不清色差的使用者。錯誤最亮最實，正常最暗最透——讓視線只被「有問題的部位」吸走。
   mono:     { green: 'rgba(255,255,255,.34)', yellow: 'rgba(255,255,255,.72)', red: '#ffffff', frame: 'rgba(255,255,255,.5)', dim: 'rgba(255,255,255,.22)' },
