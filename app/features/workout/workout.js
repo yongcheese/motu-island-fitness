@@ -1793,3 +1793,5 @@ function stopLive() {
 function setText(id, v) { const e = root.querySelector('#' + id); if (e) e.textContent = v; }
 function fmtTime(sec) { const m = Math.floor(sec / 60), s = Math.floor(sec % 60); return `${m}:${String(s).padStart(2, '0')}`; }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+  // 偵測停了，骨架畫布卻還留著最後一幀 → 領獎動畫背後會看到一具靜止的骨架，先清掉
+  try { live.ctx?.clearRect(0, 0, live.canvas.width, live.canvas.height); } catch { }
