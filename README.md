@@ -64,7 +64,8 @@ app/features/           today / island / workout / tracking / settings 五大分
 tests/                  Node 可跑的 eval 套件（合成 landmark，npm test）
 vendor/                 MediaPipe WASM/模型、Chart.js、Three.js、字型（離線）
 docs/                   文件；先看 docs/README.md 文件地圖（現行 vs 歷史）
-文件/README.md           所有非程式文件已搬到「視覺辨識健身結合遊戲專案/專案資料、競賽」，位置見這份說明
+docs/文件位置.md         非程式文件（企劃書、會議、真人測試…）都在「視覺辨識健身結合遊戲專案/專案資料、競賽」，位置見這份說明
+docs/開發紀錄/           已完成階段的需求與施工看板
 ```
 
 ## 📐 動作判定（首期 10 項，MVP 完整實作＋測試前 4 項）
