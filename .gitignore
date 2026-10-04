@@ -13,3 +13,7 @@ docs/verification/scripts/data/
 motu-app/node_modules/
 motu-app/dist/
 motu-app/.env
+
+# Claude Code 的個人設定與交接筆記（每個人不同，不進版控）
+.claude/settings.local.json
+.claude/RESUME.md

@@ -1,75 +1,69 @@
-# Island Fitness AI — AI 健身辨識與島嶼建設連動系統
+# Motu 島嶼健身｜健身端
 
-> 育秀盃創意獎 · AI 應用類　|　可實機展示的網頁應用（單鏡頭 · 零額外硬體 · 可離線）
+用一般電腦鏡頭，以 AI 判定運動動作做得對不對、算有效次數；做對的訓練換成島嶼遊戲裡的獎勵。
 
-把「一支家裡就有的鏡頭」變成準教練級的即時動作矯正；並以島嶼建設遊戲把運動成果視覺化，
-建立「**正確訓練 → 金幣 → 島嶼成長 → 再訓練**」的正向循環。
-核心理念：**不是計次，而是品質確認**——只有「完整週期＋達標深度＋無代償」的動作才算有效，才換得到金幣。
+這個資料夾是**健身端**：動作判定引擎、訓練畫面，以及包進遊戲組系統的整合版。島嶼、商店、登入等遊戲功能由遊戲組負責。
 
 ---
 
-## 🚀 快速啟動（評審 / Demo）
+## 怎麼跑起來
+
+### 整合版（健身頁包在遊戲組系統裡，現行版本）
 
 ```bash
-bash serve.sh            # 或: python3 serve.py 8080；也可雙擊「啟動 Island Fitness AI.command」
+cd motu-app
+npm install
+npm run dev          # http://localhost:3000
+npm run dev:demo     # 開發測試用：多一個「示範模式」，不用鏡頭也能跑訓練
 ```
-瀏覽器開啟 **http://localhost:8080** 。建議用 Chrome / Edge / Safari，允許相機權限。
 
-- 全部 AI 模型與函式庫已 vendor 至 `vendor/`，**斷網也能完整運作**。
-- 無相機時會自動提供「**示範模式**」，用合成動作序列餵入同一套 AI 引擎，眼見為憑。
-- 相機影像只在瀏覽器端處理，**不上傳**；資料以 localStorage 存於本機。
+整合版透過 `motu-app/vite.config.ts` 的別名 `@fitness` 直接引用上一層的 `app/`，所以 `app/` 和 `motu-app/` 要放在同一層。
 
-## ✅ 驗證（最硬的證據）
+### 健身端獨立版（合體前的版本）
 
 ```bash
-npm test                 # = node tests/run.js
-```
-56 項確定性測試全綠：四項動作（深蹲／開合跳／高抬腿／伏地挺身）的計次、半程/代償/作弊判否、
-**鏡頭遠近與站位平移不變性**（標準化層）、防抖、遮擋暫停、計次冷卻、METs 熱量與 S/A/B/C 評級、
-以及混合正負樣本 **≥ 90% 判定準確率**。
-
-## 🧩 五大功能（底部 Tab）
-
-| Tab | 功能 | 重點 |
-|----|------|------|
-| ☀️ 今日 | 首屏：今日任務與推薦 | 接真實訓練資料；一鍵進入推薦訓練 |
-| 🏝️ 島嶼 | 用金幣建設等距島嶼 | 金幣只來自有效訓練（防刷）；成就解鎖主題建築 |
-| 🏋️ 訓練 | **核心**：AI 即時判定＋矯正＋結算 | 三色骨架、分級語音、倒數光環、結算評級 |
-| 📊 健康 | 訓練數據視覺化 | 本週 vs 上週對比、卡路里趨勢、達標率、常見錯誤 |
-| ⚙️ 設定 | 個人化 | 身高體重 → 影響標準化與熱量；隱私匯出/刪除 |
-
-## 🏗️ 技術架構（對應企劃「五層判定防線」）
-
-```
-互動層   三色骨架 / 分級語音教練 / 結算報告 / 島嶼遊戲
-邏輯層   動作狀態機 FSM + 六層防作弊 + 計次冷卻
-標準化層 肩寬/腿長比例尺 → 動態判定門檻（系統關鍵層）
-辨識層   MediaPipe Pose 33 點 + 信心值過濾 + 入鏡檢查
-輸入層   webcam 取像 / 鏡像 / 多人排除
+bash serve.sh        # 或 python3 serve.py 8080；也可雙擊「啟動 Island Fitness AI.command」
 ```
 
-- **核心引擎為純函式**（`app/core/`），瀏覽器與 Node 共用 → 可做確定性測試。
-- MediaPipe Pose（`@mediapipe/tasks-vision`）即時擷取 33 關鍵點；規則式狀態機計次。
-- 圖表用 Chart.js（已 vendor）。無框架、無打包步驟、原生 ES Modules。
+開 http://localhost:8080 ，允許使用鏡頭。
 
-## 📁 專案結構
-```
-index.html              app shell
-serve.py                本機伺服器（no-cache＋正確 MIME；serve.sh 與 .command 都呼叫它）
-app/main.js             導覽外殼：掛載各 feature、topbar / tabbar / toast
-app/core/               純函式引擎：geometry / normalize / engine / exercises / calories / coach / pose / synth
-app/ui/                 渲染元件：feedback（三色骨架）/ pose3d / avatar3d / character
-app/state/store.js      單一狀態源 + localStorage（commitSession 為唯一加幣入口）
-app/features/           today / island / workout / tracking / settings 五大分頁
-tests/                  Node 可跑的 eval 套件（合成 landmark，npm test）
-vendor/                 MediaPipe WASM/模型、Chart.js、Three.js、字型（離線）
-docs/                   文件；先看 docs/README.md 文件地圖（現行 vs 歷史）
-docs/文件位置.md         非程式文件（企劃書、會議、真人測試…）都在「視覺辨識健身結合遊戲專案/專案資料、競賽」，位置見這份說明
-docs/開發紀錄/           已完成階段的需求與施工看板
+## 測試
+
+```bash
+npm test             # 動作判定引擎與健身端邏輯，2026-10-04 為 521 項全部通過
 ```
 
-## 📐 動作判定（首期 10 項，MVP 完整實作＋測試前 4 項）
-深蹲 · 開合跳 · 高抬腿 · 伏地挺身（已實作並測試）；弓箭步 · 波比跳 · 仰臥起坐 · 捲腹 · 臀橋 · 側弓步（規格規劃中）。
+遊戲組的測試在 `motu-app/` 裡，見 `motu-app/package.json` 的 `test:*` 指令。
 
 ---
-本作品為育秀盃企劃之**可實機原型**。判定門檻以人體幾何比例表示，對不同身形與鏡頭距離維持一致。
+
+## 資料夾
+
+```
+app/            健身端程式
+  core/           判定引擎（純函式，瀏覽器和 Node 共用，所以能寫自動測試）
+    exercises/      四個動作的判定規則：深蹲、開合跳、高抬腿、伏地挺身
+  features/       畫面：訓練（workout）等
+  ui/             骨架疊圖、3D 角色等顯示元件
+  state/          健身端的資料狀態
+motu-app/       整合版：遊戲組系統的工作複本，健身頁接在 src/components/fitness/
+tests/          自動測試（npm test）
+vendor/         MediaPipe 模型與函式庫（離線可用）
+tools/          小工具：trial-pack＝給遊戲組的 Windows 試玩包
+spikes/         技術驗證：workers-verify＝Cloudflare 後端複驗的測試版
+docs/           技術說明，先看 docs/README.md
+```
+
+**現行的需求與施工看板**：根目錄的 `REQUIREMENT.md`、`TODO_PLAN.md`。已完成階段的紀錄在 `docs/開發紀錄/`。
+
+**企劃書、會議記錄、真人測試等非程式文件**不放在這裡，位置見 `docs/文件位置.md`。
+
+## 判定引擎怎麼運作
+
+1. 鏡頭畫面交給 MediaPipe Pose，找出身體 33 個關節點
+2. 用使用者自己的肩寬、腿長換算成同一個尺度，遠近、高矮都能用同一套標準
+3. 照每個動作的規則判斷：做到標準算一下有效，沒做到就即時提醒
+4. 練完算出有效次數、達標率和評等
+5. 只有鏡頭真人訓練的結果才交給遊戲端發獎（交接規格見 `motu-app/src/components/fitness/gameContract.ts`）
+
+影像只在使用者的瀏覽器裡處理，不會上傳。

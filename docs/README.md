@@ -29,3 +29,18 @@
 | `STITCH_LUMINA.md` | Stitch 原始設計 token（已收斂進 ai-rules/Design_System_收斂版.md） |
 | `REBUILD_V3_PLAN.md` | 訓練體驗重造 v3 計畫（已實作於 workout.js） |
 | `DETECTION_ROBUSTNESS_PLAN.md` | 偵測韌性修正計畫（已實作；macOS 人物置中問題的結論在此） |
+
+## 判定門檻的驗證（verification/）
+
+| 文件 | 內容 |
+|------|------|
+| `UI-PRMD_真人資料標定.md`、`其餘三動作_真人驗證.md`、`EC3D_膝內夾標定.md` | 用公開真人動作資料集標定門檻、量誤判率 |
+| `torso_lean_機位驗證.md`、`深蹲朝向驗證.md`、`尺度不變標定報告.md` | 鏡頭高度、朝向、遠近對判定的影響 |
+| `scripts/` | 驗證用的程式（資料集本身不進版控，見根目錄 .gitignore） |
+
+## 其他（2026-10-04 新增）
+
+| 位置 | 內容 |
+|------|------|
+| `開發紀錄/` | 合體前到第二階段的需求與施工看板（現行版仍在根目錄 REQUIREMENT.md、TODO_PLAN.md） |
+| `文件位置.md` | 企劃書、會議記錄、真人測試等非程式文件搬到哪裡 |
