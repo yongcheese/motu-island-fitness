@@ -64,7 +64,7 @@ app/features/           today / island / workout / tracking / settings 五大分
 tests/                  Node 可跑的 eval 套件（合成 landmark，npm test）
 vendor/                 MediaPipe WASM/模型、Chart.js、Three.js、字型（離線）
 docs/                   文件；先看 docs/README.md 文件地圖（現行 vs 歷史）
-企劃文件/                競賽企劃書、DEMO PPT 來源稿
+文件/                    系統相關文件（對接、真人測試、內部規劃）；各比賽的企劃書與影片已搬到比賽資料夾，見 文件/README.md
 ```
 
 ## 📐 動作判定（首期 10 項，MVP 完整實作＋測試前 4 項）
