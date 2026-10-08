@@ -83,6 +83,7 @@ export interface FitnessSession {
  * - `source` 標 `'prototype'`：遊戲端的 `WorkoutSource` 只有 prototype／external-api／admin-test，
  *   沒有「AI 相機」這一項，而遊戲組原始碼不歸我們改（看板不變量 5）。它和遊戲組原本的健身原型
  *   `FitnessView` 用的是同一個值，遊戲端本來就不依 source 分流。
+ * - `detector` 標 `'ai-camera'`：不改 `WorkoutSource`，改用選填欄位記下「誰判定的」。
  * - 0 下有效也回傳 `null`：REQUIREMENT 第 6 節第 7 條「0 下有效則跳過領獎直接進結算」。
  *   遊戲端 `payoutForWorkout` 會依秒數照給金幣經驗，若仍送出完成事件，就會變成錢入帳卻沒有領獎演出，
  *   所以在契約這層擋下，而不是只跳過動畫。
@@ -98,15 +99,19 @@ export function completionFromSession(
   const completedAt = session.dateISO && !Number.isNaN(Date.parse(session.dateISO))
     ? session.dateISO
     : undefined;
-  return makeWorkoutCompletion({
-    userId,
-    workoutType: session.exerciseName || session.exercise,
-    durationSeconds: seconds,
-    repCount: reps,
-    source: 'prototype',
-    ...(session.id ? { workoutId: `fx-${session.id}` } : {}),
-    ...(completedAt ? { completedAt } : {}),
-  });
+  return {
+    ...makeWorkoutCompletion({
+      userId,
+      workoutType: session.exerciseName || session.exercise,
+      durationSeconds: seconds,
+      repCount: reps,
+      source: 'prototype',
+      ...(session.id ? { workoutId: `fx-${session.id}` } : {}),
+      ...(completedAt ? { completedAt } : {}),
+    }),
+    // 判定來源：健身組 AI 相機。遊戲端寫 workout_logs 時會一併寫入，健康頁之後能分辨。
+    detector: 'ai-camera',
+  };
 }
 
 // --- 3. 領獎順序 -------------------------------------------------------------

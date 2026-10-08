@@ -20,6 +20,7 @@ import {
   type WorkoutRewardClaim,
   type WorkoutRewardRule,
   type WorkoutRewardState,
+  workoutLogDetectorFields,
 } from '../constants/workoutRewards';
 import { currencyPatch, getBalance } from '../constants/currency';
 import { buildCurrencyUpdate } from './useEconomyActions';
@@ -116,6 +117,8 @@ interface WorkoutLogEntry {
   calories: number;
   goldEarned: number;
   timestamp: string;
+  /** 誰判定的這次運動（例如 'ai-camera'）。沒帶來源的紀錄不寫這個欄位，和改前相同。 */
+  detector?: string;
 }
 
 /**
@@ -359,6 +362,7 @@ export function useWorkoutRewards(
         calories: Math.round(reps * KCAL_PER_REP + minutes * KCAL_PER_MINUTE),
         goldEarned: coins,
         timestamp: completion.completedAt,
+        ...workoutLogDetectorFields(completion),
       };
       try {
         await setDoc(doc(db, 'users', uid, 'workout_logs', logId), log);

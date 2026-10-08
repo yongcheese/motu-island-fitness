@@ -13,7 +13,7 @@ import {
   type FitnessSession,
 } from '../src/components/fitness/gameContract';
 import { fragmentsForWorkout } from '../src/constants/fragments';
-import { isValidWorkout, payoutForWorkout, WORKOUT_PAYOUT } from '../src/constants/workoutRewards';
+import { isValidWorkout, payoutForWorkout, WORKOUT_PAYOUT, workoutLogDetectorFields } from '../src/constants/workoutRewards';
 import type { UserProfile } from '../src/types';
 import { createFitnessSettle, type SettleDeps } from '../src/components/fitness/useFitnessSettle';
 import type { WorkoutCompletion } from '../src/constants/workoutRewards';
@@ -90,6 +90,29 @@ console.log('\n-- completionFromSession ----------------------------------------
   ok('source 為 prototype（遊戲端既有值）', c?.source === 'prototype', show(c));
   ok('workoutId 由 session id 組成（重送可去重）', c?.workoutId === 'fx-abc123', show(c));
   ok('遊戲端驗證為有效健身', isValidWorkout(c));
+}
+
+console.log('\n-- detector（判定來源）--------------------------------------------------');
+{
+  const c = completionFromSession(session(), 'u-1');
+  ok('相機 session → detector 為 ai-camera', c?.detector === 'ai-camera', show(c));
+  ok('帶 detector 仍是遊戲端認可的有效健身', isValidWorkout(c));
+  ok('帶 detector 不影響獎勵（與不帶時金額相同）',
+    c !== null && JSON.stringify(payoutForWorkout(c)) === JSON.stringify(payoutForWorkout({ ...c, detector: undefined })),
+    show(c));
+  ok('邊界：示範模式仍回 null（不會寫紀錄）', completionFromSession(session({ mode: 'demo' }), 'u-1') === null);
+  ok('邊界：0 下有效仍回 null（不會寫紀錄）', completionFromSession(session({ validReps: 0, durationSec: 45 }), 'u-1') === null);
+}
+{
+  // workout_logs 組裝時展開的欄位：有來源才寫，沒有就和改前完全相同（不多一個 key）。
+  const cam = workoutLogDetectorFields({ detector: 'ai-camera' });
+  ok('log 欄位：有 detector → { detector: ai-camera }', JSON.stringify(cam) === '{"detector":"ai-camera"}', show(cam));
+  const none = workoutLogDetectorFields({});
+  ok('log 欄位：遊戲組原型／管理員測試沒帶 → 空物件（不多寫 key）', Object.keys(none).length === 0, show(none));
+  const blank = workoutLogDetectorFields({ detector: '   ' });
+  ok('邊界：detector 為空白字串 → 不寫', Object.keys(blank).length === 0, show(blank));
+  const empty = workoutLogDetectorFields({ detector: '' });
+  ok('邊界：detector 為空字串 → 不寫', Object.keys(empty).length === 0, show(empty));
 }
 {
   const a = completionFromSession(session({ id: undefined }), 'u-1');

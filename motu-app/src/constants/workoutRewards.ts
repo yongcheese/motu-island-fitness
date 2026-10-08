@@ -83,6 +83,24 @@ export interface WorkoutCompletion {
   durationSeconds: number;
   repCount?: number;
   source: WorkoutSource;
+  /**
+   * 誰判定的這次運動（選填）。例如 'ai-camera'＝健身組 AI 相機判定；遊戲組原型與管理員測試不帶。
+   * 只記錄、不分流：發獎規則完全不看它，所以加了也不會改變任何既有來源的獎勵。
+   */
+  detector?: string;
+}
+
+/**
+ * workout_logs 要額外寫入的判定來源欄位。
+ *
+ * `detector` 是非空字串才回傳 `{ detector }`；否則回傳空物件，讓沒帶來源的紀錄（遊戲組原型、
+ * 管理員測試）和加這個欄位之前寫出的內容一模一樣。獨立成純函式，是為了不必載入 firebase 就能測。
+ */
+export function workoutLogDetectorFields(
+  completion: Pick<WorkoutCompletion, 'detector'>,
+): { detector?: string } {
+  const detector = typeof completion.detector === 'string' ? completion.detector.trim() : '';
+  return detector ? { detector } : {};
 }
 
 /**

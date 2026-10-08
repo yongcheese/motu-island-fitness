@@ -41,6 +41,7 @@
 - Slice 1：`settingsCategories.ts`（加 fitness、about 改可見）、`SettingsView.tsx`（掛 FitnessCategory）、`AboutCategory.tsx`（EmptyState 換三區塊骨架）、`package.json`（test:fitness 串新腳本）
 - Slice 2：`types.ts`（AppSettings 新增選填 fitnessDifficulty／fitnessColorMode／fitnessMirror／fitnessBgm，純新增 8 行）、`package.json`
 - Slice 4：`GeneralCategory.tsx`（移除「AI 語音引導」列與未用的 `Mic` import；語音改由健身分類寫 `voiceGuideEnabled`）
+- Slice 5：`constants/workoutRewards.ts`（`WorkoutCompletion.detector?`、新增 `workoutLogDetectorFields()`）、`context/useWorkoutRewards.ts`（log 展開 detector 欄位、`WorkoutLogEntry.detector?`）
 
 ## 設計鐵律速查
 - 沿用遊戲組 Motu 設計系統：`island-*` token、`SettingsSection`／`SettingRow`／`Toggle`（`DesignKit.tsx`）、`rounded-2xl`／`rounded-xl` ｜ `lucide-react` `size={18}` ｜ 免費優先
@@ -61,7 +62,7 @@
 
 ## 進度總覽
 - 總 Slice 數：9
-- 已完成：4 / 9
+- 已完成：5 / 9
 - 平行組：無（全部序列）
 
 ---
@@ -135,7 +136,7 @@
 - **依賴**：Slice 1、Slice 3
 - **平行組**：獨立
 
-### [ ] Slice 5 — 訓練紀錄寫入 AI 相機來源欄
+### [x] Slice 5 — 訓練紀錄寫入 AI 相機來源欄
 - **目標**：每一筆健身頁產生的訓練紀錄都帶 `detector: 'ai-camera'`，之後健康頁能分辨。
 - **範圍內**：`constants/workoutRewards.ts` 的 `WorkoutCompletion` 新增選填 `detector?: string`（`makeWorkoutCompletion` 透傳）；`gameContract.ts` 的 `completionFromSession` 填 `'ai-camera'`；`context/useWorkoutRewards.ts` 寫 `workout_logs` 時，有 `detector` 才寫入。
 - **範圍外**：健康頁顯示來源（G2，暫緩）；改 `WorkoutSource`。
@@ -148,7 +149,7 @@
   - [ ] `test:workout-rewards` 仍 61/61
 - **測試策略**：`test-fitness-contract.ts` 新增 detector 斷言；邊界：示範模式與 0 下有效仍回 `null`（不寫紀錄）
 - **完成定義**：Type Check PASS + `test:fitness` PASS + `test:workout-rewards` 61/61
-- **對外介面**：
+- **對外介面**：`WorkoutCompletion.detector?: string`；`workoutLogDetectorFields(completion)→{detector?}`（constants/workoutRewards.ts）；`completionFromSession` 固定帶 `detector:'ai-camera'`；workout_logs 只在 detector 非空時多此欄。**施工註記**：`makeWorkoutCompletion` 在 `src/lib/workoutCompletion.ts`（不在清單），改為在 completionFromSession 展開後補上；`types.ts` 的 `WorkoutLog` 未加（留給 G2）。驗證：contract 53 項、workout-rewards 61/61、tsc 綠。slice-reviewer PASS。
 - **依賴**：無
 - **平行組**：獨立
 
