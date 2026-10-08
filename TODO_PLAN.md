@@ -229,3 +229,8 @@
 - 無頭瀏覽器完整走一次：登入 → 主頁 → 設定改健身偏好 → 健身頁確認生效 → 完成一次訓練（測試腳本模擬相機 session）→ 紀錄帶 `detector` → 重新整理偏好仍在
 - 列出 console 的既有警告（Three.js 多重載入、`THREE.Clock` 已淘汰），確認沒有新增錯誤
 - 批次審未當場審的 Slice（L 檔逐 Slice 審，理論上無）
+
+## 收尾結果（2026-10-09）
+- 我方 `npm test` 521/521 ｜ 整合版 `tsc`（＝`npm run lint`）綠 ｜ `test:fitness` 全綠（含本階段新增 prefs 34、bridge 32、settings-view 82、about 41、contract 53）｜ `test:workout-rewards` 61/61 ｜ `vite build` 通過
+- 9 個 Slice 皆當場由 slice-reviewer 審過（L 檔逐 Slice），無待批次審項目
+- 未做：完整訓練流程的瀏覽器實走（需實體相機；detector 由 contract 測試驗證）、存檔失敗畫面的瀏覽器實測（見 Slice 9）
