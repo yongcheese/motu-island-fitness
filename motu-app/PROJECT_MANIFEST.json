@@ -1,0 +1,3046 @@
+{
+  "name": "Motu",
+  "description": "A gamified 3D fitness tracking app. Exercise on a tropical island, earn gold, and customize your avatar with AI-powered movement tracking.",
+  "generatedAt": "2026-10-07T02:37:03.696Z",
+  "entryPoints": {
+    "html": "index.html",
+    "client": "src/main.tsx",
+    "clientRoot": "src/App.tsx",
+    "server": "server.ts",
+    "scene3d": "src/components/Three/Scene.tsx"
+  },
+  "runCommands": {
+    "install": "npm install",
+    "dev": "npm run dev",
+    "devUrl": "http://localhost:3000",
+    "typecheck": "npm run lint",
+    "build": "npm run build",
+    "servePrebuilt": "npx serve prebuilt-dist"
+  },
+  "techStack": [
+    "React 19.0.1",
+    "TypeScript 5.8.2",
+    "Vite 6.2.3",
+    "Three.js 0.184.0",
+    "react-three-fiber 9.6.1",
+    "drei 10.7.7",
+    "Tailwind CSS 4.1.14",
+    "Firebase 12.12.1",
+    "Express 4.21.2",
+    "@google/genai 1.29.0",
+    "MediaPipe Tasks Vision 0.10.35",
+    "Motion 12.23.24",
+    "Recharts 3.8.1"
+  ],
+  "requiresCredentialsToRun": false,
+  "authMode": "Falls back to Local Guest Mode (localStorage) when Firebase is unconfigured.",
+  "optionalCredentials": {
+    "GEMINI_API_KEY": "Enables POST /api/shop/chat (the AI shop assistant). Without it that one endpoint returns 500; everything else works.",
+    "firebase-applet-config.json": "Replace placeholders to persist to a real Firestore instead of localStorage."
+  },
+  "files": [
+    {
+      "path": ".agents/AGENTS.md",
+      "bytes": 437,
+      "lines": 5
+    },
+    {
+      "path": ".agents/mcp_config.json",
+      "bytes": 220,
+      "lines": 15
+    },
+    {
+      "path": ".claude/launch.json",
+      "bytes": 213,
+      "lines": 15
+    },
+    {
+      "path": ".claude/settings.local.json",
+      "bytes": 164,
+      "lines": 10
+    },
+    {
+      "path": ".env.example",
+      "bytes": 344,
+      "lines": 9
+    },
+    {
+      "path": ".firebaserc",
+      "bytes": 73,
+      "lines": 6
+    },
+    {
+      "path": ".gitattributes",
+      "bytes": 596,
+      "lines": 10
+    },
+    {
+      "path": ".github/PULL_REQUEST_TEMPLATE.md",
+      "bytes": 730,
+      "lines": 25
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "bytes": 1026,
+      "lines": 55
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 219,
+      "lines": 15
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "bytes": 2125,
+      "lines": 76
+    },
+    {
+      "path": "DRAFT_firestore.rules",
+      "bytes": 5058,
+      "lines": 119
+    },
+    {
+      "path": "README.md",
+      "bytes": 3535,
+      "lines": 75
+    },
+    {
+      "path": "angel-fit.html",
+      "bytes": 321,
+      "lines": 13
+    },
+    {
+      "path": "blender-reference/authored-character-source.glb",
+      "bytes": 131104,
+      "binary": true
+    },
+    {
+      "path": "blender-reference/player-model-reference.glb",
+      "bytes": 154048,
+      "binary": true
+    },
+    {
+      "path": "docs/AUTH_SETUP.md",
+      "bytes": 13683,
+      "lines": 275
+    },
+    {
+      "path": "docs/FIRESTORE_RULES.md",
+      "bytes": 4832,
+      "lines": 96
+    },
+    {
+      "path": "docs/artwork.md",
+      "bytes": 5806,
+      "lines": 107
+    },
+    {
+      "path": "docs/build-mode-and-colliders.md",
+      "bytes": 29622,
+      "lines": 459
+    },
+    {
+      "path": "docs/character-authored-model.md",
+      "bytes": 20564,
+      "lines": 322
+    },
+    {
+      "path": "docs/character-import-checklist.md",
+      "bytes": 11050,
+      "lines": 179
+    },
+    {
+      "path": "docs/character-model.md",
+      "bytes": 15354,
+      "lines": 294
+    },
+    {
+      "path": "docs/daily-login.md",
+      "bytes": 10766,
+      "lines": 187
+    },
+    {
+      "path": "docs/economy.md",
+      "bytes": 20274,
+      "lines": 379
+    },
+    {
+      "path": "docs/fragments.md",
+      "bytes": 8900,
+      "lines": 161
+    },
+    {
+      "path": "docs/furniture-interactions.md",
+      "bytes": 15136,
+      "lines": 269
+    },
+    {
+      "path": "docs/ground-and-character-quality.md",
+      "bytes": 12988,
+      "lines": 241
+    },
+    {
+      "path": "docs/hair-assets.md",
+      "bytes": 7108,
+      "lines": 129
+    },
+    {
+      "path": "docs/interaction-feedback.md",
+      "bytes": 9190,
+      "lines": 129
+    },
+    {
+      "path": "docs/jump-animation.md",
+      "bytes": 7188,
+      "lines": 160
+    },
+    {
+      "path": "docs/lighting-and-ceiling-placement.md",
+      "bytes": 11552,
+      "lines": 187
+    },
+    {
+      "path": "docs/limited-shop.md",
+      "bytes": 19614,
+      "lines": 313
+    },
+    {
+      "path": "docs/ocean-decorations-prompt.md",
+      "bytes": 18424,
+      "lines": 218
+    },
+    {
+      "path": "docs/offline-return.md",
+      "bytes": 29783,
+      "lines": 535
+    },
+    {
+      "path": "docs/outdoor-assets.md",
+      "bytes": 14833,
+      "lines": 241
+    },
+    {
+      "path": "docs/pet-care.md",
+      "bytes": 31275,
+      "lines": 584
+    },
+    {
+      "path": "docs/rarity-system-prompt.md",
+      "bytes": 25245,
+      "lines": 315
+    },
+    {
+      "path": "docs/special-cosmetics.md",
+      "bytes": 48814,
+      "lines": 619
+    },
+    {
+      "path": "docs/traveling-merchant.md",
+      "bytes": 43381,
+      "lines": 738
+    },
+    {
+      "path": "docs/utility-cards.md",
+      "bytes": 12157,
+      "lines": 205
+    },
+    {
+      "path": "docs/weekly-tasks.md",
+      "bytes": 8835,
+      "lines": 145
+    },
+    {
+      "path": "docs/workout-rewards.md",
+      "bytes": 12218,
+      "lines": 241
+    },
+    {
+      "path": "docs/z-fighting.md",
+      "bytes": 4952,
+      "lines": 114
+    },
+    {
+      "path": "firebase-applet-config.json",
+      "bytes": 431,
+      "lines": 10,
+      "role": "Firebase client config. Sanitized to placeholders in this bundle so the app boots straight into Local Guest Mode."
+    },
+    {
+      "path": "firebase-blueprint.json",
+      "bytes": 3770,
+      "lines": 104
+    },
+    {
+      "path": "firebase.json",
+      "bytes": 146,
+      "lines": 9
+    },
+    {
+      "path": "firestore.rules",
+      "bytes": 31161,
+      "lines": 460,
+      "role": "Deployed Firestore security rules. DRAFT_firestore.rules is a work-in-progress variant, not what is live."
+    },
+    {
+      "path": "images/螢幕擷取畫面 2026-08-04 184923.png",
+      "bytes": 226290,
+      "binary": true
+    },
+    {
+      "path": "index.html",
+      "bytes": 385,
+      "lines": 14,
+      "role": "Vite HTML entry. Mounts #root and loads src/main.tsx."
+    },
+    {
+      "path": "metadata.json",
+      "bytes": 313,
+      "lines": 10,
+      "role": "AI Studio applet manifest: display name, requested camera permission, server-side Gemini capability flag."
+    },
+    {
+      "path": "package-lock.json",
+      "bytes": 310971,
+      "lines": 8430
+    },
+    {
+      "path": "package.json",
+      "bytes": 3444,
+      "lines": 82
+    },
+    {
+      "path": "public/hdri/lebombo_1k.hdr",
+      "bytes": 1476953,
+      "binary": true
+    },
+    {
+      "path": "public/hdri/potsdamer_platz_1k.hdr",
+      "bytes": 1540678,
+      "binary": true
+    },
+    {
+      "path": "public/hdri/venice_sunset_1k.hdr",
+      "bytes": 1397783,
+      "binary": true
+    },
+    {
+      "path": "public/models/character/arm-left.glb",
+      "bytes": 21532,
+      "binary": true
+    },
+    {
+      "path": "public/models/character/arm-right.glb",
+      "bytes": 21532,
+      "binary": true
+    },
+    {
+      "path": "public/models/character/head.glb",
+      "bytes": 74696,
+      "binary": true
+    },
+    {
+      "path": "public/models/character/leg-left.glb",
+      "bytes": 8548,
+      "binary": true
+    },
+    {
+      "path": "public/models/character/leg-right.glb",
+      "bytes": 8548,
+      "binary": true
+    },
+    {
+      "path": "public/models/character/torso.glb",
+      "bytes": 8544,
+      "binary": true
+    },
+    {
+      "path": "scripts/audit-catalog.ts",
+      "bytes": 7008,
+      "lines": 145
+    },
+    {
+      "path": "scripts/audit-character-parts.ts",
+      "bytes": 26898,
+      "lines": 582
+    },
+    {
+      "path": "scripts/audit-colliders.ts",
+      "bytes": 27483,
+      "lines": 600
+    },
+    {
+      "path": "scripts/audit-cosmetics.ts",
+      "bytes": 9936,
+      "lines": 190
+    },
+    {
+      "path": "scripts/audit-furniture-interactions.ts",
+      "bytes": 31901,
+      "lines": 601
+    },
+    {
+      "path": "scripts/audit-furniture-models.mjs",
+      "bytes": 8307,
+      "lines": 192
+    },
+    {
+      "path": "scripts/audit-ground-contact.ts",
+      "bytes": 21128,
+      "lines": 435
+    },
+    {
+      "path": "scripts/audit-ground-cover.ts",
+      "bytes": 13231,
+      "lines": 293
+    },
+    {
+      "path": "scripts/audit-hair.ts",
+      "bytes": 18150,
+      "lines": 390
+    },
+    {
+      "path": "scripts/audit-hud-scale.ts",
+      "bytes": 4983,
+      "lines": 108
+    },
+    {
+      "path": "scripts/audit-interior-shell.ts",
+      "bytes": 13902,
+      "lines": 304
+    },
+    {
+      "path": "scripts/audit-jump-animation.ts",
+      "bytes": 17164,
+      "lines": 373
+    },
+    {
+      "path": "scripts/audit-object-animations.ts",
+      "bytes": 19020,
+      "lines": 436
+    },
+    {
+      "path": "scripts/audit-outdoor-quality.ts",
+      "bytes": 24524,
+      "lines": 464
+    },
+    {
+      "path": "scripts/audit-placements.ts",
+      "bytes": 49808,
+      "lines": 995
+    },
+    {
+      "path": "scripts/audit-shop-consistency.ts",
+      "bytes": 20375,
+      "lines": 451
+    },
+    {
+      "path": "scripts/audit-swim-pose.ts",
+      "bytes": 21151,
+      "lines": 523
+    },
+    {
+      "path": "scripts/audit-zfighting.mjs",
+      "bytes": 14707,
+      "lines": 337
+    },
+    {
+      "path": "scripts/check-conflict-markers.mjs",
+      "bytes": 5079,
+      "lines": 127
+    },
+    {
+      "path": "scripts/clean.mjs",
+      "bytes": 370,
+      "lines": 10
+    },
+    {
+      "path": "scripts/export-player-reference.mjs",
+      "bytes": 5562,
+      "lines": 139
+    },
+    {
+      "path": "scripts/fix-character-blend.py",
+      "bytes": 15399,
+      "binary": true
+    },
+    {
+      "path": "scripts/hooks/pre-commit",
+      "bytes": 526,
+      "binary": true
+    },
+    {
+      "path": "scripts/lib/measureFurnitureModel.ts",
+      "bytes": 17294,
+      "lines": 386
+    },
+    {
+      "path": "scripts/pack-game.mjs",
+      "bytes": 23668,
+      "lines": 503
+    },
+    {
+      "path": "scripts/setup-hooks.mjs",
+      "bytes": 1397,
+      "lines": 33
+    },
+    {
+      "path": "scripts/split-character-glb.mjs",
+      "bytes": 41807,
+      "lines": 909
+    },
+    {
+      "path": "scripts/test-daily-login.ts",
+      "bytes": 15627,
+      "lines": 343
+    },
+    {
+      "path": "scripts/test-economy.ts",
+      "bytes": 19052,
+      "lines": 417
+    },
+    {
+      "path": "scripts/test-fragment-progress.ts",
+      "bytes": 10261,
+      "lines": 234
+    },
+    {
+      "path": "scripts/test-limited-shop.ts",
+      "bytes": 30141,
+      "lines": 709
+    },
+    {
+      "path": "scripts/test-merchant-visit.ts",
+      "bytes": 56491,
+      "lines": 1115
+    },
+    {
+      "path": "scripts/test-npc-social.ts",
+      "bytes": 15011,
+      "lines": 332
+    },
+    {
+      "path": "scripts/test-object-lifecycle.ts",
+      "bytes": 6768,
+      "lines": 158
+    },
+    {
+      "path": "scripts/test-offline-return.ts",
+      "bytes": 33264,
+      "lines": 663
+    },
+    {
+      "path": "scripts/test-pet-care.ts",
+      "bytes": 30255,
+      "lines": 621
+    },
+    {
+      "path": "scripts/test-pet-interactions.ts",
+      "bytes": 11773,
+      "lines": 247
+    },
+    {
+      "path": "scripts/test-placement-precision.ts",
+      "bytes": 23743,
+      "lines": 478
+    },
+    {
+      "path": "scripts/test-utility-cards.ts",
+      "bytes": 14853,
+      "lines": 332
+    },
+    {
+      "path": "scripts/test-weekly-tasks.ts",
+      "bytes": 23614,
+      "lines": 479
+    },
+    {
+      "path": "scripts/test-workout-rewards.ts",
+      "bytes": 15405,
+      "lines": 355
+    },
+    {
+      "path": "security_spec.md",
+      "bytes": 7673,
+      "lines": 233
+    },
+    {
+      "path": "server.ts",
+      "bytes": 9432,
+      "lines": 236,
+      "role": "Express host. In dev it wraps Vite as middleware on port 3000; in prod it serves dist/. Also owns POST /api/shop/chat, the Gemini-backed shop assistant."
+    },
+    {
+      "path": "src/App.tsx",
+      "bytes": 30831,
+      "lines": 531,
+      "role": "Top-level view router and persistent HUD chrome. Chooses between Scene and the full-screen views (Shop, Fitness, Tracker, Dressing Room, Building Interior)."
+    },
+    {
+      "path": "src/auth/AuthenticationManager.ts",
+      "bytes": 20162,
+      "lines": 517
+    },
+    {
+      "path": "src/auth/SessionManager.ts",
+      "bytes": 7359,
+      "lines": 203
+    },
+    {
+      "path": "src/auth/TokenManager.ts",
+      "bytes": 3202,
+      "lines": 87
+    },
+    {
+      "path": "src/auth/errors.ts",
+      "bytes": 5539,
+      "lines": 143
+    },
+    {
+      "path": "src/auth/providers/marks.ts",
+      "bytes": 5347,
+      "lines": 119
+    },
+    {
+      "path": "src/auth/providers/registry.ts",
+      "bytes": 7933,
+      "lines": 246
+    },
+    {
+      "path": "src/auth/providers/types.ts",
+      "bytes": 2786,
+      "lines": 74
+    },
+    {
+      "path": "src/auth/types.ts",
+      "bytes": 5629,
+      "lines": 144
+    },
+    {
+      "path": "src/auth/useAuth.ts",
+      "bytes": 2099,
+      "lines": 60
+    },
+    {
+      "path": "src/components/ArtworkIcon.tsx",
+      "bytes": 25592,
+      "lines": 552
+    },
+    {
+      "path": "src/components/BuildingInteriorView.tsx",
+      "bytes": 174279,
+      "lines": 3434
+    },
+    {
+      "path": "src/components/DressingRoomView.tsx",
+      "bytes": 34319,
+      "lines": 598
+    },
+    {
+      "path": "src/components/FitnessView.tsx",
+      "bytes": 22227,
+      "lines": 433
+    },
+    {
+      "path": "src/components/InteractionPrompt.tsx",
+      "bytes": 2062,
+      "lines": 52
+    },
+    {
+      "path": "src/components/LimitedShopView.tsx",
+      "bytes": 24368,
+      "lines": 566
+    },
+    {
+      "path": "src/components/MovementTracker.tsx",
+      "bytes": 7727,
+      "lines": 198
+    },
+    {
+      "path": "src/components/QVersionIcon.tsx",
+      "bytes": 509494,
+      "lines": 7653
+    },
+    {
+      "path": "src/components/SettingsView.tsx",
+      "bytes": 4081,
+      "lines": 72
+    },
+    {
+      "path": "src/components/ShopView.tsx",
+      "bytes": 40465,
+      "lines": 722
+    },
+    {
+      "path": "src/components/SpecialCosmeticIcon.tsx",
+      "bytes": 31395,
+      "lines": 669
+    },
+    {
+      "path": "src/components/Three/AdaptiveResolution.tsx",
+      "bytes": 7994,
+      "lines": 186
+    },
+    {
+      "path": "src/components/Three/ArtworkModels.tsx",
+      "bytes": 72800,
+      "lines": 1561
+    },
+    {
+      "path": "src/components/Three/Avatar.tsx",
+      "bytes": 250082,
+      "lines": 4312,
+      "role": "Player character: procedural mesh plus the movement/animation state machine (walk, run, several swim poses, hammock, emotes)."
+    },
+    {
+      "path": "src/components/Three/CameraController.tsx",
+      "bytes": 112199,
+      "lines": 1839,
+      "role": "Camera. First/third-person blending, collision, and the free-fly build-mode rig."
+    },
+    {
+      "path": "src/components/Three/CameraRig.tsx",
+      "bytes": 33273,
+      "lines": 756
+    },
+    {
+      "path": "src/components/Three/CandleInHand.tsx",
+      "bytes": 11075,
+      "lines": 230
+    },
+    {
+      "path": "src/components/Three/Clouds.tsx",
+      "bytes": 6966,
+      "lines": 181
+    },
+    {
+      "path": "src/components/Three/Fireflies.tsx",
+      "bytes": 11007,
+      "lines": 253
+    },
+    {
+      "path": "src/components/Three/Fish.tsx",
+      "bytes": 16776,
+      "lines": 350,
+      "role": "Instanced fish schools circling the island shallows."
+    },
+    {
+      "path": "src/components/Three/FixtureLight.tsx",
+      "bytes": 11070,
+      "lines": 216
+    },
+    {
+      "path": "src/components/Three/FurnitureItem.tsx",
+      "bytes": 508646,
+      "lines": 9956
+    },
+    {
+      "path": "src/components/Three/GroundCover.tsx",
+      "bytes": 13300,
+      "lines": 312
+    },
+    {
+      "path": "src/components/Three/HippoButler.tsx",
+      "bytes": 37104,
+      "lines": 979
+    },
+    {
+      "path": "src/components/Three/HouseModel.tsx",
+      "bytes": 129507,
+      "lines": 2624
+    },
+    {
+      "path": "src/components/Three/InteractionPromptTracker.tsx",
+      "bytes": 21070,
+      "lines": 415
+    },
+    {
+      "path": "src/components/Three/InteriorLighting.tsx",
+      "bytes": 12198,
+      "lines": 243
+    },
+    {
+      "path": "src/components/Three/InteriorNpcs.tsx",
+      "bytes": 8386,
+      "lines": 223
+    },
+    {
+      "path": "src/components/Three/Island.tsx",
+      "bytes": 12763,
+      "lines": 280
+    },
+    {
+      "path": "src/components/Three/IslandDecorations.tsx",
+      "bytes": 21782,
+      "lines": 555
+    },
+    {
+      "path": "src/components/Three/IslandNpcs.tsx",
+      "bytes": 7136,
+      "lines": 174
+    },
+    {
+      "path": "src/components/Three/IslandOvergrowth.tsx",
+      "bytes": 35023,
+      "lines": 777
+    },
+    {
+      "path": "src/components/Three/IslandPet.tsx",
+      "bytes": 90714,
+      "lines": 1905
+    },
+    {
+      "path": "src/components/Three/LightSwitch.tsx",
+      "bytes": 11110,
+      "lines": 231
+    },
+    {
+      "path": "src/components/Three/MerchantBoat.tsx",
+      "bytes": 35707,
+      "lines": 721
+    },
+    {
+      "path": "src/components/Three/MerchantVisitor.tsx",
+      "bytes": 21294,
+      "lines": 448
+    },
+    {
+      "path": "src/components/Three/NightSky.tsx",
+      "bytes": 23307,
+      "lines": 570
+    },
+    {
+      "path": "src/components/Three/NpcWalker.tsx",
+      "bytes": 25089,
+      "lines": 621
+    },
+    {
+      "path": "src/components/Three/Npcs.tsx",
+      "bytes": 90634,
+      "lines": 1738
+    },
+    {
+      "path": "src/components/Three/Ocean.tsx",
+      "bytes": 36037,
+      "lines": 738,
+      "role": "Ocean surface: custom GLSL wave displacement, shoreline foam, depth tinting."
+    },
+    {
+      "path": "src/components/Three/OceanDecorations.tsx",
+      "bytes": 78304,
+      "lines": 1829
+    },
+    {
+      "path": "src/components/Three/Outfits.tsx",
+      "bytes": 20044,
+      "lines": 553
+    },
+    {
+      "path": "src/components/Three/Pants.tsx",
+      "bytes": 24344,
+      "lines": 529
+    },
+    {
+      "path": "src/components/Three/Pets.tsx",
+      "bytes": 52895,
+      "lines": 1079
+    },
+    {
+      "path": "src/components/Three/PlacementGhost.tsx",
+      "bytes": 35304,
+      "lines": 755
+    },
+    {
+      "path": "src/components/Three/PlayerHomeView.tsx",
+      "bytes": 3594,
+      "lines": 76
+    },
+    {
+      "path": "src/components/Three/RabbitGardener.tsx",
+      "bytes": 39503,
+      "lines": 1000
+    },
+    {
+      "path": "src/components/Three/Scene.tsx",
+      "bytes": 28613,
+      "lines": 550,
+      "role": "The R3F Canvas and scene graph root: lighting, island, ocean, sky, weather, and every 3D actor."
+    },
+    {
+      "path": "src/components/Three/Shoes.tsx",
+      "bytes": 17330,
+      "lines": 436
+    },
+    {
+      "path": "src/components/Three/SkyDome.tsx",
+      "bytes": 11002,
+      "lines": 251
+    },
+    {
+      "path": "src/components/Three/StickFigure.tsx",
+      "bytes": 3928,
+      "lines": 118
+    },
+    {
+      "path": "src/components/Three/StudioFloor.tsx",
+      "bytes": 12303,
+      "lines": 270
+    },
+    {
+      "path": "src/components/Three/Torch.tsx",
+      "bytes": 11762,
+      "lines": 243
+    },
+    {
+      "path": "src/components/Three/Weather.tsx",
+      "bytes": 22258,
+      "lines": 537
+    },
+    {
+      "path": "src/components/Three/ZFightAuditBridge.tsx",
+      "bytes": 1804,
+      "lines": 41
+    },
+    {
+      "path": "src/components/Three/character/Attachment.tsx",
+      "bytes": 1277,
+      "lines": 42
+    },
+    {
+      "path": "src/components/Three/character/AuthoredCharacterModel.tsx",
+      "bytes": 8058,
+      "lines": 193
+    },
+    {
+      "path": "src/components/Three/character/CharacterModelV2.tsx",
+      "bytes": 15680,
+      "lines": 281
+    },
+    {
+      "path": "src/components/Three/character/bodyFit.tsx",
+      "bytes": 12168,
+      "lines": 264
+    },
+    {
+      "path": "src/components/Three/character/bodyForm.tsx",
+      "bytes": 3039,
+      "lines": 86
+    },
+    {
+      "path": "src/components/Three/character/bodySurface.ts",
+      "bytes": 13361,
+      "lines": 258
+    },
+    {
+      "path": "src/components/Three/character/index.tsx",
+      "bytes": 5274,
+      "lines": 142
+    },
+    {
+      "path": "src/components/Three/character/legacy/hairShading.ts",
+      "bytes": 24844,
+      "lines": 557
+    },
+    {
+      "path": "src/components/Three/character/legacy/index.tsx",
+      "bytes": 28427,
+      "lines": 667
+    },
+    {
+      "path": "src/components/Three/character/legacy/wardrobe.tsx",
+      "bytes": 74513,
+      "lines": 1587
+    },
+    {
+      "path": "src/components/Three/character/outfit.ts",
+      "bytes": 8142,
+      "lines": 184
+    },
+    {
+      "path": "src/components/Three/character/partLoader.tsx",
+      "bytes": 19496,
+      "lines": 458
+    },
+    {
+      "path": "src/components/Three/character/slots.tsx",
+      "bytes": 9471,
+      "lines": 192
+    },
+    {
+      "path": "src/components/Three/character/types.ts",
+      "bytes": 7426,
+      "lines": 161
+    },
+    {
+      "path": "src/components/Three/characterMovement.ts",
+      "bytes": 40802,
+      "lines": 764,
+      "role": "Input-to-motion math shared by the avatar: acceleration, terrain and water height sampling, collision."
+    },
+    {
+      "path": "src/components/Three/effects/CosmeticModels.tsx",
+      "bytes": 117815,
+      "lines": 2173
+    },
+    {
+      "path": "src/components/Three/effects/CreatureMeshes.tsx",
+      "bytes": 5527,
+      "lines": 124
+    },
+    {
+      "path": "src/components/Three/effects/EffectField.tsx",
+      "bytes": 14965,
+      "lines": 320
+    },
+    {
+      "path": "src/components/Three/effects/SpecialCosmetic.tsx",
+      "bytes": 3408,
+      "lines": 94
+    },
+    {
+      "path": "src/components/Three/effects/cosmeticRuntime.ts",
+      "bytes": 68302,
+      "lines": 1503
+    },
+    {
+      "path": "src/components/Three/effects/index.ts",
+      "bytes": 1100,
+      "lines": 25
+    },
+    {
+      "path": "src/components/Three/effects/particleShapes.ts",
+      "bytes": 18845,
+      "lines": 397
+    },
+    {
+      "path": "src/components/Three/floorMaterial.ts",
+      "bytes": 14747,
+      "lines": 330
+    },
+    {
+      "path": "src/components/Three/glowTexture.ts",
+      "bytes": 1685,
+      "lines": 44
+    },
+    {
+      "path": "src/components/Three/groundMaterial.ts",
+      "bytes": 17563,
+      "lines": 375
+    },
+    {
+      "path": "src/components/Three/instanceColor.ts",
+      "bytes": 1536,
+      "lines": 31
+    },
+    {
+      "path": "src/components/Three/jumpPose.ts",
+      "bytes": 29982,
+      "lines": 658
+    },
+    {
+      "path": "src/components/Three/objectAnimation.tsx",
+      "bytes": 48446,
+      "lines": 1174
+    },
+    {
+      "path": "src/components/Three/outdoorAnimation.tsx",
+      "bytes": 30382,
+      "lines": 711
+    },
+    {
+      "path": "src/components/Three/proceduralNoise.ts",
+      "bytes": 1348,
+      "lines": 42
+    },
+    {
+      "path": "src/components/Three/swimPose.ts",
+      "bytes": 17774,
+      "lines": 351
+    },
+    {
+      "path": "src/components/Three/tmp-pets-old.tsx",
+      "bytes": 33543,
+      "lines": 746
+    },
+    {
+      "path": "src/components/Three/usePlacementDrag.ts",
+      "bytes": 19645,
+      "lines": 418
+    },
+    {
+      "path": "src/components/Three/wallMaterial.ts",
+      "bytes": 19032,
+      "lines": 421
+    },
+    {
+      "path": "src/components/UI/AccountPanel.tsx",
+      "bytes": 21446,
+      "lines": 417
+    },
+    {
+      "path": "src/components/UI/AdminIslandControls.tsx",
+      "bytes": 11786,
+      "lines": 245
+    },
+    {
+      "path": "src/components/UI/AdminOnly.tsx",
+      "bytes": 774,
+      "lines": 26
+    },
+    {
+      "path": "src/components/UI/AdminValueControls.tsx",
+      "bytes": 18659,
+      "lines": 401
+    },
+    {
+      "path": "src/components/UI/AdminWorkoutRewardControls.tsx",
+      "bytes": 9883,
+      "lines": 209
+    },
+    {
+      "path": "src/components/UI/AnchoredPopover.tsx",
+      "bytes": 12100,
+      "lines": 312
+    },
+    {
+      "path": "src/components/UI/AngelGuide.tsx",
+      "bytes": 46870,
+      "lines": 997
+    },
+    {
+      "path": "src/components/UI/AuthScreen.tsx",
+      "bytes": 6042,
+      "lines": 132
+    },
+    {
+      "path": "src/components/UI/AvatarIcon.tsx",
+      "bytes": 6193,
+      "lines": 161
+    },
+    {
+      "path": "src/components/UI/BackpackTabs.tsx",
+      "bytes": 11718,
+      "lines": 268
+    },
+    {
+      "path": "src/components/UI/BuildModeOverlay.tsx",
+      "bytes": 47594,
+      "lines": 981
+    },
+    {
+      "path": "src/components/UI/CategoryIcon.tsx",
+      "bytes": 4314,
+      "lines": 71
+    },
+    {
+      "path": "src/components/UI/CategoryTabs.tsx",
+      "bytes": 15346,
+      "lines": 303
+    },
+    {
+      "path": "src/components/UI/CoachSprite.tsx",
+      "bytes": 27463,
+      "lines": 544
+    },
+    {
+      "path": "src/components/UI/ControlsHint.tsx",
+      "bytes": 3535,
+      "lines": 66
+    },
+    {
+      "path": "src/components/UI/DESIGN_SYSTEM.md",
+      "bytes": 61452,
+      "lines": 993
+    },
+    {
+      "path": "src/components/UI/DailyClaimReveal.tsx",
+      "bytes": 30332,
+      "lines": 666
+    },
+    {
+      "path": "src/components/UI/DailyLoginPanel.tsx",
+      "bytes": 48690,
+      "lines": 1024
+    },
+    {
+      "path": "src/components/UI/DesignKit.tsx",
+      "bytes": 50927,
+      "lines": 1163
+    },
+    {
+      "path": "src/components/UI/EmoteGrid.tsx",
+      "bytes": 28195,
+      "lines": 729
+    },
+    {
+      "path": "src/components/UI/FloatingPanelPortal.tsx",
+      "bytes": 1721,
+      "lines": 36
+    },
+    {
+      "path": "src/components/UI/FragmentProgress.tsx",
+      "bytes": 18834,
+      "lines": 418
+    },
+    {
+      "path": "src/components/UI/HairSpinPreview.tsx",
+      "bytes": 7548,
+      "lines": 174
+    },
+    {
+      "path": "src/components/UI/HomePanel.tsx",
+      "bytes": 18983,
+      "lines": 395
+    },
+    {
+      "path": "src/components/UI/HomeSetupGuide.tsx",
+      "bytes": 7242,
+      "lines": 141
+    },
+    {
+      "path": "src/components/UI/HudFrame.tsx",
+      "bytes": 8764,
+      "lines": 177,
+      "role": "Layout primitive that assigns HUD elements to the shared safe-area regions."
+    },
+    {
+      "path": "src/components/UI/InteractionPrompt.tsx",
+      "bytes": 14631,
+      "lines": 273
+    },
+    {
+      "path": "src/components/UI/IslandColourVeil.tsx",
+      "bytes": 10415,
+      "lines": 212
+    },
+    {
+      "path": "src/components/UI/IslandEditorOverlay.tsx",
+      "bytes": 6220,
+      "lines": 119
+    },
+    {
+      "path": "src/components/UI/IslandReturnPanel.tsx",
+      "bytes": 7572,
+      "lines": 154
+    },
+    {
+      "path": "src/components/UI/IslandTidy.tsx",
+      "bytes": 3627,
+      "lines": 91
+    },
+    {
+      "path": "src/components/UI/ItemStock.tsx",
+      "bytes": 6928,
+      "lines": 169
+    },
+    {
+      "path": "src/components/UI/LightSwitchPrompt.tsx",
+      "bytes": 6267,
+      "lines": 123
+    },
+    {
+      "path": "src/components/UI/LoadingScreen.tsx",
+      "bytes": 17578,
+      "lines": 352
+    },
+    {
+      "path": "src/components/UI/LoginBonusPopup.tsx",
+      "bytes": 5117,
+      "lines": 119
+    },
+    {
+      "path": "src/components/UI/LuckyWheel.tsx",
+      "bytes": 66345,
+      "lines": 1258
+    },
+    {
+      "path": "src/components/UI/MerchantSession.tsx",
+      "bytes": 10588,
+      "lines": 212
+    },
+    {
+      "path": "src/components/UI/MiniMap.tsx",
+      "bytes": 6708,
+      "lines": 136,
+      "role": "Canvas-drawn minimap. Reads live position from playerBus (or the build-mode camera when that is active)."
+    },
+    {
+      "path": "src/components/UI/MobileControls.tsx",
+      "bytes": 14267,
+      "lines": 338
+    },
+    {
+      "path": "src/components/UI/MusicPlayer.tsx",
+      "bytes": 4184,
+      "lines": 96
+    },
+    {
+      "path": "src/components/UI/NavBar.tsx",
+      "bytes": 7927,
+      "lines": 130
+    },
+    {
+      "path": "src/components/UI/NewbieTour.tsx",
+      "bytes": 37345,
+      "lines": 805
+    },
+    {
+      "path": "src/components/UI/NpcSpeechBubble.tsx",
+      "bytes": 4143,
+      "lines": 84
+    },
+    {
+      "path": "src/components/UI/PetCarePanel.tsx",
+      "bytes": 13779,
+      "lines": 284
+    },
+    {
+      "path": "src/components/UI/PetFeeding.tsx",
+      "bytes": 7601,
+      "lines": 159
+    },
+    {
+      "path": "src/components/UI/PetInteractionPanel.tsx",
+      "bytes": 16780,
+      "lines": 347
+    },
+    {
+      "path": "src/components/UI/PetSpeciesFilter.tsx",
+      "bytes": 4685,
+      "lines": 111
+    },
+    {
+      "path": "src/components/UI/PettingMiniGame.tsx",
+      "bytes": 8808,
+      "lines": 209
+    },
+    {
+      "path": "src/components/UI/PlacementCatalog.tsx",
+      "bytes": 16823,
+      "lines": 374
+    },
+    {
+      "path": "src/components/UI/PlacementDock.tsx",
+      "bytes": 10214,
+      "lines": 238
+    },
+    {
+      "path": "src/components/UI/ProviderButton.tsx",
+      "bytes": 2465,
+      "lines": 76
+    },
+    {
+      "path": "src/components/UI/PurchaseDialog.tsx",
+      "bytes": 23436,
+      "lines": 438
+    },
+    {
+      "path": "src/components/UI/RarityAura.tsx",
+      "bytes": 5589,
+      "lines": 104
+    },
+    {
+      "path": "src/components/UI/RarityReveal.tsx",
+      "bytes": 20058,
+      "lines": 366
+    },
+    {
+      "path": "src/components/UI/SideButtons.tsx",
+      "bytes": 17925,
+      "lines": 362
+    },
+    {
+      "path": "src/components/UI/TopBar.tsx",
+      "bytes": 17067,
+      "lines": 377
+    },
+    {
+      "path": "src/components/UI/UtilityCard.tsx",
+      "bytes": 16200,
+      "lines": 392
+    },
+    {
+      "path": "src/components/UI/WeatherToast.tsx",
+      "bytes": 2244,
+      "lines": 64
+    },
+    {
+      "path": "src/components/UI/WeatherWidget.tsx",
+      "bytes": 26408,
+      "lines": 632
+    },
+    {
+      "path": "src/components/UI/WorkoutRewardPopup.tsx",
+      "bytes": 8628,
+      "lines": 182
+    },
+    {
+      "path": "src/components/UI/YouTubeMusicHost.tsx",
+      "bytes": 6064,
+      "lines": 136
+    },
+    {
+      "path": "src/components/UI/ZoomControl.tsx",
+      "bytes": 5156,
+      "lines": 97
+    },
+    {
+      "path": "src/components/UI/admin/AdminMerchantDock.tsx",
+      "bytes": 2039,
+      "lines": 45
+    },
+    {
+      "path": "src/components/UI/admin/AdminTestConsole.tsx",
+      "bytes": 12700,
+      "lines": 256
+    },
+    {
+      "path": "src/components/UI/admin/AdminTestContext.tsx",
+      "bytes": 4924,
+      "lines": 114
+    },
+    {
+      "path": "src/components/UI/admin/AdminTestKit.tsx",
+      "bytes": 6029,
+      "lines": 163
+    },
+    {
+      "path": "src/components/UI/admin/AdminTestLauncher.tsx",
+      "bytes": 5995,
+      "lines": 128
+    },
+    {
+      "path": "src/components/UI/admin/AdminZoomDial.tsx",
+      "bytes": 1523,
+      "lines": 40
+    },
+    {
+      "path": "src/components/UI/admin/adminTestSections.tsx",
+      "bytes": 27681,
+      "lines": 656
+    },
+    {
+      "path": "src/components/UI/minimap/InteriorMiniMapScene.tsx",
+      "bytes": 17234,
+      "lines": 429
+    },
+    {
+      "path": "src/components/UI/minimap/MiniMapFrame.tsx",
+      "bytes": 7718,
+      "lines": 175
+    },
+    {
+      "path": "src/components/UI/minimap/MiniMapMarker.tsx",
+      "bytes": 5878,
+      "lines": 149
+    },
+    {
+      "path": "src/components/UI/minimap/MiniMapViewport.tsx",
+      "bytes": 8468,
+      "lines": 200
+    },
+    {
+      "path": "src/components/UI/minimap/miniMapCore.ts",
+      "bytes": 10593,
+      "lines": 229
+    },
+    {
+      "path": "src/components/UI/settings/AboutCategory.tsx",
+      "bytes": 660,
+      "lines": 22
+    },
+    {
+      "path": "src/components/UI/settings/AccountCategory.tsx",
+      "bytes": 12149,
+      "lines": 244
+    },
+    {
+      "path": "src/components/UI/settings/AdminOwnAllItemsRow.tsx",
+      "bytes": 5445,
+      "lines": 131
+    },
+    {
+      "path": "src/components/UI/settings/AudioCategory.tsx",
+      "bytes": 18750,
+      "lines": 374
+    },
+    {
+      "path": "src/components/UI/settings/ControlsCategory.tsx",
+      "bytes": 838,
+      "lines": 24
+    },
+    {
+      "path": "src/components/UI/settings/GeneralCategory.tsx",
+      "bytes": 9551,
+      "lines": 191
+    },
+    {
+      "path": "src/components/UI/settings/GraphicsCategory.tsx",
+      "bytes": 696,
+      "lines": 22
+    },
+    {
+      "path": "src/components/UI/settings/SettingRow.tsx",
+      "bytes": 1506,
+      "lines": 48
+    },
+    {
+      "path": "src/components/UI/settings/SettingsNav.tsx",
+      "bytes": 3601,
+      "lines": 84
+    },
+    {
+      "path": "src/components/UI/settings/SettingsSection.tsx",
+      "bytes": 1472,
+      "lines": 47
+    },
+    {
+      "path": "src/components/UI/settings/settingsCategories.ts",
+      "bytes": 2370,
+      "lines": 48
+    },
+    {
+      "path": "src/components/UI/settings/settingsNavigation.ts",
+      "bytes": 2159,
+      "lines": 47
+    },
+    {
+      "path": "src/components/health/ActivityHistoryPanel.tsx",
+      "bytes": 10960,
+      "lines": 285
+    },
+    {
+      "path": "src/components/health/HealthChrome.tsx",
+      "bytes": 2781,
+      "lines": 82
+    },
+    {
+      "path": "src/components/health/HealthOverviewPanel.tsx",
+      "bytes": 10321,
+      "lines": 218
+    },
+    {
+      "path": "src/components/health/HealthView.tsx",
+      "bytes": 6180,
+      "lines": 119
+    },
+    {
+      "path": "src/components/health/WeeklyTaskCard.tsx",
+      "bytes": 7091,
+      "lines": 143
+    },
+    {
+      "path": "src/components/health/WeeklyTaskForm.tsx",
+      "bytes": 14230,
+      "lines": 326
+    },
+    {
+      "path": "src/components/health/WeeklyTaskPanel.tsx",
+      "bytes": 8925,
+      "lines": 211
+    },
+    {
+      "path": "src/components/health/healthFormat.ts",
+      "bytes": 4466,
+      "lines": 103
+    },
+    {
+      "path": "src/components/health/healthSections.ts",
+      "bytes": 2402,
+      "lines": 50
+    },
+    {
+      "path": "src/constants/adminFeatures.ts",
+      "bytes": 29454,
+      "lines": 397
+    },
+    {
+      "path": "src/constants/angelAvoid.ts",
+      "bytes": 1897,
+      "lines": 38
+    },
+    {
+      "path": "src/constants/artwork.ts",
+      "bytes": 30702,
+      "lines": 582
+    },
+    {
+      "path": "src/constants/bgmTracks.ts",
+      "bytes": 1955,
+      "lines": 66
+    },
+    {
+      "path": "src/constants/buildingPositions.ts",
+      "bytes": 678,
+      "lines": 15
+    },
+    {
+      "path": "src/constants/cameraFocus.ts",
+      "bytes": 6041,
+      "lines": 108
+    },
+    {
+      "path": "src/constants/cameraZoom.ts",
+      "bytes": 5997,
+      "lines": 110
+    },
+    {
+      "path": "src/constants/characterAssets.ts",
+      "bytes": 6349,
+      "lines": 114
+    },
+    {
+      "path": "src/constants/characterForm.ts",
+      "bytes": 9891,
+      "lines": 212
+    },
+    {
+      "path": "src/constants/characterModel.ts",
+      "bytes": 4129,
+      "lines": 99
+    },
+    {
+      "path": "src/constants/characterRig.ts",
+      "bytes": 46208,
+      "lines": 860
+    },
+    {
+      "path": "src/constants/civilTime.ts",
+      "bytes": 5175,
+      "lines": 106
+    },
+    {
+      "path": "src/constants/consumables.ts",
+      "bytes": 9413,
+      "lines": 195
+    },
+    {
+      "path": "src/constants/cosmeticEffects.ts",
+      "bytes": 131110,
+      "lines": 2872
+    },
+    {
+      "path": "src/constants/currency.ts",
+      "bytes": 7496,
+      "lines": 153
+    },
+    {
+      "path": "src/constants/dailyLogin.ts",
+      "bytes": 24664,
+      "lines": 510
+    },
+    {
+      "path": "src/constants/dailyLoginPrizes.ts",
+      "bytes": 10854,
+      "lines": 239
+    },
+    {
+      "path": "src/constants/distribution.ts",
+      "bytes": 6513,
+      "lines": 134
+    },
+    {
+      "path": "src/constants/environmentMaps.ts",
+      "bytes": 1685,
+      "lines": 34
+    },
+    {
+      "path": "src/constants/fragments.ts",
+      "bytes": 20163,
+      "lines": 411
+    },
+    {
+      "path": "src/constants/furnitureInteractions.ts",
+      "bytes": 26356,
+      "lines": 507
+    },
+    {
+      "path": "src/constants/furnitureModels.ts",
+      "bytes": 9950,
+      "lines": 298
+    },
+    {
+      "path": "src/constants/groundCover.ts",
+      "bytes": 8461,
+      "lines": 199
+    },
+    {
+      "path": "src/constants/hair.ts",
+      "bytes": 179746,
+      "lines": 3563
+    },
+    {
+      "path": "src/constants/hairRibbon.ts",
+      "bytes": 11023,
+      "lines": 238
+    },
+    {
+      "path": "src/constants/hats.ts",
+      "bytes": 2267,
+      "lines": 45
+    },
+    {
+      "path": "src/constants/houseStyles.ts",
+      "bytes": 23717,
+      "lines": 617
+    },
+    {
+      "path": "src/constants/hudLayout.ts",
+      "bytes": 1686,
+      "lines": 32
+    },
+    {
+      "path": "src/constants/interactionPostures.ts",
+      "bytes": 32219,
+      "lines": 756
+    },
+    {
+      "path": "src/constants/interiorShell.ts",
+      "bytes": 18838,
+      "lines": 431
+    },
+    {
+      "path": "src/constants/islandReturn.ts",
+      "bytes": 53376,
+      "lines": 1150
+    },
+    {
+      "path": "src/constants/items.ts",
+      "bytes": 135408,
+      "lines": 1278
+    },
+    {
+      "path": "src/constants/layers.ts",
+      "bytes": 6313,
+      "lines": 109
+    },
+    {
+      "path": "src/constants/lighting.ts",
+      "bytes": 6266,
+      "lines": 114
+    },
+    {
+      "path": "src/constants/limitedShop.ts",
+      "bytes": 28395,
+      "lines": 572
+    },
+    {
+      "path": "src/constants/limitedShopRotation.ts",
+      "bytes": 23647,
+      "lines": 552
+    },
+    {
+      "path": "src/constants/luckyWheel.ts",
+      "bytes": 19025,
+      "lines": 398
+    },
+    {
+      "path": "src/constants/materialSwatches.ts",
+      "bytes": 2218,
+      "lines": 45
+    },
+    {
+      "path": "src/constants/merchantAnimation.ts",
+      "bytes": 11015,
+      "lines": 232
+    },
+    {
+      "path": "src/constants/merchantDocks.ts",
+      "bytes": 13620,
+      "lines": 247
+    },
+    {
+      "path": "src/constants/merchantVisit.ts",
+      "bytes": 10054,
+      "lines": 211
+    },
+    {
+      "path": "src/constants/merchants.ts",
+      "bytes": 8209,
+      "lines": 193
+    },
+    {
+      "path": "src/constants/npcSocial.ts",
+      "bytes": 13326,
+      "lines": 358
+    },
+    {
+      "path": "src/constants/npcs.ts",
+      "bytes": 31547,
+      "lines": 670
+    },
+    {
+      "path": "src/constants/objectAnimations.ts",
+      "bytes": 44566,
+      "lines": 934
+    },
+    {
+      "path": "src/constants/outdoorAnimation.ts",
+      "bytes": 10700,
+      "lines": 233
+    },
+    {
+      "path": "src/constants/outdoorPalette.ts",
+      "bytes": 4233,
+      "lines": 86
+    },
+    {
+      "path": "src/constants/outdoorScale.ts",
+      "bytes": 11092,
+      "lines": 169
+    },
+    {
+      "path": "src/constants/pants.ts",
+      "bytes": 5134,
+      "lines": 102
+    },
+    {
+      "path": "src/constants/petCare.ts",
+      "bytes": 34465,
+      "lines": 722
+    },
+    {
+      "path": "src/constants/petHabitats.ts",
+      "bytes": 9668,
+      "lines": 219
+    },
+    {
+      "path": "src/constants/petInteractions.ts",
+      "bytes": 10050,
+      "lines": 257
+    },
+    {
+      "path": "src/constants/petRig.ts",
+      "bytes": 7970,
+      "lines": 167
+    },
+    {
+      "path": "src/constants/pets.ts",
+      "bytes": 14896,
+      "lines": 258
+    },
+    {
+      "path": "src/constants/placement.ts",
+      "bytes": 9503,
+      "lines": 185
+    },
+    {
+      "path": "src/constants/rarity.ts",
+      "bytes": 16680,
+      "lines": 308
+    },
+    {
+      "path": "src/constants/rarityFx.ts",
+      "bytes": 18977,
+      "lines": 340
+    },
+    {
+      "path": "src/constants/retiredItems.ts",
+      "bytes": 1813,
+      "lines": 53
+    },
+    {
+      "path": "src/constants/revealCopy.ts",
+      "bytes": 8787,
+      "lines": 166
+    },
+    {
+      "path": "src/constants/rewardEffects.ts",
+      "bytes": 9358,
+      "lines": 216
+    },
+    {
+      "path": "src/constants/rewardPools.ts",
+      "bytes": 17146,
+      "lines": 350
+    },
+    {
+      "path": "src/constants/rewards.ts",
+      "bytes": 10203,
+      "lines": 209
+    },
+    {
+      "path": "src/constants/rooms.ts",
+      "bytes": 13767,
+      "lines": 384
+    },
+    {
+      "path": "src/constants/seed.ts",
+      "bytes": 5119,
+      "lines": 106
+    },
+    {
+      "path": "src/constants/terrain.ts",
+      "bytes": 16735,
+      "lines": 341
+    },
+    {
+      "path": "src/constants/tourTargets.ts",
+      "bytes": 2630,
+      "lines": 56
+    },
+    {
+      "path": "src/constants/utilityCards.ts",
+      "bytes": 20435,
+      "lines": 452
+    },
+    {
+      "path": "src/constants/weeklyTasks.ts",
+      "bytes": 27130,
+      "lines": 660
+    },
+    {
+      "path": "src/constants/wheelRewards.ts",
+      "bytes": 9361,
+      "lines": 217
+    },
+    {
+      "path": "src/constants/workoutRewards.ts",
+      "bytes": 18654,
+      "lines": 401
+    },
+    {
+      "path": "src/constants/world.ts",
+      "bytes": 4615,
+      "lines": 107,
+      "role": "Single source of truth for ocean surface / swim body world-Y. Ocean, Avatar, Weather and Fish must all read these, never re-literal them."
+    },
+    {
+      "path": "src/context/AppContext.tsx",
+      "bytes": 75770,
+      "lines": 1450,
+      "role": "Global state: profile, inventory, equipped items, current view, UI flags. Backed by Firestore or localStorage depending on auth mode."
+    },
+    {
+      "path": "src/context/homeMigration.ts",
+      "bytes": 4391,
+      "lines": 110
+    },
+    {
+      "path": "src/context/useDailyLoginPrize.ts",
+      "bytes": 9423,
+      "lines": 204
+    },
+    {
+      "path": "src/context/useEconomyActions.ts",
+      "bytes": 39430,
+      "lines": 801
+    },
+    {
+      "path": "src/context/useFragmentActions.ts",
+      "bytes": 11864,
+      "lines": 255
+    },
+    {
+      "path": "src/context/useHomeActions.ts",
+      "bytes": 3976,
+      "lines": 103
+    },
+    {
+      "path": "src/context/useIslandEditor.ts",
+      "bytes": 11045,
+      "lines": 241
+    },
+    {
+      "path": "src/context/useIslandLife.ts",
+      "bytes": 24084,
+      "lines": 516
+    },
+    {
+      "path": "src/context/useLimitedShop.ts",
+      "bytes": 12834,
+      "lines": 252
+    },
+    {
+      "path": "src/context/usePetCare.ts",
+      "bytes": 16902,
+      "lines": 355
+    },
+    {
+      "path": "src/context/usePlacementActions.ts",
+      "bytes": 3524,
+      "lines": 93
+    },
+    {
+      "path": "src/context/useShopActions.ts",
+      "bytes": 15327,
+      "lines": 285
+    },
+    {
+      "path": "src/context/useUtilityCards.ts",
+      "bytes": 8933,
+      "lines": 214
+    },
+    {
+      "path": "src/context/useWeeklyTasks.ts",
+      "bytes": 12636,
+      "lines": 287
+    },
+    {
+      "path": "src/context/useWheelActions.ts",
+      "bytes": 12424,
+      "lines": 260
+    },
+    {
+      "path": "src/context/useWheelRewards.ts",
+      "bytes": 5666,
+      "lines": 113
+    },
+    {
+      "path": "src/context/useWorkoutRewards.ts",
+      "bytes": 24797,
+      "lines": 484
+    },
+    {
+      "path": "src/devAngelFit.tsx",
+      "bytes": 6367,
+      "lines": 149
+    },
+    {
+      "path": "src/hooks/useAdminMode.ts",
+      "bytes": 1052,
+      "lines": 27
+    },
+    {
+      "path": "src/hooks/useEquippedBuildings.ts",
+      "bytes": 1651,
+      "lines": 42
+    },
+    {
+      "path": "src/hooks/useEscapeToClose.ts",
+      "bytes": 803,
+      "lines": 26
+    },
+    {
+      "path": "src/hooks/useHudTier.ts",
+      "bytes": 4491,
+      "lines": 110
+    },
+    {
+      "path": "src/hooks/useIsTouchDevice.ts",
+      "bytes": 1117,
+      "lines": 31
+    },
+    {
+      "path": "src/hooks/useLightningFlicker.ts",
+      "bytes": 1728,
+      "lines": 43
+    },
+    {
+      "path": "src/hooks/useMerchantVisit.ts",
+      "bytes": 2841,
+      "lines": 65
+    },
+    {
+      "path": "src/hooks/usePlayerHome.ts",
+      "bytes": 3365,
+      "lines": 84
+    },
+    {
+      "path": "src/hooks/useScrollIsolation.ts",
+      "bytes": 5986,
+      "lines": 128
+    },
+    {
+      "path": "src/hooks/useViewportWidth.ts",
+      "bytes": 989,
+      "lines": 28
+    },
+    {
+      "path": "src/index.css",
+      "bytes": 151194,
+      "lines": 3275,
+      "role": "Tailwind entry AND the authoritative GLOBAL Z-INDEX LAYER SYSTEM. Read the comment block at the top before positioning anything."
+    },
+    {
+      "path": "src/lib/adminSaveReset.ts",
+      "bytes": 2491,
+      "lines": 57
+    },
+    {
+      "path": "src/lib/ambientMusic.ts",
+      "bytes": 72584,
+      "lines": 1738
+    },
+    {
+      "path": "src/lib/backgroundMusic.ts",
+      "bytes": 16696,
+      "lines": 425
+    },
+    {
+      "path": "src/lib/cameraCollision.ts",
+      "bytes": 30721,
+      "lines": 624
+    },
+    {
+      "path": "src/lib/collisionShape.ts",
+      "bytes": 21136,
+      "lines": 525
+    },
+    {
+      "path": "src/lib/dailyLoginClient.ts",
+      "bytes": 9362,
+      "lines": 225
+    },
+    {
+      "path": "src/lib/firebase.ts",
+      "bytes": 12308,
+      "lines": 347,
+      "role": "Firebase wrapper AND a full localStorage-backed Firestore shim. When the config is a placeholder or anonymous auth fails, the app transparently runs in Local Guest Mode - this is why it boots with no credentials."
+    },
+    {
+      "path": "src/lib/firebaseCore.ts",
+      "bytes": 1828,
+      "lines": 49
+    },
+    {
+      "path": "src/lib/furnitureInteraction.ts",
+      "bytes": 30182,
+      "lines": 650
+    },
+    {
+      "path": "src/lib/furniturePlacement.ts",
+      "bytes": 55160,
+      "lines": 1260
+    },
+    {
+      "path": "src/lib/groundCoverBuild.ts",
+      "bytes": 14158,
+      "lines": 321
+    },
+    {
+      "path": "src/lib/groundField.ts",
+      "bytes": 12896,
+      "lines": 297
+    },
+    {
+      "path": "src/lib/healthData.ts",
+      "bytes": 8767,
+      "lines": 187
+    },
+    {
+      "path": "src/lib/inputManager.ts",
+      "bytes": 12616,
+      "lines": 257
+    },
+    {
+      "path": "src/lib/interactionPosture.ts",
+      "bytes": 18288,
+      "lines": 399
+    },
+    {
+      "path": "src/lib/interiorDoors.ts",
+      "bytes": 5045,
+      "lines": 116
+    },
+    {
+      "path": "src/lib/interiorLights.ts",
+      "bytes": 8783,
+      "lines": 183
+    },
+    {
+      "path": "src/lib/interiorPlacement.ts",
+      "bytes": 44997,
+      "lines": 1098
+    },
+    {
+      "path": "src/lib/islandOvergrowth.ts",
+      "bytes": 19045,
+      "lines": 443
+    },
+    {
+      "path": "src/lib/merchantAnimation.ts",
+      "bytes": 18160,
+      "lines": 409
+    },
+    {
+      "path": "src/lib/npcFacilityLocks.ts",
+      "bytes": 5155,
+      "lines": 133
+    },
+    {
+      "path": "src/lib/npcHum.ts",
+      "bytes": 11831,
+      "lines": 324
+    },
+    {
+      "path": "src/lib/npcPose.ts",
+      "bytes": 8968,
+      "lines": 209
+    },
+    {
+      "path": "src/lib/npcRig.ts",
+      "bytes": 9182,
+      "lines": 240
+    },
+    {
+      "path": "src/lib/npcSocial.ts",
+      "bytes": 14912,
+      "lines": 391
+    },
+    {
+      "path": "src/lib/objectAnimation.ts",
+      "bytes": 12746,
+      "lines": 301
+    },
+    {
+      "path": "src/lib/objectRuntimeState.ts",
+      "bytes": 12088,
+      "lines": 283
+    },
+    {
+      "path": "src/lib/onboardingQueue.ts",
+      "bytes": 8779,
+      "lines": 191
+    },
+    {
+      "path": "src/lib/outdoorMotion.ts",
+      "bytes": 18308,
+      "lines": 388
+    },
+    {
+      "path": "src/lib/petActivity.ts",
+      "bytes": 9589,
+      "lines": 236
+    },
+    {
+      "path": "src/lib/petCompatibility.ts",
+      "bytes": 3282,
+      "lines": 67
+    },
+    {
+      "path": "src/lib/petReaction.ts",
+      "bytes": 8312,
+      "lines": 210
+    },
+    {
+      "path": "src/lib/petRestingSpots.ts",
+      "bytes": 9559,
+      "lines": 202
+    },
+    {
+      "path": "src/lib/placementSession.ts",
+      "bytes": 19732,
+      "lines": 404
+    },
+    {
+      "path": "src/lib/placementSurfaces.ts",
+      "bytes": 18357,
+      "lines": 394
+    },
+    {
+      "path": "src/lib/playerBus.ts",
+      "bytes": 25427,
+      "lines": 463,
+      "role": "Non-React per-frame state bus between the 3D layer and HUD overlays, plus clampFrameDelta() - the tab-resume delta guard that stops the camera spinning after a tab switch."
+    },
+    {
+      "path": "src/lib/rendererTuning.ts",
+      "bytes": 2681,
+      "lines": 59
+    },
+    {
+      "path": "src/lib/saveStatus.ts",
+      "bytes": 6267,
+      "lines": 129
+    },
+    {
+      "path": "src/lib/soundUtils.ts",
+      "bytes": 118565,
+      "lines": 2702,
+      "role": "All audio. Every effect is synthesized live with the Web Audio API (no sound files at all), including the layered swim ambience."
+    },
+    {
+      "path": "src/lib/tutorialReplay.ts",
+      "bytes": 2295,
+      "lines": 58
+    },
+    {
+      "path": "src/lib/vibration.ts",
+      "bytes": 1369,
+      "lines": 50
+    },
+    {
+      "path": "src/lib/wheelScroll.ts",
+      "bytes": 10163,
+      "lines": 205
+    },
+    {
+      "path": "src/lib/workoutCompletion.ts",
+      "bytes": 7046,
+      "lines": 156
+    },
+    {
+      "path": "src/lib/worldSolids.ts",
+      "bytes": 4011,
+      "lines": 97
+    },
+    {
+      "path": "src/lib/youtubeMusic.ts",
+      "bytes": 31994,
+      "lines": 822
+    },
+    {
+      "path": "src/main.tsx",
+      "bytes": 3114,
+      "lines": 94,
+      "role": "React root. Wraps <App/> in an ErrorBoundary that renders the error + component stack on screen instead of a blank page."
+    },
+    {
+      "path": "src/save/LocalSaveStore.ts",
+      "bytes": 13234,
+      "lines": 363
+    },
+    {
+      "path": "src/save/guestClaim.ts",
+      "bytes": 4512,
+      "lines": 111
+    },
+    {
+      "path": "src/server/dailyLoginApi.ts",
+      "bytes": 26737,
+      "lines": 586
+    },
+    {
+      "path": "src/types.ts",
+      "bytes": 21412,
+      "lines": 439,
+      "role": "Shared domain types: UserProfile, ShopItem, PlacedItem, WorkoutLog, View enum, ItemCategory."
+    },
+    {
+      "path": "src/utils/categoryUtils.ts",
+      "bytes": 37415,
+      "lines": 539
+    },
+    {
+      "path": "src/utils/debugOverrides.ts",
+      "bytes": 5683,
+      "lines": 98
+    },
+    {
+      "path": "src/utils/inventory.ts",
+      "bytes": 5462,
+      "lines": 115
+    },
+    {
+      "path": "src/utils/level.ts",
+      "bytes": 2305,
+      "lines": 46
+    },
+    {
+      "path": "src/utils/placementRules.ts",
+      "bytes": 14176,
+      "lines": 342
+    },
+    {
+      "path": "src/utils/unlock.ts",
+      "bytes": 3298,
+      "lines": 80
+    },
+    {
+      "path": "src/utils/weatherSway.ts",
+      "bytes": 965,
+      "lines": 30
+    },
+    {
+      "path": "src/utils/zFightAudit.ts",
+      "bytes": 13767,
+      "lines": 342
+    },
+    {
+      "path": "src/vite-env.d.ts",
+      "bytes": 253,
+      "lines": 6
+    },
+    {
+      "path": "tmp-allpets.tsx",
+      "bytes": 974,
+      "lines": 17
+    },
+    {
+      "path": "tmp-anomaly-scan.ts",
+      "bytes": 4840,
+      "lines": 109
+    },
+    {
+      "path": "tmp-artwork-preview.html",
+      "bytes": 859,
+      "lines": 23
+    },
+    {
+      "path": "tmp-artwork-preview.tsx",
+      "bytes": 10258,
+      "lines": 250
+    },
+    {
+      "path": "tmp-audio-audit.html",
+      "bytes": 747,
+      "lines": 20
+    },
+    {
+      "path": "tmp-audio-audit.tsx",
+      "bytes": 6585,
+      "lines": 171
+    },
+    {
+      "path": "tmp-audio-ui.html",
+      "bytes": 729,
+      "lines": 20
+    },
+    {
+      "path": "tmp-audio-ui.tsx",
+      "bytes": 531,
+      "lines": 15
+    },
+    {
+      "path": "tmp-beach-exit-check.ts",
+      "bytes": 2994,
+      "lines": 79
+    },
+    {
+      "path": "tmp-bird3d.html",
+      "bytes": 210,
+      "lines": 6
+    },
+    {
+      "path": "tmp-bird3d.tsx",
+      "bytes": 1821,
+      "lines": 41
+    },
+    {
+      "path": "tmp-birds-anat.tsx",
+      "bytes": 1401,
+      "lines": 29
+    },
+    {
+      "path": "tmp-birds-audit.tsx",
+      "bytes": 1757,
+      "lines": 37
+    },
+    {
+      "path": "tmp-birds-face.tsx",
+      "bytes": 1140,
+      "lines": 22
+    },
+    {
+      "path": "tmp-birds-preview.html",
+      "bytes": 38511,
+      "lines": 36
+    },
+    {
+      "path": "tmp-birds-zoom.html",
+      "bytes": 11793,
+      "lines": 9
+    },
+    {
+      "path": "tmp-birds-zoom.tsx",
+      "bytes": 902,
+      "lines": 17
+    },
+    {
+      "path": "tmp-birds.tsx",
+      "bytes": 1676,
+      "lines": 39
+    },
+    {
+      "path": "tmp-budgie-big.tsx",
+      "bytes": 829,
+      "lines": 13
+    },
+    {
+      "path": "tmp-butler.html",
+      "bytes": 222,
+      "lines": 6
+    },
+    {
+      "path": "tmp-butler.tsx",
+      "bytes": 1679,
+      "lines": 37
+    },
+    {
+      "path": "tmp-cats-preview.html",
+      "bytes": 44023,
+      "lines": 41
+    },
+    {
+      "path": "tmp-cats-zoom.tsx",
+      "bytes": 578,
+      "lines": 10
+    },
+    {
+      "path": "tmp-cats.tsx",
+      "bytes": 1684,
+      "lines": 40
+    },
+    {
+      "path": "tmp-cats3.tsx",
+      "bytes": 1338,
+      "lines": 27
+    },
+    {
+      "path": "tmp-ceiling-light.html",
+      "bytes": 863,
+      "lines": 23
+    },
+    {
+      "path": "tmp-ceiling-light.tsx",
+      "bytes": 12235,
+      "lines": 309
+    },
+    {
+      "path": "tmp-character-parts.html",
+      "bytes": 239,
+      "lines": 6
+    },
+    {
+      "path": "tmp-character-parts.tsx",
+      "bytes": 8242,
+      "lines": 170
+    },
+    {
+      "path": "tmp-cosmetic-preview.html",
+      "bytes": 846,
+      "lines": 23
+    },
+    {
+      "path": "tmp-cosmetic-preview.tsx",
+      "bytes": 17928,
+      "lines": 412
+    },
+    {
+      "path": "tmp-daily-login.html",
+      "bytes": 381,
+      "lines": 14
+    },
+    {
+      "path": "tmp-daily-login.tsx",
+      "bytes": 5365,
+      "lines": 115
+    },
+    {
+      "path": "tmp-daily-prizes.html",
+      "bytes": 375,
+      "lines": 14
+    },
+    {
+      "path": "tmp-daily-prizes.tsx",
+      "bytes": 5382,
+      "lines": 120
+    },
+    {
+      "path": "tmp-deckstand.html",
+      "bytes": 707,
+      "lines": 12
+    },
+    {
+      "path": "tmp-deckstand.tsx",
+      "bytes": 6453,
+      "lines": 149
+    },
+    {
+      "path": "tmp-dogs-chip.tsx",
+      "bytes": 1723,
+      "lines": 36
+    },
+    {
+      "path": "tmp-dogs-preview.tsx",
+      "bytes": 1579,
+      "lines": 35
+    },
+    {
+      "path": "tmp-doorfollow-check.ts",
+      "bytes": 4208,
+      "lines": 92
+    },
+    {
+      "path": "tmp-doortrigger-check.ts",
+      "bytes": 7587,
+      "lines": 157
+    },
+    {
+      "path": "tmp-dump.ts",
+      "bytes": 870,
+      "lines": 13
+    },
+    {
+      "path": "tmp-firefly-preview.html",
+      "bytes": 814,
+      "lines": 23
+    },
+    {
+      "path": "tmp-firefly-preview.tsx",
+      "bytes": 2959,
+      "lines": 89
+    },
+    {
+      "path": "tmp-fit.html",
+      "bytes": 242,
+      "lines": 5
+    },
+    {
+      "path": "tmp-fit.tsx",
+      "bytes": 2081,
+      "lines": 49
+    },
+    {
+      "path": "tmp-footstep-audit.html",
+      "bytes": 700,
+      "lines": 19
+    },
+    {
+      "path": "tmp-footstep-audit.tsx",
+      "bytes": 5729,
+      "lines": 160
+    },
+    {
+      "path": "tmp-fpcheck.ts",
+      "bytes": 5258,
+      "lines": 111
+    },
+    {
+      "path": "tmp-furniture-preview.html",
+      "bytes": 863,
+      "lines": 23
+    },
+    {
+      "path": "tmp-furniture-preview.tsx",
+      "bytes": 5321,
+      "lines": 125
+    },
+    {
+      "path": "tmp-hair.html",
+      "bytes": 249,
+      "lines": 6
+    },
+    {
+      "path": "tmp-hair.tsx",
+      "bytes": 4227,
+      "lines": 119
+    },
+    {
+      "path": "tmp-hathair.html",
+      "bytes": 204,
+      "lines": 6
+    },
+    {
+      "path": "tmp-hathair.tsx",
+      "bytes": 4642,
+      "lines": 143
+    },
+    {
+      "path": "tmp-homecam-check.ts",
+      "bytes": 4377,
+      "lines": 106
+    },
+    {
+      "path": "tmp-house-camera.html",
+      "bytes": 268,
+      "lines": 10
+    },
+    {
+      "path": "tmp-house-camera.tsx",
+      "bytes": 5695,
+      "lines": 134
+    },
+    {
+      "path": "tmp-iconsheet.html",
+      "bytes": 699,
+      "lines": 12
+    },
+    {
+      "path": "tmp-iconsheet.tsx",
+      "bytes": 1348,
+      "lines": 33
+    },
+    {
+      "path": "tmp-interior-footstep-check.ts",
+      "bytes": 2939,
+      "lines": 66
+    },
+    {
+      "path": "tmp-lawn.html",
+      "bytes": 271,
+      "lines": 6
+    },
+    {
+      "path": "tmp-lawn.tsx",
+      "bytes": 8742,
+      "lines": 224
+    },
+    {
+      "path": "tmp-lock-preview.html",
+      "bytes": 746,
+      "lines": 22
+    },
+    {
+      "path": "tmp-lock-preview.tsx",
+      "bytes": 6219,
+      "lines": 146
+    },
+    {
+      "path": "tmp-moon.html",
+      "bytes": 314,
+      "lines": 15
+    },
+    {
+      "path": "tmp-moon.tsx",
+      "bytes": 1427,
+      "lines": 44
+    },
+    {
+      "path": "tmp-npc-window.html",
+      "bytes": 60154,
+      "lines": 24
+    },
+    {
+      "path": "tmp-npc.html",
+      "bytes": 211,
+      "lines": 6
+    },
+    {
+      "path": "tmp-npc.tsx",
+      "bytes": 1671,
+      "lines": 42
+    },
+    {
+      "path": "tmp-npcedge-check.ts",
+      "bytes": 11211,
+      "lines": 307
+    },
+    {
+      "path": "tmp-npcedge.html",
+      "bytes": 215,
+      "lines": 6
+    },
+    {
+      "path": "tmp-npcedge.tsx",
+      "bytes": 7263,
+      "lines": 185
+    },
+    {
+      "path": "tmp-npcicon.html",
+      "bytes": 226,
+      "lines": 6
+    },
+    {
+      "path": "tmp-npcicon.tsx",
+      "bytes": 1273,
+      "lines": 32
+    },
+    {
+      "path": "tmp-npcsocial.html",
+      "bytes": 1060,
+      "lines": 25
+    },
+    {
+      "path": "tmp-npcsocial.tsx",
+      "bytes": 4311,
+      "lines": 121
+    },
+    {
+      "path": "tmp-npcwin.html",
+      "bytes": 229,
+      "lines": 6
+    },
+    {
+      "path": "tmp-npcwin.tsx",
+      "bytes": 2459,
+      "lines": 61
+    },
+    {
+      "path": "tmp-objectanim.html",
+      "bytes": 1345,
+      "lines": 29
+    },
+    {
+      "path": "tmp-objectanim.tsx",
+      "bytes": 6983,
+      "lines": 152
+    },
+    {
+      "path": "tmp-oceanring.html",
+      "bytes": 287,
+      "lines": 7
+    },
+    {
+      "path": "tmp-oceanring.tsx",
+      "bytes": 1713,
+      "lines": 50
+    },
+    {
+      "path": "tmp-outdoor-preview.html",
+      "bytes": 859,
+      "lines": 23
+    },
+    {
+      "path": "tmp-outdoor-preview.tsx",
+      "bytes": 6584,
+      "lines": 144
+    },
+    {
+      "path": "tmp-outfit-audit.html",
+      "bytes": 1281,
+      "lines": 29
+    },
+    {
+      "path": "tmp-outfit-audit.tsx",
+      "bytes": 8028,
+      "lines": 183
+    },
+    {
+      "path": "tmp-overgrowth-preview.html",
+      "bytes": 233,
+      "lines": 6
+    },
+    {
+      "path": "tmp-overgrowth-preview.tsx",
+      "bytes": 3973,
+      "lines": 93
+    },
+    {
+      "path": "tmp-petfollow.html",
+      "bytes": 216,
+      "lines": 6
+    },
+    {
+      "path": "tmp-petfollow.tsx",
+      "bytes": 6286,
+      "lines": 137
+    },
+    {
+      "path": "tmp-petfp.html",
+      "bytes": 218,
+      "lines": 6
+    },
+    {
+      "path": "tmp-petfp.tsx",
+      "bytes": 5537,
+      "lines": 115
+    },
+    {
+      "path": "tmp-petinteract.html",
+      "bytes": 1266,
+      "lines": 27
+    },
+    {
+      "path": "tmp-petinteract.tsx",
+      "bytes": 4785,
+      "lines": 118
+    },
+    {
+      "path": "tmp-phoenix-big.tsx",
+      "bytes": 1342,
+      "lines": 23
+    },
+    {
+      "path": "tmp-phoenix3d.html",
+      "bytes": 216,
+      "lines": 6
+    },
+    {
+      "path": "tmp-phoenix3d.tsx",
+      "bytes": 1209,
+      "lines": 30
+    },
+    {
+      "path": "tmp-posture-preview.html",
+      "bytes": 1002,
+      "lines": 25
+    },
+    {
+      "path": "tmp-posture-preview.tsx",
+      "bytes": 10926,
+      "lines": 212
+    },
+    {
+      "path": "tmp-rabbit-fit.html",
+      "bytes": 234,
+      "lines": 6
+    },
+    {
+      "path": "tmp-rabbit-fit.tsx",
+      "bytes": 2233,
+      "lines": 45
+    },
+    {
+      "path": "tmp-rarity-verify.tsx",
+      "bytes": 10909,
+      "lines": 204
+    },
+    {
+      "path": "tmp-render-hair-icons.tsx",
+      "bytes": 1685,
+      "lines": 32
+    },
+    {
+      "path": "tmp-render-icons.tsx",
+      "bytes": 1598,
+      "lines": 38
+    },
+    {
+      "path": "tmp-reveal-frozen.html",
+      "bytes": 943,
+      "lines": 20
+    },
+    {
+      "path": "tmp-reveal.html",
+      "bytes": 246,
+      "lines": 7
+    },
+    {
+      "path": "tmp-reveal.tsx",
+      "bytes": 1101,
+      "lines": 30
+    },
+    {
+      "path": "tmp-roomstyle-check.ts",
+      "bytes": 4463,
+      "lines": 81
+    },
+    {
+      "path": "tmp-scrim.html",
+      "bytes": 288,
+      "lines": 13
+    },
+    {
+      "path": "tmp-scrim.tsx",
+      "bytes": 1371,
+      "lines": 28
+    },
+    {
+      "path": "tmp-seedcheck.ts",
+      "bytes": 1024,
+      "lines": 16
+    },
+    {
+      "path": "tmp-shoes-preview.html",
+      "bytes": 1099,
+      "lines": 28
+    },
+    {
+      "path": "tmp-shoes-preview.tsx",
+      "bytes": 4813,
+      "lines": 140
+    },
+    {
+      "path": "tmp-shopmatch-spans.json",
+      "bytes": 1984,
+      "lines": 2
+    },
+    {
+      "path": "tmp-shopmatch-spans.ts",
+      "bytes": 1120,
+      "lines": 27
+    },
+    {
+      "path": "tmp-shopmatch.html",
+      "bytes": 895,
+      "lines": 23
+    },
+    {
+      "path": "tmp-shopmatch.tsx",
+      "bytes": 5567,
+      "lines": 126
+    },
+    {
+      "path": "tmp-shrubfield.html",
+      "bytes": 709,
+      "lines": 12
+    },
+    {
+      "path": "tmp-shrubfield.tsx",
+      "bytes": 4903,
+      "lines": 112
+    },
+    {
+      "path": "tmp-skyfacet.html",
+      "bytes": 263,
+      "lines": 5
+    },
+    {
+      "path": "tmp-skyfacet.tsx",
+      "bytes": 2091,
+      "lines": 64
+    },
+    {
+      "path": "tmp-skystars.html",
+      "bytes": 325,
+      "lines": 13
+    },
+    {
+      "path": "tmp-skystars.tsx",
+      "bytes": 2877,
+      "lines": 84
+    },
+    {
+      "path": "tmp-spinsound.html",
+      "bytes": 196,
+      "lines": 6
+    },
+    {
+      "path": "tmp-spinsound.tsx",
+      "bytes": 3216,
+      "lines": 70
+    },
+    {
+      "path": "tmp-spinstrip.tsx",
+      "bytes": 5110,
+      "lines": 105
+    },
+    {
+      "path": "tmp-swimflip-check.ts",
+      "bytes": 11508,
+      "lines": 293
+    },
+    {
+      "path": "tmp-swimstate-check.ts",
+      "bytes": 3463,
+      "lines": 82
+    },
+    {
+      "path": "tmp-temple.html",
+      "bytes": 198,
+      "lines": 6
+    },
+    {
+      "path": "tmp-temple.tsx",
+      "bytes": 3930,
+      "lines": 104
+    },
+    {
+      "path": "tmp-wall-icons.html",
+      "bytes": 681,
+      "lines": 19
+    },
+    {
+      "path": "tmp-wall-icons.tsx",
+      "bytes": 1492,
+      "lines": 36
+    },
+    {
+      "path": "tmp-wall-preview.html",
+      "bytes": 862,
+      "lines": 23
+    },
+    {
+      "path": "tmp-wall-preview.tsx",
+      "bytes": 8536,
+      "lines": 211
+    },
+    {
+      "path": "tmp-wallcam-check.ts",
+      "bytes": 4625,
+      "lines": 92
+    },
+    {
+      "path": "tsconfig.json",
+      "bytes": 555,
+      "lines": 28
+    },
+    {
+      "path": "vite.config.ts",
+      "bytes": 1513,
+      "lines": 49,
+      "role": "Vite config. Note the usePolling watcher (the repo lives on OneDrive, where native FS events are unreliable) and the manual vendor chunk split."
+    }
+  ]
+}
