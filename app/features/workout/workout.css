@@ -814,3 +814,60 @@
   .wk-rec-why, .wk-rec-plan { font-size: 15px; }
   .wk-rec-stats { font-size: 17px; }
 }
+
+/* ===== 09-30：結算畫面跟動作清單頁一樣大（同寬、同樣左右避開遊戲關閉鈕），字與數字跟著放大 ===== */
+@media (min-width: 1000px) {
+  #view > .fade-in.wk-sum, .fade-in.wk-sum { max-width: min(1400px, calc(100% - 200px)); gap: 16px; }
+  .wk-sum > .card { padding: 24px 28px; }
+  .wk-sum-badge { width: 68px; height: 68px; }
+  .wk-sum-title h1 { font-size: 30px; }
+  .wk-sum-title p { font-size: 16px; }
+  .wk-sum-grade { min-width: 84px; padding: 8px 14px 10px; }
+  .wk-sum-grade b { font-size: 38px; }
+  .wk-sum-grade-k, .wk-sum-grade-n { font-size: 13px; }
+  .wk-sum-sec-t { font-size: 17px; }
+  .wk-sum-hero { gap: 32px; }
+  .wk-sum-ring { width: 168px; height: 168px; }
+  .wk-sum-ring-v b { font-size: 42px; }
+  .wk-sum-ring-v small { font-size: 20px; }
+  .wk-sum-ring-v span { font-size: 15px; }
+  .wk-sum-big { font-size: 22px; }
+  .wk-sum-big b { font-size: 68px; }
+  .wk-sum-sub { font-size: 17px; }
+  .wk-sum-hint { font-size: 15px; padding: 10px 16px; }
+  .wk-sum-more { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; padding-top: 18px; }   /* 四格一排，失誤分布不會單獨掉到第二排 */
+  .wk-sum-more-c { padding: 14px 16px; font-size: 14px; }
+  .wk-sum-more-c b { font-size: 26px; }
+  .wk-sum-more-c small { font-size: 14px; }
+  .wk-sum-dist li { font-size: 15px; }
+  .wk-sum-dist li b { font-size: 16px; }
+  .wk-sum-gain { padding: 16px 18px; }
+  .wk-sum-gain .ico { width: 52px; height: 52px; }
+  .wk-sum-gain b { font-size: 34px; }
+  .wk-sum-gain div > span { font-size: 14px; }
+  .wk-sum-xp-s { font-size: 14px; }
+  .wk-sum-list li { font-size: 16px; padding: 10px 0; }
+  .wk-sum-n { font-size: 14px; }
+  .wk-sum .wk-cta { max-width: 720px; }
+  .wk-sum .wk-cta .btn { min-height: 56px; font-size: 18px; }
+  .wk-sum-link { font-size: 16px; }
+}
+
+/* ===== 09-30：健身主畫面「動作注意事項」鈕與面板（面板外殼沿用 .wk-safe） ===== */
+.wk-menu-head { display: flex; align-items: center; justify-content: flex-start; gap: 16px; flex-wrap: wrap; }   /* 按鈕緊貼在標題右邊（使用者 09-30） */
+.wk-guide-open { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; margin-top: 4px; cursor: pointer;
+  font: inherit; font-size: 14px; font-weight: 800; white-space: nowrap;
+  border-radius: var(--motu-radius-pill); border: 1px solid var(--motu-color-border); background: var(--motu-color-surface); color: var(--motu-color-text);
+  box-shadow: var(--motu-shadow-sm);
+  transition: color var(--motu-duration-base) var(--motu-ease-standard), border-color var(--motu-duration-base) var(--motu-ease-standard), transform var(--motu-duration-fast) var(--motu-ease-standard); }
+/* 外觀 36px 配標題比例，觸控區用透明延伸補到 44px（專案規範） */
+.wk-guide-open::before { content: ''; position: absolute; inset: -4px 0; }
+.wk-guide-open .icon { color: var(--motu-teal-dark); }
+.wk-guide-open:hover { color: var(--motu-teal-dark); border-color: var(--motu-teal-light); }
+.wk-guide-open:active { transform: scale(.98); }
+.wk-guide-open:focus-visible { outline: 2px solid var(--motu-color-focus); outline-offset: 2px; }
+.wk-guide-nav { position: sticky; top: -14px; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin: 0 -20px 12px; padding: 10px 20px; background: var(--motu-color-surface); border-bottom: 1px solid var(--motu-color-border); }
+.wk-safe-sec[data-sec] { scroll-margin-top: 64px; }
+.wk-guide-divider { display: flex; align-items: center; gap: 8px; margin: 22px 0 12px; padding-top: 16px; border-top: 2px dashed var(--motu-color-border);
+  font-size: 18px; font-weight: 900; color: var(--motu-color-text); }
+.wk-guide-divider .icon { color: var(--motu-gold-text); }

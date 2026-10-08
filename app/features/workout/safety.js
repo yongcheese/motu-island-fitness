@@ -7,7 +7,8 @@
 //     https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=571&pid=9777
 //   - WHO 2020 身體活動與靜態行為指引（Bull et al., Br J Sports Med 2020;54:1451–1462）
 //     https://pmc.ncbi.nlm.nih.gov/articles/PMC7719906/
-//   只有「本系統提醒」那一段是我們自己的建議（跟相機取景有關），畫面上明確標示不是官方內容。
+//   我們自己的內容只有兩處，畫面上都標「本系統」、不寫成官方：運動前須知的「本系統提醒」段（相機取景），
+//   以及動作注意事項裡各動作的要點（取自判定規則與矯正口令；查不到官方針對個別動作的說明）。
 //   要新增條目，先查到原文再寫，不能憑印象補。
 import { icon } from '../../ui/icons.js';
 
@@ -59,38 +60,83 @@ export const SAFETY_SECTIONS = [
 const SRC_LABEL = { hpa: '國健署', who: 'WHO', app: '本系統' };
 const esc = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-export function safetyPanelHtml() {
-  const sections = SAFETY_SECTIONS.map(s => `
+function sectionHtml(s) {
+  return `
       <section class="wk-safe-sec${s.key === 'app' ? ' is-app' : ''}">
         <h3>${icon(s.icon, { size: 18 })} ${esc(s.title)}</h3>
         <ul>${s.items.map(it => `<li><span>${esc(it.text)}</span><small class="wk-safe-src" data-src="${it.src}">${SRC_LABEL[it.src]}</small></li>`).join('')}</ul>
-      </section>`).join('');
+      </section>`;
+}
+function refsHtml() {
   const refs = SAFETY_SOURCES.map(r => `<li>${esc(r.name)}（${esc(r.date)}）<br><a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">${esc(r.url)}</a></li>`).join('');
+  return `<div class="wk-safe-refs"><b>資料來源</b><ol>${refs}</ol></div>`;
+}
+/** 面板外殼（運動前須知、動作注意事項共用）：id 決定面板與內部按鈕的 id（`${id}-x`、`${id}-ok`）。 */
+function panelHtml({ id, ic, title, lead, body }) {
   return `
-    <div class="wk-safe" id="wk-safe" role="dialog" aria-modal="true" aria-labelledby="wk-safe-t" hidden>
+    <div class="wk-safe" id="${id}" role="dialog" aria-modal="true" aria-labelledby="${id}-t" hidden>
       <div class="wk-safe-card">
         <div class="wk-safe-head">
-          <h2 id="wk-safe-t">${icon('lightbulb', { size: 22 })} 運動前須知</h2>
-          <button class="wk-safe-x" id="wk-safe-x" type="button" aria-label="關閉">✕</button>
+          <h2 id="${id}-t">${icon(ic, { size: 22 })} ${esc(title)}</h2>
+          <button class="wk-safe-x" id="${id}-x" type="button" aria-label="關閉">✕</button>
         </div>
         <div class="wk-safe-body">
-          <p class="wk-safe-lead">以下內容整理自衛生福利部國民健康署與世界衛生組織的公開建議，僅供一般參考，不能取代醫師診斷。</p>
-          ${sections}
-          <div class="wk-safe-refs"><b>資料來源</b><ol>${refs}</ol></div>
+          <p class="wk-safe-lead">${esc(lead)}</p>
+          ${body}
         </div>
-        <button class="btn wk-safe-ok" id="wk-safe-ok" type="button">我知道了</button>
+        <button class="btn wk-safe-ok" id="${id}-ok" type="button">我知道了</button>
       </div>
     </div>`;
 }
 
+export function safetyPanelHtml() {
+  return panelHtml({
+    id: 'wk-safe', ic: 'lightbulb', title: '運動前須知',
+    lead: '以下內容整理自衛生福利部國民健康署與世界衛生組織的公開建議，僅供一般參考，不能取代醫師診斷。',
+    body: SAFETY_SECTIONS.map(sectionHtml).join('') + refsHtml(),
+  });
+}
+
+/**
+ * 動作注意事項（09-30 使用者要求：健身主畫面一顆鈕看全部動作）。
+ * 每個動作的內容一律取自系統本身的判定規則與矯正口令（呼叫端從 exercises/*.js 與 judgeText 帶進來），
+ * 標成「本系統」—— 查不到國健署／體育署針對個別動作的官方說明，所以不寫成官方建議。
+ * 下方再接上面已查證的官方一般安全建議（不含「本系統提醒」段，避免重複）。
+ * @param {{id:string,name:string,target:string,camera:string,judge:string,tips:string[]}[]} list
+ */
+export function exerciseGuideItems(list) {
+  return list.map(ex => ({
+    key: 'ex-' + ex.id, icon: 'dumbbell', title: `${ex.name}（${ex.target}）`,
+    items: [
+      { src: 'app', text: `鏡頭擺放：${ex.camera}` },
+      { src: 'app', text: `怎樣才算一下：${ex.judge}` },
+      ...ex.tips.map(t => ({ src: 'app', text: `姿勢提醒：${t}` })),
+    ],
+  }));
+}
+export function exerciseGuideHtml(list) {
+  const nav = `<nav class="wk-guide-nav" aria-label="跳到動作">${list.map(ex => `<button type="button" class="wk-chip" data-jump="ex-${esc(ex.id)}">${esc(ex.name)}</button>`).join('')}</nav>`;
+  const exSecs = exerciseGuideItems(list).map(s => sectionHtml(s).replace('<section class="wk-safe-sec"', `<section class="wk-safe-sec" data-sec="${s.key}"`)).join('');
+  const official = SAFETY_SECTIONS.filter(s => s.key !== 'app').map(sectionHtml).join('');
+  return panelHtml({
+    id: 'wk-guide', ic: 'clipboard-list', title: '動作注意事項',
+    lead: '各動作的要點取自本系統的判定標準與姿勢提醒（訓練時畫面上的矯正口令就是這些）；最下方是國健署與 WHO 的一般安全建議。僅供一般參考，不能取代醫師診斷。',
+    body: nav + exSecs + `<h3 class="wk-guide-divider">${icon('lightbulb', { size: 18 })} 一般安全建議（官方）</h3>` + official + refsHtml(),
+  });
+}
+
 /** 接上開關：open 鈕 → 顯示；✕／我知道了／點遮罩／Esc → 關閉並把焦點還給開啟鈕。 */
-export function bindSafetyPanel(scope, openBtn) {
-  const panel = scope.querySelector('#wk-safe');
+export function bindSafetyPanel(scope, openBtn, id = 'wk-safe') {
+  const panel = scope.querySelector('#' + id);
   if (!panel || !openBtn) return;
   const close = () => { panel.hidden = true; openBtn.focus(); };
-  openBtn.onclick = () => { panel.hidden = false; panel.querySelector('#wk-safe-ok')?.focus(); };
-  panel.querySelector('#wk-safe-x').onclick = close;
-  panel.querySelector('#wk-safe-ok').onclick = close;
+  openBtn.onclick = () => { panel.hidden = false; panel.querySelector(`#${id}-ok`)?.focus(); };
+  panel.querySelector(`#${id}-x`).onclick = close;
+  panel.querySelector(`#${id}-ok`).onclick = close;
   panel.onclick = (e) => { if (e.target === panel) close(); };
   panel.onkeydown = (e) => { if (e.key === 'Escape') close(); };
+  // 動作注意事項：上方動作膠囊 → 捲到該動作
+  panel.querySelectorAll('[data-jump]').forEach(b => {
+    b.onclick = () => panel.querySelector(`[data-sec="${b.dataset.jump}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
 }

@@ -1,7 +1,7 @@
 // Tab2 訓練（核心）：分類 → 清單 → 簡介 → 即時偵測 → 結算。
 import { EXERCISES, PLANNED, GROUPS } from '../../core/exercises/index.js';
 import { coinsFor, ratePct } from '../../core/rewards.js';
-import { safetyPanelHtml, bindSafetyPanel } from './safety.js';
+import { safetyPanelHtml, exerciseGuideHtml, bindSafetyPanel } from './safety.js';
 import { GATE_PROGRESS as SQUAT_GATE_PROGRESS } from '../../core/exercises/squat.js';
 import { createDetector } from '../../core/engine.js';
 import { createPose, startCamera } from '../../core/pose.js';
@@ -164,7 +164,10 @@ function renderMenu(activeGroup = 'all') {
   root.innerHTML = `
     <div class="fade-in">
       ${slotHtml(CTX.slots, 'wallet')}
-      <h1 class="h1">開始訓練</h1>
+      <div class="wk-menu-head">
+        <h1 class="h1">開始訓練</h1>
+        <button class="wk-guide-open" id="wk-guide-open" type="button" aria-haspopup="dialog">${icon('clipboard-list', { size: 16 })} 動作注意事項</button>
+      </div>
       ${recCardHtml(EXERCISES[REC_ID])}
       <div class="wk-filters">
         <div class="wk-search">
@@ -176,8 +179,10 @@ function renderMenu(activeGroup = 'all') {
         </div>
       </div>
       <div class="wk-grid stagger" id="wk-list"></div>
+      ${exerciseGuideHtml(Object.values(EXERCISES).map(guideOf))}
     </div>`;
 
+  bindSafetyPanel(root, root.querySelector('#wk-guide-open'), 'wk-guide');
   syncSlots();
   const listEl = root.querySelector('#wk-list');
   const renderCards = (items) => {
@@ -201,7 +206,8 @@ function renderMenu(activeGroup = 'all') {
   };
   renderCards(list);
 
-  root.querySelectorAll('.wk-chip').forEach(b => b.onclick = () => renderMenu(b.dataset.g));
+  // 只綁分類膠囊（有 data-g）：動作注意事項面板裡的跳轉膠囊也是 .wk-chip，綁到會整頁重畫、面板被關掉
+  root.querySelectorAll('.wk-chip[data-g]').forEach(b => b.onclick = () => renderMenu(b.dataset.g));
   const q = root.querySelector('#wk-q');
   q.oninput = () => {
     const kw = q.value.trim().toLowerCase();
@@ -383,7 +389,7 @@ function renderIntro(ex) {
             ${stat('timer', '組間休息', `${planOf(ex).restSec} 秒`)}
             ${stat('coins', '可得金幣', `${ex.baseCoinPerRep} / 有效次 · 整輪最多 ${estimateRoundCoins(ex)}`)}
             ${stat('flame', '強度', `${ex.met} MET`)}
-            ${stat('camera', '鏡頭', ex.id === 'pushup' ? '側面' : ex.id === 'jumpingjack' ? '正面 · 需全身入鏡' : '正面')}
+            ${stat('camera', '鏡頭', cameraText(ex.id))}
           </div>
           <div class="wk-judge card">
             <div class="wk-judge-t">${icon('circle-check')} 判定關鍵</div>
@@ -413,6 +419,14 @@ function renderIntro(ex) {
   root.querySelector('#wk-start').onclick = () => startLive(ex, root.querySelector('#wk-warm').checked);
   if (CTX.slots) syncSlots();          // 整合版：島嶼主角由宿主畫進插槽，不建立我方公仔
   else animDemo(ex.id, root.querySelector('#wk-demo'));
+}
+function cameraText(id) { return id === 'pushup' ? '側面' : id === 'jumpingjack' ? '正面 · 需全身入鏡' : '正面'; }
+/** 動作注意事項面板的資料：判定關鍵與姿勢提醒都取自同一份來源（judgeText、動作定義的 cues），
+ *  訓練時畫面上的矯正口令改了，這裡自動跟著變。 */
+function guideOf(ex) {
+  const camera = cameraText(ex.id) + (ex.id === 'jumpingjack' ? ' · 需較大空間' : '');
+  return { id: ex.id, name: ex.name, target: ex.meta.target, camera, judge: judgeText(ex.id),
+    tips: Object.values(ex.cues || {}).map(c => c.text) };
 }
 function stat(ic, k, v) { return `<div class="wk-stat card"><div class="k">${icon(ic, { size: 16 })} ${k}</div><div class="v">${v}</div></div>`; }
 function judgeText(id) {
@@ -1789,6 +1803,8 @@ function stopLive() {
   try { live.cam?.stop(); } catch { }
   try { live.pose?.close(); } catch { }
   try { live.avatar?.dispose(); live.avatarEl?.remove(); } catch { }
+  // 偵測停了，骨架畫布卻還留著最後一幀 → 領獎動畫背後會看到一具靜止的骨架，先清掉
+  try { live.ctx?.clearRect(0, 0, live.canvas.width, live.canvas.height); } catch { }
   CTX.coach.stop();
   toggleBgm(false);
   live = null;
@@ -1796,5 +1812,3 @@ function stopLive() {
 function setText(id, v) { const e = root.querySelector('#' + id); if (e) e.textContent = v; }
 function fmtTime(sec) { const m = Math.floor(sec / 60), s = Math.floor(sec % 60); return `${m}:${String(s).padStart(2, '0')}`; }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-  // 偵測停了，骨架畫布卻還留著最後一幀 → 領獎動畫背後會看到一具靜止的骨架，先清掉
-  try { live.ctx?.clearRect(0, 0, live.canvas.width, live.canvas.height); } catch { }
