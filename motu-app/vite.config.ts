@@ -33,6 +33,7 @@ export default defineConfig(() => {
       }
     },
     server: {
+      allowedHosts: true,
       // @fitness 指向專案根目錄之外的 ../app，開發伺服器必須允許讀取上一層
       fs: { allow: [path.resolve(process.cwd(), '..')] },
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

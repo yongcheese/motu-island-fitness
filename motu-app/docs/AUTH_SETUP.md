@@ -16,7 +16,7 @@
 <summary>診斷紀錄（點開可看，不影響你要做的操作）</summary>
 
 ```bash
-KEY=AIzaSyD94x1JGYFZxVfp0Wpl0XOZEAxb0RXt3og
+KEY=<YOUR_FIREBASE_WEB_API_KEY>
 
 # (A) 目前授權的網域
 curl -s "https://identitytoolkit.googleapis.com/v1/projects?key=$KEY"
