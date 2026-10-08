@@ -60,7 +60,7 @@
 
 ## 進度總覽
 - 總 Slice 數：9
-- 已完成：2 / 9
+- 已完成：3 / 9
 - 平行組：無（全部序列）
 
 ---
@@ -99,7 +99,7 @@
 - **依賴**：無
 - **平行組**：獨立
 
-### [ ] Slice 3 — 讓健身頁跟著遊戲設定走並套用配色模式
+### [x] Slice 3 — 讓健身頁跟著遊戲設定走並套用配色模式
 - **目標**：在遊戲設定改了偏好，健身頁立刻照新值運作；健身頁內改的熱身勾選也會寫回遊戲存檔；色盲配色在整合版開始生效。
 - **範圍內**：新增 `useFitnessPrefsBridge.ts`：訂閱 `useApp().settings` → `store.updatePrefs(prefsFromSettings(...))`；訂閱 `store` → `settingsPatchFromPrefs` 有變才 `updateSettings()`；兩向都比對值防迴圈；配色變了就呼叫 `setPalette()`；`FitnessHost.tsx` 掛上這個 hook，語音教練 `coach.setEnabled`（若 coach 沒有此方法則重建，施工時查證）。
 - **範圍外**：設定頁畫面讀寫（Slice 4）。
@@ -113,7 +113,7 @@
   - [ ] 設定尚未載入（`settings` 為 `null`）時健身頁照預設值正常運作
 - **測試策略**：`test-fitness-prefs-bridge.ts` — 用假的 settings 來源與假 store 驅動橋的核心函式（把 hook 的邏輯抽成可測的 `createPrefsBridge()`）；邊界：連續兩次相同更新只寫一次、更新來源互相觸發時次數上限
 - **完成定義**：Type Check PASS + `test:fitness` PASS + 我方 `npm test` PASS（`app/` 未改應維持 521）
-- **對外介面**：
+- **對外介面**：`components/fitness/useFitnessPrefsBridge.ts` export `PrefsStore`、`PrefsBridgeOptions{store,writeSettings,applyPalette,onVoiceChange?}`、`PrefsBridge{syncFromSettings(settings|null),dispose()}`、`createPrefsBridge(opts)`、`useFitnessPrefsBridge(store,settings,updateSettings,applyPalette,onVoiceChange?)`；FitnessHost 已掛上（語音用既有 `coach.setEnabled`，app/ 未改）。程式存檔 `ddc7f01`，slice-reviewer PASS。
 - **依賴**：Slice 2
 - **平行組**：獨立
 
