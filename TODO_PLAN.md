@@ -63,7 +63,7 @@
 
 ## 進度總覽
 - 總 Slice 數：9
-- 已完成：7 / 9
+- 已完成：8 / 9
 - 平行組：無（全部序列）
 
 ---
@@ -188,7 +188,7 @@
 - **依賴**：Slice 4、Slice 6
 - **平行組**：獨立
 
-### [ ] Slice 8 — 加上儲存回饋與切換微互動
+### [x] Slice 8 — 加上儲存回饋與切換微互動
 - **目標**：改設定時有清楚但不打擾的回饋。
 - **範圍內**：該列短暫「已儲存」勾號（`aria-live="polite"`）、分段選擇器切換過場、hover／active／focus-visible、`prefers-reduced-motion` 時關閉過場、分段選擇器方向鍵操作。
 - **範圍外**：錯誤處理（Slice 9）。
@@ -201,7 +201,7 @@
   - [ ] 開啟減少動態效果時沒有過場
 - **測試策略**：無頭瀏覽器鍵盤操作走一遍；`emulateMedia reducedMotion`
 - **完成定義**：Type Check PASS + UI QA PASS
-- **對外介面**：
+- **對外介面**：無新 export；檔內 `useSavedFlash`、`SavedBadge`、`ToggleControl`、`SAVED_FLASH_MS=1500`；`SegmentedRow` 多必填 `saved`。切換播 `playSound(SoundEffect.CLICK)`（同一般分類）。**查證**：`updateSettings` 樂觀更新＋400ms 去抖延後寫雲端，失敗不 reject → 「已儲存」語意＝已套用並排入雲端寫入；失敗訊號需 AppContext 提供（見 Slice 9）。瀏覽器實測：方向鍵切換並移焦、aria-live 宣告「難度已儲存」、提示 0.4s 時 opacity 1 且 1.5s 後清空、reducedMotion 時 transition-property none。測試 54/54。slice-reviewer PASS（建議日後把 `!/useState/` 斷言改成貼近意圖）。已知缺口：Toggle 不接受 aria-label，開關報讀無名稱（需改 DesignKit，列後續）。
 - **依賴**：Slice 7
 - **平行組**：獨立
 
