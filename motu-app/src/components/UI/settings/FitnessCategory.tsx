@@ -18,8 +18,9 @@ import {
   type FitnessDifficulty,
   type FitnessPrefs,
 } from '../../fitness/fitnessPrefs';
+import { PALETTES } from '@fitness/ui/display-colors.js';
 
-// 健身分類（第三階段 Slice 4：接上真實存檔）。
+// 健身分類（第三階段 Slice 4：接上真實存檔；Slice 7：分段選擇器選中態、配色色票預覽）。
 //
 // 遊戲存檔（AppSettings）是唯一來源（TODO_PLAN.md 架構決策 1）：
 //   - 顯示值一律經 prefsFromSettings(settings)，設定未載入或舊存檔缺欄位時顯示健身頁預設值；
@@ -57,6 +58,41 @@ const COLOR_MODE_OPTIONS: SegmentOption<FitnessColorMode>[] = FITNESS_COLOR_MODE
   label: COLOR_MODE_LABELS[value],
 }));
 
+// 色票預覽的三個等級：鍵名對應 PALETTES 每一組的 green／yellow／red，文字讓色票不只靠顏色辨識。
+const SWATCH_LEVELS = [
+  { key: 'green', label: '好' },
+  { key: 'yellow', label: '注意' },
+  { key: 'red', label: '錯' },
+] as const;
+
+/**
+ * 骨架配色色票（Slice 7）：顏色直接取健身頁實際用的 PALETTES（app/ui/display-colors.js），
+ * 不另抄色碼，健身頁改色這裡自動跟著變。
+ *
+ * 骨架是畫在攝影機畫面上的，單色模式又是白色透明度，所以色點放在深色小底板上才看得出差異；
+ * 每個色點旁寫「好／注意／錯」，色彩辨識不易的人也讀得出來。
+ * aria-hidden：選項名稱已由按鈕文字提供，三種模式的差異寫在該列說明文字裡，不讓報讀重複唸。
+ */
+function PaletteSwatch({ mode }: { mode: FitnessColorMode }) {
+  const palette = PALETTES[mode];
+  return (
+    <span
+      aria-hidden="true"
+      className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 w-auto sm:w-full rounded-lg bg-island-navy px-2 py-1.5"
+    >
+      {SWATCH_LEVELS.map(({ key, label }) => (
+        <span key={key} className="inline-flex items-center gap-1">
+          <span
+            className="w-2.5 h-2.5 rounded-full ring-1 ring-white/30 shrink-0"
+            style={{ backgroundColor: palette[key] }}
+          />
+          <span className="text-[10px] font-bold leading-none text-white whitespace-nowrap">{label}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /**
  * 三選一的分段選擇器：選項全部攤開，不用下拉（選項 ≤3、需要比較時下拉會把資訊藏起來）。
  *
@@ -69,12 +105,18 @@ function SegmentedControl<T extends string>({
   value,
   onChange,
   labelledBy,
+  renderPreview,
 }: {
   options: SegmentOption<T>[];
   value: T;
   onChange: (next: T) => void;
   labelledBy: string;
+  /** 選項下方的預覽（例如配色色票）；沒給就只顯示文字。 */
+  renderPreview?: (value: T) => ReactNode;
 }) {
+  // 有預覽的選擇器（骨架配色）在 sm 以下改一欄直排：375px 寬三欄放不下「名稱＋三個色票」，
+  // 會把「注意」擠成直排、「高對比」斷行。沒有預覽的（難度）照舊三欄。
+  const gridCols = renderPreview ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-3';
   const buttonsRef = useRef<(HTMLButtonElement | null)[]>([]);
 
   const moveTo = (index: number) => {
@@ -110,7 +152,7 @@ function SegmentedControl<T extends string>({
   };
 
   return (
-    <div role="radiogroup" aria-labelledby={labelledBy} className="grid grid-cols-3 gap-2">
+    <div role="radiogroup" aria-labelledby={labelledBy} className={`grid ${gridCols} gap-2`}>
       {options.map((opt, i) => {
         const isActive = opt.value === value;
         return (
@@ -124,13 +166,20 @@ function SegmentedControl<T extends string>({
             aria-checked={isActive}
             onClick={() => onChange(opt.value)}
             onKeyDown={(e) => handleKeyDown(e, i)}
-            className={`min-h-[44px] px-3 rounded-xl border text-sm font-bold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-island-teal focus-visible:ring-offset-2 ${
+            className={`min-h-[44px] min-w-0 px-2 sm:px-3 py-2 rounded-xl border text-sm font-bold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-island-teal focus-visible:ring-offset-2 ${
               isActive
-                ? 'bg-island-teal-dark text-white border-island-teal-dark'
-                : 'bg-white text-island-navy-soft border-island-line hover:border-island-teal/40 hover:text-island-navy'
+                ? 'bg-island-teal-dark text-white border-island-teal-dark shadow-[0_4px_12px_rgba(31,122,112,0.25)]'
+                : 'bg-white text-island-navy-soft border-island-line hover:border-island-teal-dark/50 hover:text-island-navy'
             }`}
           >
-            {opt.label}
+            {renderPreview ? (
+              <span className="flex flex-row sm:flex-col items-center justify-between sm:justify-center gap-1.5 w-full">
+                <span className="whitespace-nowrap">{opt.label}</span>
+                {renderPreview(opt.value)}
+              </span>
+            ) : (
+              opt.label
+            )}
           </button>
         );
       })}
@@ -147,6 +196,7 @@ function SegmentedRow<T extends string>({
   options,
   value,
   onChange,
+  renderPreview,
 }: {
   id: string;
   icon: ReactNode;
@@ -155,18 +205,25 @@ function SegmentedRow<T extends string>({
   options: SegmentOption<T>[];
   value: T;
   onChange: (next: T) => void;
+  renderPreview?: (value: T) => ReactNode;
 }) {
   const labelId = `${id}-label`;
   return (
     <div className="flex flex-col gap-3 bg-white border border-island-line rounded-2xl px-4 py-3">
       <div className="flex items-center gap-2.5">
         {icon}
-        <div>
+        <div className="min-w-0">
           <div id={labelId} className="text-xs font-bold text-island-navy">{label}</div>
           <div className="text-[10px] text-island-navy-soft">{description}</div>
         </div>
       </div>
-      <SegmentedControl options={options} value={value} onChange={onChange} labelledBy={labelId} />
+      <SegmentedControl
+        options={options}
+        value={value}
+        onChange={onChange}
+        labelledBy={labelId}
+        renderPreview={renderPreview}
+      />
     </div>
   );
 }
@@ -202,10 +259,11 @@ export function FitnessCategory() {
           id="fitness-color-mode"
           icon={<Palette size={18} className="text-island-navy-soft shrink-0" />}
           label="骨架配色"
-          description="三色以紅／黃／綠對應動作品質；色彩辨識不易時可改單色或高對比"
+          description="三色用綠／黃／紅表示好、注意、錯；高對比改用色盲友善的藍／黃／橙；單色只用亮度深淺區分"
           options={COLOR_MODE_OPTIONS}
           value={colorMode}
           onChange={(v) => setPref('colorMode', v)}
+          renderPreview={(mode) => <PaletteSwatch mode={mode} />}
         />
       </SettingsSection>
 
