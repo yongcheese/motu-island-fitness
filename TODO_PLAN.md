@@ -39,6 +39,7 @@
 
 **已申報的遊戲組檔案改動**（施工時回填）：
 - Slice 1：`settingsCategories.ts`（加 fitness、about 改可見）、`SettingsView.tsx`（掛 FitnessCategory）、`AboutCategory.tsx`（EmptyState 換三區塊骨架）、`package.json`（test:fitness 串新腳本）
+- Slice 2：`types.ts`（AppSettings 新增選填 fitnessDifficulty／fitnessColorMode／fitnessMirror／fitnessBgm，純新增 8 行）、`package.json`
 
 ## 設計鐵律速查
 - 沿用遊戲組 Motu 設計系統：`island-*` token、`SettingsSection`／`SettingRow`／`Toggle`（`DesignKit.tsx`）、`rounded-2xl`／`rounded-xl` ｜ `lucide-react` `size={18}` ｜ 免費優先
@@ -59,7 +60,7 @@
 
 ## 進度總覽
 - 總 Slice 數：9
-- 已完成：1 / 9
+- 已完成：2 / 9
 - 平行組：無（全部序列）
 
 ---
@@ -81,7 +82,7 @@
 - **依賴**：無
 - **平行組**：獨立
 
-### [ ] Slice 2 — 定義健身偏好與遊戲設定的對應表
+### [x] Slice 2 — 定義健身偏好與遊戲設定的對應表
 - **目標**：一份純函式對應表，能把遊戲設定轉成健身頁的 `prefs`，也能把 `prefs` 的變更轉成遊戲設定的寫入內容。
 - **範圍內**：`types.ts` 的 `AppSettings` 新增選填 `fitnessDifficulty`、`fitnessColorMode`、`fitnessMirror`、`fitnessBgm`；新增 `fitnessPrefs.ts`：`prefsFromSettings(settings)`（缺欄位或未知值用 `app/state/store.js` 的預設值；語音←`voiceGuideEnabled`、熱身←`warmupEnabled`）、`settingsPatchFromPrefs(prev, next)`（只回傳有變的欄位，沒變回 `null`）。
 - **範圍外**：接上 FitnessHost、畫面讀寫。
@@ -94,7 +95,7 @@
   - [ ] patch 只含有變動的欄位；完全沒變回 `null`
 - **測試策略**：`test-fitness-prefs.ts` — 雙向往返（settings→prefs→patch 為 null）、語音／熱身合併對應、邊界：`null` 設定、型別錯誤的值（字串 `'true'`）
 - **完成定義**：Type Check PASS + `test:fitness` PASS
-- **對外介面**：
+- **對外介面**：`components/fitness/fitnessPrefs.ts` export `FITNESS_DIFFICULTIES`、`FitnessDifficulty`、`FITNESS_COLOR_MODES`、`FitnessColorMode`、`FitnessPrefs`、`DEFAULT_FITNESS_PREFS`、`prefsFromSettings(settings)`、`settingsPatchFromPrefs(prev,next)→Partial<AppSettings>|null`；`AppSettings` 多 4 個選填欄位。slice-reviewer PASS。
 - **依賴**：無
 - **平行組**：獨立
 

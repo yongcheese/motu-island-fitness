@@ -324,6 +324,14 @@ export interface AppSettings {
   isMuted: boolean;
   voiceGuideEnabled: boolean;
   warmupEnabled: boolean;
+  /** 健身頁偏好：動作判定難度。選填，舊存檔沒有時用預設 'normal'（見 components/fitness/fitnessPrefs.ts）。 */
+  fitnessDifficulty?: 'easy' | 'normal' | 'hard';
+  /** 健身頁偏好：骨架配色模式（三色／單色／高對比）。選填，舊存檔沒有時用預設 'tricolor'。 */
+  fitnessColorMode?: 'tricolor' | 'mono' | 'high';
+  /** 健身頁偏好：鏡頭畫面是否左右鏡像。選填，舊存檔沒有時用預設 true。 */
+  fitnessMirror?: boolean;
+  /** 健身頁偏好：訓練中是否播放健身背景音樂。選填，舊存檔沒有時用預設 false。 */
+  fitnessBgm?: boolean;
   currentTrackIndex?: number;
   /** YouTube music mode is on: the local synth BGM steps aside and the embedded player drives audio. */
   youtubeMusicEnabled?: boolean;
