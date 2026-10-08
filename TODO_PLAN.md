@@ -40,6 +40,7 @@
 **已申報的遊戲組檔案改動**（施工時回填）：
 - Slice 1：`settingsCategories.ts`（加 fitness、about 改可見）、`SettingsView.tsx`（掛 FitnessCategory）、`AboutCategory.tsx`（EmptyState 換三區塊骨架）、`package.json`（test:fitness 串新腳本）
 - Slice 2：`types.ts`（AppSettings 新增選填 fitnessDifficulty／fitnessColorMode／fitnessMirror／fitnessBgm，純新增 8 行）、`package.json`
+- Slice 4：`GeneralCategory.tsx`（移除「AI 語音引導」列與未用的 `Mic` import；語音改由健身分類寫 `voiceGuideEnabled`）
 
 ## 設計鐵律速查
 - 沿用遊戲組 Motu 設計系統：`island-*` token、`SettingsSection`／`SettingRow`／`Toggle`（`DesignKit.tsx`）、`rounded-2xl`／`rounded-xl` ｜ `lucide-react` `size={18}` ｜ 免費優先
@@ -60,7 +61,7 @@
 
 ## 進度總覽
 - 總 Slice 數：9
-- 已完成：3 / 9
+- 已完成：4 / 9
 - 平行組：無（全部序列）
 
 ---
@@ -117,7 +118,7 @@
 - **依賴**：Slice 2
 - **平行組**：獨立
 
-### [ ] Slice 4 — 設定頁健身分類接上真實存檔
+### [x] Slice 4 — 設定頁健身分類接上真實存檔
 - **目標**：在設定頁「健身」改任何一項，會存進遊戲存檔、重新整理仍在，進健身頁立即生效。
 - **範圍內**：`FitnessCategory.tsx` 讀 `useApp().settings`（經 `prefsFromSettings` 取顯示值）、寫 `updateSettings()`；`GeneralCategory.tsx` 移除重複的「AI 語音引導」列（語音統一放健身分類，拍板 4；申報）。
 - **範圍外**：儲存回饋與失敗提示（Slice 8、9）、視覺打磨（Slice 7）。
@@ -130,7 +131,7 @@
   - [ ] 「一般」分類不再有語音列，語音只在「健身」出現一次
 - **測試策略**：`test-fitness-settings-view.ts` 增加：顯示值來自 `prefsFromSettings`；無頭瀏覽器實測改值 → 重新整理 → 值還在
 - **完成定義**：Type Check PASS + 指定測試 PASS + UI QA（截圖）PASS
-- **對外介面**：
+- **對外介面**：`FitnessCategory()` 無 props、無新 export；讀 `useApp().settings` 經 `prefsFromSettings`，寫入經 `settingsPatchFromPrefs`→`updateSettings(patch)`（檔內 `setPref`）。另改 `scripts/test-fitness-settings-view.ts`（30 項，看板漏列）。瀏覽器實測：改困難＋高對比 → 重新整理仍保留（訪客帳號寫入雲端），一般分類已無語音列，console 0 error；實測後已改回預設。slice-reviewer PASS。
 - **依賴**：Slice 1、Slice 3
 - **平行組**：獨立
 

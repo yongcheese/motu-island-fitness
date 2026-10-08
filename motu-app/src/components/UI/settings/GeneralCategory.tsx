@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Mic, FlaskConical, CloudSun, RefreshCw, Clock, Sun, CloudRain, CloudLightning, Snowflake, Sunset, Moon } from 'lucide-react';
+import { FlaskConical, CloudSun, RefreshCw, Clock, Sun, CloudRain, CloudLightning, Snowflake, Sunset, Moon } from 'lucide-react';
 import { useApp } from '../../../context/AppContext';
 import { AppSettings, WeatherType } from '../../../types';
 import { playSound, SoundEffect } from '../../../lib/soundUtils';
@@ -123,19 +123,6 @@ export function GeneralCategory() {
           )}
         </div>
       </SettingsSection>
-
-      <SettingRow
-        icon={<Mic className="text-island-teal" size={18} />}
-        label="AI 語音引導"
-        description="開啟以獲得智慧健身教練的實時建議"
-        onClick={() => toggleSetting('voiceGuideEnabled', settings?.voiceGuideEnabled || false)}
-        control={
-          <Toggle
-            checked={!!settings?.voiceGuideEnabled}
-            onChange={() => toggleSetting('voiceGuideEnabled', settings?.voiceGuideEnabled || false)}
-          />
-        }
-      />
 
       {/* 多餘碎片轉換成抽獎券 (constants/fragments.ts).
 

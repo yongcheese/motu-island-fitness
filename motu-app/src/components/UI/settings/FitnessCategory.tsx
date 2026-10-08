@@ -3,39 +3,59 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { Dumbbell, Gauge, Palette, FlipHorizontal2, Flame, Music, MessageCircle } from 'lucide-react';
 import { Toggle } from '../DesignKit';
 import { SettingsSection } from './SettingsSection';
 import { SettingRow } from './SettingRow';
+import { useApp } from '../../../context/AppContext';
+import {
+  FITNESS_COLOR_MODES,
+  FITNESS_DIFFICULTIES,
+  prefsFromSettings,
+  settingsPatchFromPrefs,
+  type FitnessColorMode,
+  type FitnessDifficulty,
+  type FitnessPrefs,
+} from '../../fitness/fitnessPrefs';
 
-// 健身分類（第三階段 Slice 1：骨架）。
+// 健身分類（第三階段 Slice 4：接上真實存檔）。
 //
-// 目前只是版面：所有值都是本元件內的 useState，預設值照健身頁 app/state/store.js 的 prefs，
-// **不讀也不寫任何存檔**。之後的 Slice 會把它接到 AppSettings（見 TODO_PLAN.md 架構決策 1）。
+// 遊戲存檔（AppSettings）是唯一來源（TODO_PLAN.md 架構決策 1）：
+//   - 顯示值一律經 prefsFromSettings(settings)，設定未載入或舊存檔缺欄位時顯示健身頁預設值；
+//   - 改值時用 settingsPatchFromPrefs(現值, 新值) 產生只含變動欄位的 patch，交給 updateSettings。
+// 語音沿用 voiceGuideEnabled、熱身沿用 warmupEnabled（拍板 4：語音只在本分類出現）。
 //
-// 選項 id 與健身頁共用（app/core/difficulty.js、app/features/settings/settings.js），
-// 中文名稱沿用舊版健身設定頁，讓同一個玩家在兩邊看到同一組字。
-
-type Difficulty = 'easy' | 'normal' | 'hard';
-type ColorMode = 'tricolor' | 'mono' | 'high';
+// 選項 id 直接取 fitnessPrefs.ts 的合法值清單，中文名稱沿用舊版健身設定頁
+// （app/features/settings/settings.js），讓同一個玩家在兩邊看到同一組字。
 
 interface SegmentOption<T extends string> {
   value: T;
   label: string;
 }
 
-const DIFFICULTY_OPTIONS: SegmentOption<Difficulty>[] = [
-  { value: 'easy', label: '簡單' },
-  { value: 'normal', label: '普通' },
-  { value: 'hard', label: '困難' },
-];
+// 標籤用 Record 綁合法值：fitnessPrefs.ts 多一個或少一個值，這裡就過不了型別檢查。
+const DIFFICULTY_LABELS: Record<FitnessDifficulty, string> = {
+  easy: '簡單',
+  normal: '普通',
+  hard: '困難',
+};
 
-const COLOR_MODE_OPTIONS: SegmentOption<ColorMode>[] = [
-  { value: 'tricolor', label: '三色' },
-  { value: 'mono', label: '單色' },
-  { value: 'high', label: '高對比' },
-];
+const COLOR_MODE_LABELS: Record<FitnessColorMode, string> = {
+  tricolor: '三色',
+  mono: '單色',
+  high: '高對比',
+};
+
+const DIFFICULTY_OPTIONS: SegmentOption<FitnessDifficulty>[] = FITNESS_DIFFICULTIES.map((value) => ({
+  value,
+  label: DIFFICULTY_LABELS[value],
+}));
+
+const COLOR_MODE_OPTIONS: SegmentOption<FitnessColorMode>[] = FITNESS_COLOR_MODES.map((value) => ({
+  value,
+  label: COLOR_MODE_LABELS[value],
+}));
 
 /**
  * 三選一的分段選擇器：選項全部攤開，不用下拉（選項 ≤3、需要比較時下拉會把資訊藏起來）。
@@ -152,13 +172,15 @@ function SegmentedRow<T extends string>({
 }
 
 export function FitnessCategory() {
-  // 骨架階段寫死的預設值（= app/state/store.js 的 prefs 預設）。之後換成讀 AppSettings。
-  const [difficulty, setDifficulty] = useState<Difficulty>('normal');
-  const [colorMode, setColorMode] = useState<ColorMode>('tricolor');
-  const [mirror, setMirror] = useState(true);
-  const [warmup, setWarmup] = useState(true);
-  const [bgm, setBgm] = useState(false);
-  const [voice, setVoice] = useState(true);
+  const { settings, updateSettings } = useApp();
+  const prefs = prefsFromSettings(settings);
+  const { difficulty, colorMode, mirror, warmup, bgm, voice } = prefs;
+
+  /** 改一項偏好 → 只把有變的欄位寫回遊戲存檔（updateSettings 本身是樂觀更新）。 */
+  const setPref = <K extends keyof FitnessPrefs>(key: K, value: FitnessPrefs[K]) => {
+    const patch = settingsPatchFromPrefs(prefs, { ...prefs, [key]: value });
+    if (patch) void updateSettings(patch);
+  };
 
   return (
     <div className="w-full flex flex-col gap-6">
@@ -174,7 +196,7 @@ export function FitnessCategory() {
           description="決定每組次數、組數與休息時間；動作判定標準不會改變"
           options={DIFFICULTY_OPTIONS}
           value={difficulty}
-          onChange={setDifficulty}
+          onChange={(v) => setPref('difficulty', v)}
         />
         <SegmentedRow
           id="fitness-color-mode"
@@ -183,7 +205,7 @@ export function FitnessCategory() {
           description="三色以紅／黃／綠對應動作品質；色彩辨識不易時可改單色或高對比"
           options={COLOR_MODE_OPTIONS}
           value={colorMode}
-          onChange={setColorMode}
+          onChange={(v) => setPref('colorMode', v)}
         />
       </SettingsSection>
 
@@ -191,29 +213,29 @@ export function FitnessCategory() {
         icon={<FlipHorizontal2 className="text-island-teal-dark" size={18} />}
         label="鏡像畫面"
         description="攝影機畫面左右翻轉，像照鏡子一樣更直覺"
-        onClick={() => setMirror((v) => !v)}
-        control={<Toggle checked={mirror} onChange={setMirror} />}
+        onClick={() => setPref('mirror', !mirror)}
+        control={<Toggle checked={mirror} onChange={(v) => setPref('mirror', v)} />}
       />
       <SettingRow
         icon={<Flame className="text-island-teal-dark" size={18} />}
         label="訓練前熱身"
         description="正式計時前先跟著做一段熱身引導"
-        onClick={() => setWarmup((v) => !v)}
-        control={<Toggle checked={warmup} onChange={setWarmup} />}
+        onClick={() => setPref('warmup', !warmup)}
+        control={<Toggle checked={warmup} onChange={(v) => setPref('warmup', v)} />}
       />
       <SettingRow
         icon={<Music className="text-island-teal-dark" size={18} />}
         label="訓練音樂"
         description="訓練時播放輕快的背景配樂"
-        onClick={() => setBgm((v) => !v)}
-        control={<Toggle checked={bgm} onChange={setBgm} />}
+        onClick={() => setPref('bgm', !bgm)}
+        control={<Toggle checked={bgm} onChange={(v) => setPref('bgm', v)} />}
       />
       <SettingRow
         icon={<MessageCircle className="text-island-teal-dark" size={18} />}
         label="語音教練"
         description="依動作品質即時給予語音提醒"
-        onClick={() => setVoice((v) => !v)}
-        control={<Toggle checked={voice} onChange={setVoice} />}
+        onClick={() => setPref('voice', !voice)}
+        control={<Toggle checked={voice} onChange={(v) => setPref('voice', v)} />}
       />
     </div>
   );
