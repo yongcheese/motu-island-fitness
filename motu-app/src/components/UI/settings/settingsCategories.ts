@@ -10,9 +10,9 @@
 // need no changes.
 
 import type { LucideIcon } from 'lucide-react';
-import { SlidersHorizontal, Volume2, Monitor, Gamepad2, User, Info } from 'lucide-react';
+import { SlidersHorizontal, Dumbbell, Volume2, Monitor, Gamepad2, User, Info } from 'lucide-react';
 
-export type SettingsCategoryId = 'general' | 'audio' | 'graphics' | 'controls' | 'account' | 'about';
+export type SettingsCategoryId = 'general' | 'fitness' | 'audio' | 'graphics' | 'controls' | 'account' | 'about';
 
 export interface SettingsCategoryDef {
   id: SettingsCategoryId;
@@ -22,7 +22,7 @@ export interface SettingsCategoryDef {
    * 這個分類今天有沒有東西。`false` 的分類**還在**（型別、元件、SettingsView 的掛載全部保留），
    * 只是不畫進導覽列。
    *
-   * 為什麼需要這個欄位：畫面／操作／關於三個分類各自只有一張「敬請期待」的 EmptyState，於是設定
+   * 為什麼需要這個欄位：畫面／操作兩個分類（關於原本也是）各自只有一張「敬請期待」的 EmptyState，於是設定
    * 的導覽列有一半指向沒有內容的地方 —— 那是把「還沒做」做成了常駐導覽的一部分。這跟
    * `MAIN_SECTIONS` 裡 NPC 不給 iconName 是同一條規則（見 utils/categoryUtils.ts）：占位符不該
    * 長得像一個已經決定好的東西。
@@ -34,12 +34,15 @@ export interface SettingsCategoryDef {
 
 export const SETTINGS_CATEGORIES: SettingsCategoryDef[] = [
   { id: 'general', label: '一般', icon: SlidersHorizontal, available: true },
+  // 健身：健身頁的訓練偏好（難度、骨架配色、鏡像、熱身、訓練音樂、語音教練），見 FitnessCategory。
+  { id: 'fitness', label: '健身', icon: Dumbbell, available: true },
   { id: 'audio', label: '音效', icon: Volume2, available: true },
-  // 三個空分類 —— 元件仍在（GraphicsCategory / ControlsCategory / AboutCategory），只是不進導覽列。
+  // 兩個空分類 —— 元件仍在（GraphicsCategory / ControlsCategory），只是不進導覽列。
+  // 關於（about）已有內容，改為可見。
   { id: 'graphics', label: '畫面', icon: Monitor, available: false },
   { id: 'controls', label: '操作', icon: Gamepad2, available: false },
   { id: 'account', label: '帳號', icon: User, available: true },
-  { id: 'about', label: '關於', icon: Info, available: false },
+  { id: 'about', label: '關於', icon: Info, available: true },
 ];
 
 /** 導覽列該畫哪幾格。SettingsNav 與 SettingsView 都問這個，不會有一邊多一格的情況。 */

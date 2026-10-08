@@ -12,13 +12,14 @@ import { SettingsNav } from './UI/settings/SettingsNav';
 import type { SettingsCategoryId } from './UI/settings/settingsCategories';
 import { consumeRequestedSettingsCategory } from './UI/settings/settingsNavigation';
 import { GeneralCategory } from './UI/settings/GeneralCategory';
+import { FitnessCategory } from './UI/settings/FitnessCategory';
 import { AudioCategory } from './UI/settings/AudioCategory';
 import { GraphicsCategory } from './UI/settings/GraphicsCategory';
 import { ControlsCategory } from './UI/settings/ControlsCategory';
 import { AccountCategory } from './UI/settings/AccountCategory';
 import { AboutCategory } from './UI/settings/AboutCategory';
 
-// Shell only: full-screen chrome, category nav, and the six category panels.
+// Shell only: full-screen chrome, category nav, and the seven category panels.
 // Every setting's actual read/write logic lives in its own Category
 // component under UI/settings/ — this file owns none of it.
 export function SettingsView() {
@@ -52,12 +53,13 @@ export function SettingsView() {
         <div className="w-full flex flex-col lg:flex-row gap-6 lg:gap-10">
           <SettingsNav activeId={activeCategory} onSelect={setActiveCategory} />
 
-          {/* All six categories stay mounted; only the active one is shown.
+          {/* All seven categories stay mounted; only the active one is shown.
               This keeps in-progress local state (a half-typed name, an
               unsent YouTube search) alive across category switches instead
               of resetting it on unmount, and needs no reload. */}
           <div className="flex-1 min-w-0 flex flex-col gap-6">
             <div className={activeCategory === 'general' ? 'contents' : 'hidden'}><GeneralCategory /></div>
+            <div className={activeCategory === 'fitness' ? 'contents' : 'hidden'}><FitnessCategory /></div>
             <div className={activeCategory === 'audio' ? 'contents' : 'hidden'}><AudioCategory /></div>
             <div className={activeCategory === 'graphics' ? 'contents' : 'hidden'}><GraphicsCategory /></div>
             <div className={activeCategory === 'controls' ? 'contents' : 'hidden'}><ControlsCategory /></div>

@@ -38,7 +38,7 @@
 5. 健康頁（`components/health/`）**不碰**（G1／G2 暫緩）。
 
 **已申報的遊戲組檔案改動**（施工時回填）：
-- （例：`types.ts` AppSettings 新增選填欄位、`GeneralCategory.tsx` 移除 AI 語音引導列）
+- Slice 1：`settingsCategories.ts`（加 fitness、about 改可見）、`SettingsView.tsx`（掛 FitnessCategory）、`AboutCategory.tsx`（EmptyState 換三區塊骨架）、`package.json`（test:fitness 串新腳本）
 
 ## 設計鐵律速查
 - 沿用遊戲組 Motu 設計系統：`island-*` token、`SettingsSection`／`SettingRow`／`Toggle`（`DesignKit.tsx`）、`rounded-2xl`／`rounded-xl` ｜ `lucide-react` `size={18}` ｜ 免費優先
@@ -59,12 +59,12 @@
 
 ## 進度總覽
 - 總 Slice 數：9
-- 已完成：0 / 9
+- 已完成：1 / 9
 - 平行組：無（全部序列）
 
 ---
 
-### [ ] Slice 1 — 刻出設定頁健身分類與關於頁的骨架
+### [x] Slice 1 — 刻出設定頁健身分類與關於頁的骨架
 - **目標**：設定頁導覽多一格「健身」、「關於」也出現，點進去看得到所有設定列與關於頁的版面（資料寫死、不存檔）。
 - **範圍內**：`settingsCategories.ts` 新增 `fitness`（圖示 `Dumbbell`，放在「一般」之後）並把 `about` 設為可見；新增 `FitnessCategory.tsx`：難度（輕鬆／標準／挑戰）、骨架配色（三色 `tricolor`／單色 `mono`／高對比 `high`，名稱沿用舊版設定頁 `app/features/settings/settings.js:146`）兩組分段選擇器，鏡像、熱身、訓練音樂、語音教練四個開關，用既有 `SettingsSection`／`SettingRow`／`Toggle`；`AboutCategory.tsx` 換成版面骨架（版本、團隊、資料來源三個區塊，文字先放佔位）；`SettingsView.tsx` 掛上 `fitness`。
 - **範圍外**：讀寫真實設定、即時生效、儲存回饋、色票預覽、進場與 hover 動畫、錯誤與載入狀態、關於頁真實內容。
@@ -77,7 +77,7 @@
   - [ ] 關於頁顯示三個區塊骨架
 - **測試策略**：`motu-app/scripts/test-fitness-settings-view.ts` — 導覽清單順序與可見性（`VISIBLE_SETTINGS_CATEGORIES` 含 fitness／about、不含 graphics／controls）；邊界：分類 id 不重複
 - **完成定義**：Type Check PASS + 指定測試 PASS + dev server 截圖 → **停下來請使用者看過版面再往下**
-- **對外介面**：
+- **對外介面**：`FitnessCategory()`（無 props，`components/UI/settings/FitnessCategory.tsx`）；`SettingsCategoryId` 新增 `'fitness'`；檔內型別 `Difficulty`／`ColorMode` 未 export（Slice 2 定正式型別後改用）。**施工註記**：難度名稱依 `app/features/settings/settings.js:138` 用「簡單／普通／困難」（看板原寫輕鬆／標準／挑戰與「沿用舊版」矛盾，以舊版為準）；另新增 `scripts/test-fitness-settings-view.ts`、改 `package.json`（看板漏列）。slice-reviewer PASS。
 - **依賴**：無
 - **平行組**：獨立
 
