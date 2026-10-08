@@ -36,10 +36,12 @@ import { CoachBackdrop } from './CoachBackdrop';
 import { CompanionCoach, createCompanionFeed } from './CompanionCoach';
 import { useFitnessSettle } from './useFitnessSettle';
 import { ClaimSequence } from './ClaimSequence';
+import { useFitnessPrefsBridge } from './useFitnessPrefsBridge';
 
 import workout from '@fitness/features/workout/workout.js';
 import { store } from '@fitness/state/store.js';
 import { createCoach } from '@fitness/core/coach.js';
+import { setPalette } from '@fitness/ui/feedback.js';
 import appCss from '@fitness/styles/app.css?raw';
 import workoutCss from '@fitness/features/workout/workout.css?raw';
 import luminaCss from '@fitness/styles/lumina.css?raw';
@@ -72,7 +74,7 @@ function cloneGameStyles(target: ShadowRoot) {
 type Slots = Record<string, HTMLElement>;
 
 export function FitnessHost() {
-  const { setIsWorkoutActive, setCurrentView, profile, grantFragments } = useApp();
+  const { setIsWorkoutActive, setCurrentView, profile, grantFragments, settings, updateSettings } = useApp();
   // 健身頁只掛載一次：context 的 setter 若在重繪時換了參考，也不能因此把訓練中的頁面拆掉重掛
   const appRef = useRef({ setIsWorkoutActive, setCurrentView });
   appRef.current = { setIsWorkoutActive, setCurrentView };
@@ -96,6 +98,10 @@ export function FitnessHost() {
   const beforeSettle = useRef<FitnessBalances | null>(null);
   // 遊戲端的分頁列只在主頁出現，其他頁面各自有右上角的關閉鍵回島嶼（同健康頁、設定頁）；全螢幕訓練時隱藏
   const [chrome, setChromeState] = useState(true);
+  // 語音教練：健身頁掛載時建立；偏好的語音開關一變就跟著開關（見下方同步橋）
+  const coachRef = useRef<ReturnType<typeof createCoach> | null>(null);
+  // 健身偏好以遊戲設定為唯一來源：雙向同步 store.prefs，並套用骨架配色模式
+  useFitnessPrefsBridge(store, settings, updateSettings, setPalette, (on) => coachRef.current?.setEnabled(on));
 
   useEffect(() => {
     const host = hostRef.current;
@@ -125,6 +131,7 @@ export function FitnessHost() {
 
     let toastTimer = 0;
     const coach = createCoach({ enabled: store.getState().prefs.voice });
+    coachRef.current = coach;
     const ctx = {
       store,
       coach,
@@ -172,6 +179,7 @@ export function FitnessHost() {
       workout.unmount();
       window.clearTimeout(toastTimer);
       appRef.current.setIsWorkoutActive(false);
+      coachRef.current = null;
       setSlots({});
       setOverlay(null);
     };
