@@ -206,6 +206,42 @@ await (async () => {
   ok('writeSettings 同步丟例外 → 不拋、warn 一次', !threw && warned === 1, show({ threw, warned }));
 }
 
+// —— 連續寫入失敗（Slice 9）：寫入次數＝實際變更次數，不會自動重送 ——
+await (async () => {
+  const t = setup({ reject: true });
+  t.setSettings({});
+  const origWarn = console.warn;
+  let warned = 0;
+  console.warn = () => { warned += 1; };
+  try {
+    // 4 次真的變動（熱身關→開→關、鏡像關）＋ 2 次同值重複（不算變動）
+    t.store.updatePrefs({ warmup: false });
+    await new Promise((r) => setTimeout(r, 0));
+    t.store.updatePrefs({ warmup: false });
+    t.store.updatePrefs({ warmup: true });
+    await new Promise((r) => setTimeout(r, 0));
+    t.store.updatePrefs({ warmup: false });
+    t.store.updatePrefs({ mirror: false });
+    t.store.updatePrefs({ mirror: false });
+    // 多等幾輪事件迴圈：若失敗後會自動重送，這段期間寫入次數會繼續增加
+    for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 5));
+  } finally {
+    console.warn = origWarn;
+  }
+  ok('連續失敗 4 次 → writeSettings 恰好 4 次（＝實際變更次數）', t.writes.length === 4, show(t.writes));
+  ok('連續失敗 → 每次只帶當次變動的欄位',
+    same(t.writes, [{ warmupEnabled: false }, { warmupEnabled: true }, { warmupEnabled: false }, { fitnessMirror: false }]),
+    show(t.writes));
+  ok('連續失敗 → 每次失敗各 warn 一次（共 4 次）', warned === 4, show(warned));
+  ok('邊界：失敗後不回頭改 store（健身頁照目前的 prefs 繼續可用）',
+    t.store.prefs().warmup === false && t.store.prefs().mirror === false && t.store.updates.length === 6,
+    show({ prefs: t.store.prefs(), updates: t.store.updates.length }));
+  // 遊戲端之後真的送出成功並回灌同值 → 也不會再寫一次
+  t.setSettings({ warmupEnabled: false, fitnessMirror: false });
+  ok('之後遊戲端回灌同值 → 不再寫、不動 store', t.writes.length === 4 && t.store.updates.length === 6,
+    show({ writes: t.writes.length, updates: t.store.updates.length }));
+})();
+
 // —— 卸載 ——
 {
   const t = setup();

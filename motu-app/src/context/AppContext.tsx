@@ -5,6 +5,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { db, handleFirestoreError, OperationType, doc, onSnapshot, setDoc, getDoc, updateDoc, increment } from '../lib/firebase';
+import { describeRecentFailure } from '../lib/saveStatus';
 import { authManager } from '../auth/AuthenticationManager';
 import type { AuthUser } from '../auth/types';
 import { adoptLegacyLocalSave } from '../save/LocalSaveStore';
@@ -66,6 +67,13 @@ interface AppContextType {
   profile: UserProfile | null;
   settings: AppSettings | null;
   updateSettings: (updates: Partial<AppSettings>) => Promise<void>;
+  /**
+   * 最後一次設定寫入失敗的白話原因（lib/saveStatus.ts 的訊息）；下一次設定寫入成功、或換帳號時清回 null。
+   * updateSettings 是樂觀更新＋去抖寫入，失敗不會 reject，畫面要顯示失敗只能讀這個值。
+   */
+  settingsWriteError: string | null;
+  /** 立刻把待寫的設定再送一次（失敗時待寫清單仍保留，見 flushSettingsWrite）。 */
+  retrySettingsWrite: () => void;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   currentView: View;
   setCurrentView: (view: View) => void;
@@ -767,6 +775,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   /** Keys changed since the last write, and the account they belong to. */
   const pendingSettingsRef = useRef<{ uid: string; updates: Partial<AppSettings> } | null>(null);
   const settingsFlushTimerRef = useRef<number | null>(null);
+  /** 設定寫入失敗的原因，給設定頁顯示（第三階段 Slice 9）；只在下方 flush 的成功／失敗處更新。 */
+  const [settingsWriteError, setSettingsWriteError] = useState<string | null>(null);
 
   /** Writes whatever is pending, now. Safe to call at any time; a no-op when nothing is queued. */
   const flushSettingsWrite = useCallback(async () => {
@@ -779,6 +789,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!pending || Object.keys(pending.updates).length === 0) return;
     try {
       await updateDoc(doc(db, 'users', pending.uid, 'settings', 'current'), pending.updates);
+      setSettingsWriteError(null);
     } catch (error) {
       // A failed write leaves the change on screen but nowhere else, so the next snapshot used to
       // wipe it — the player's 靜音 comes back on by itself, with nothing on screen to explain it.
@@ -794,6 +805,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? { uid: pending.uid, updates: { ...pending.updates, ...newer.updates } }
         : (newer ?? pending);
       handleFirestoreError(error, OperationType.UPDATE, `users/${pending.uid}/settings/current`);
+      // handleFirestoreError 剛把這次的原因記進 saveStatus，同步讀回即為這一次的訊息。
+      setSettingsWriteError(describeRecentFailure());
     }
   }, []);
 
@@ -811,6 +824,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     settingsFlushTimerRef.current = window.setTimeout(() => {
       void flushSettingsWrite();
     }, SETTINGS_WRITE_DEBOUNCE_MS);
+  }, [flushSettingsWrite]);
+
+  /** 設定頁的「重試」：不等去抖，立刻送出待寫清單。 */
+  const retrySettingsWrite = useCallback(() => {
+    void flushSettingsWrite();
   }, [flushSettingsWrite]);
 
   // The debounce's safety net. A player who changes a setting and immediately closes the tab (or
@@ -1339,6 +1357,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // frame can ever render player A's island under player B's name.
       setProfile(null);
       setSettings(null);
+      setSettingsWriteError(null);
 
       if (!state.user) {
         setLoading(false);
@@ -1386,6 +1405,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider value={{ 
       user, profile, settings, updateSettings, updateProfile, currentView, setCurrentView,
+      settingsWriteError, retrySettingsWrite,
       isWorkoutActive, setIsWorkoutActive, loading,
       isGameLoading, setIsGameLoading,
       nearbyBuilding, setNearbyBuilding,

@@ -168,6 +168,57 @@ console.log('\n-- FitnessCategory 儲存回饋與微互動（Slice 8） --------
   ok('保留 CRLF 換行', src.includes('\r\n') && !/[^\r]\n/.test(src));
 }
 
+console.log('\n-- FitnessCategory 未載入與寫入失敗（Slice 9） ----------------------------');
+{
+  const src = readSrc('FitnessCategory.tsx');
+
+  ok('有載入骨架元件且標 aria-busy="true"', /function FitnessCategorySkeleton\b/.test(src) && src.includes('aria-busy="true"'));
+  ok('settings 為 null 或未登入時改畫載入骨架（不可改值）',
+    /if \(settings === null \|\| user === null\) \{\s*return <FitnessCategorySkeleton signedOut=\{user === null\} \/>;/.test(src));
+  const skeleton = /function FitnessCategorySkeleton[\s\S]*?\n\}\r?\n/.exec(src)?.[0] ?? '';
+  ok('邊界：載入骨架內沒有可點元素（button／onClick／role="radio"）',
+    skeleton.length > 0 && !/<button|onClick|role="radio"/.test(skeleton), `骨架長度 ${skeleton.length}`);
+  ok('載入骨架不轉圈圈（不用 animate-spin）', !src.includes('animate-spin'));
+  ok('載入骨架的閃爍只在允許動態效果時（motion-safe）', /motion-safe:animate-pulse/.test(skeleton) && !/[^:]animate-pulse/.test(skeleton.replace(/motion-safe:animate-pulse/g, '')));
+  ok('骨架佔住兩組選擇器與四列', /\[0, 1\]\.map/.test(skeleton) && /\[0, 1, 2, 3\]\.map/.test(skeleton));
+  ok('未登入時顯示「登入後才能儲存健身設定」', src.includes('登入後才能儲存健身設定'));
+
+  ok('從 useApp() 取 settingsWriteError 與 retrySettingsWrite',
+    /\{\s*settingsWriteError,\s*retrySettingsWrite\s*\}\s*=\s*useApp\(\)/.test(src));
+  ok('錯誤區為 role="alert"', /function SaveErrorNotice[\s\S]*?role="alert"/.test(src));
+  ok('錯誤區有「重試」按鈕', /function SaveErrorNotice[\s\S]*?<button[\s\S]*?重試\s*<\/button>/.test(src));
+  ok('重試按鈕呼叫 retrySettingsWrite()', /const retry = \(\) => \{[^}]*retrySettingsWrite\(\);/.test(src)
+    && /<SaveErrorNotice reason=\{settingsWriteError\} onRetry=\{retry\} \/>/.test(src));
+  ok('錯誤時不顯示已儲存（savedRows 在有錯誤時換成空集合）',
+    /const savedRows: SavedFlashState = settingsWriteError === null \? shownRows : NO_SAVED_ROWS;/.test(src)
+    && /const NO_SAVED_ROWS: SavedFlashState = \{\};/.test(src));
+  ok('改值時記下最後改動列', /markLastRow\(key\);/.test(src));
+  const rowKeys = ['difficulty', 'colorMode', 'mirror', 'warmup', 'bgm', 'voice'];
+  const withError = rowKeys.filter((k) => src.includes(`{errorBelow('${k}')}`));
+  ok('6 列下方都能顯示錯誤', withError.length === rowKeys.length, `已接 ${show(withError)}`);
+  ok('邊界：錯誤來自其他分類（本分類沒改過）時放分類頂端', src.includes('{errorBelow(null)}'));
+  ok('錯誤訊息照實說明沒存到存檔與重新整理的結果（不假裝回滾）',
+    src.includes('還沒存到存檔') && src.includes('重新整理頁面會回到上次存檔的設定'));
+  ok('重試按鈕觸控區 ≥44px', /<button[\s\S]*?onClick=\{onRetry\}[\s\S]*?min-h-\[44px\]/.test(src));
+  ok('新圖示 size 18', /<TriangleAlert size=\{18\}/.test(src) && /<RotateCw size=\{18\}/.test(src));
+}
+
+console.log('\n-- AppContext 設定寫入失敗訊號（Slice 9，遊戲組檔案純新增） ---------------');
+{
+  const ctx = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../src/context/AppContext.tsx'), 'utf8');
+  ok('型別新增 settingsWriteError: string | null', /settingsWriteError: string \| null;/.test(ctx));
+  ok('型別新增 retrySettingsWrite: () => void', /retrySettingsWrite: \(\) => void;/.test(ctx));
+  ok('寫入成功後清回 null', /await updateDoc\(doc\(db, 'users', pending\.uid, 'settings', 'current'\), pending\.updates\);\s*setSettingsWriteError\(null\);/.test(ctx));
+  ok('失敗時仍呼叫 handleFirestoreError，之後才記錄原因',
+    /handleFirestoreError\(error, OperationType\.UPDATE, `users\/\$\{pending\.uid\}\/settings\/current`\);[\s\S]{0,120}setSettingsWriteError\(describeRecentFailure\(\)\);/.test(ctx));
+  ok('失敗時仍把欄位放回待寫清單（原邏輯保留）', /pendingSettingsRef\.current = newer && newer\.uid === pending\.uid/.test(ctx));
+  ok('去抖時間維持 400ms', /SETTINGS_WRITE_DEBOUNCE_MS = 400;/.test(ctx));
+  ok('重試＝立刻 flush，不另設重試計時器', /const retrySettingsWrite = useCallback\(\(\) => \{\s*void flushSettingsWrite\(\);\s*\}, \[flushSettingsWrite\]\);/.test(ctx));
+  ok('換帳號時清掉上一個帳號的錯誤', /setSettings\(null\);\s*setSettingsWriteError\(null\);/.test(ctx));
+  ok('Provider 提供兩個新欄位', /settingsWriteError, retrySettingsWrite,/.test(ctx));
+  ok('保留 CRLF 換行', ctx.includes('\r\n') && !/[^\r]\n/.test(ctx));
+}
+
 console.log(
   failures === 0 ? `\nALL PASS — ${checks}/${checks} checks\n` : `\n${failures} of ${checks} checks FAILED\n`,
 );

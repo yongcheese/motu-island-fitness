@@ -63,7 +63,7 @@
 
 ## 進度總覽
 - 總 Slice 數：9
-- 已完成：8 / 9
+- 已完成：9 / 9
 - 平行組：無（全部序列）
 
 ---
@@ -205,7 +205,7 @@
 - **依賴**：Slice 7
 - **平行組**：獨立
 
-### [ ] Slice 9 — 處理設定未載入與寫入失敗
+### [x] Slice 9 — 處理設定未載入與寫入失敗
 - **目標**：網路或權限出問題時，設定頁與健身頁都不會卡住或顯示錯誤值。
 - **範圍內**：設定尚未載入 → 健身分類顯示載入骨架；`updateSettings` 失敗 → 該列顯示失敗原因＋重試，畫面值回到存檔值；健身頁照目前的 prefs 繼續可用。
 - **範圍外**：離線佇列重送（遊戲組 Firestore 本身的離線快取已處理）。
@@ -214,10 +214,11 @@
 - **UI Slice?**：YES
 - **驗收標準**：
   - [ ] 模擬 `updateSettings` 拒絕 → 該列顯示失敗＋重試，值回復
+    - **10-09 施工改寫**：AppContext 為樂觀更新、失敗不回滾而是把欄位留在待寫清單 → 畫面維持新值，錯誤訊息如實告知「還沒存到存檔、重新整理會回到上次存檔、下次改設定或離開頁面會自動再送」。
   - [ ] 橋在寫入失敗時不會重試成無限迴圈
 - **測試策略**：`test-fitness-prefs-bridge.ts` 新增寫入失敗案例；無頭瀏覽器以假失敗驗證畫面
 - **完成定義**：Type Check PASS + `test:fitness` PASS + UI QA PASS
-- **對外介面**：
+- **對外介面**：`useApp()` 新增 `settingsWriteError: string|null`（取自 `describeRecentFailure()`，成功寫入或換帳號清回 null）、`retrySettingsWrite()`（立刻 flush）。FitnessCategory 檔內新增 `FitnessCategorySkeleton`（aria-busy）、`SaveErrorNotice`（role=alert＋重試）。`useFitnessPrefsBridge.ts` 未改（連續失敗測試證明不會無限重試）。測試：bridge 32、settings-view 82、workout-rewards 61/61。**未做**：無頭瀏覽器假失敗畫面（Firestore 斷線時會持續重送而非失敗，瀏覽器難以製造；改以結構測試驗證）；正常路徑已在瀏覽器確認無骨架殘留、無錯誤。**已知缺口**：①兩批寫入重疊時後批成功會提早清掉錯誤（欄位仍待寫）②重試再失敗時 alert 不重唸、無「重試中」③失敗若來自其他設定分類，提示仍放在健身分類最後改的列下。slice-reviewer PASS。
 - **依賴**：Slice 8
 - **平行組**：獨立
 

@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useReducer, useRef, type KeyboardEvent, type ReactNode } from 'react';
-import { Dumbbell, Gauge, Palette, FlipHorizontal2, Flame, Music, MessageCircle, Check } from 'lucide-react';
+import { Dumbbell, Gauge, Palette, FlipHorizontal2, Flame, Music, MessageCircle, Check, TriangleAlert, RotateCw } from 'lucide-react';
 import { Toggle } from '../DesignKit';
 import { SettingsSection } from './SettingsSection';
 import { SettingRow } from './SettingRow';
@@ -22,7 +22,8 @@ import {
 import { PALETTES } from '@fitness/ui/display-colors.js';
 
 // 健身分類（第三階段 Slice 4：接上真實存檔；Slice 7：分段選擇器選中態、配色色票預覽；
-// Slice 8：每列「已儲存」回饋、切換過場、減少動態效果、點擊音）。
+// Slice 8：每列「已儲存」回饋、切換過場、減少動態效果、點擊音；
+// Slice 9：設定未載入時的載入骨架、寫入失敗時在最後改動那一列下方顯示原因＋重試）。
 //
 // 遊戲存檔（AppSettings）是唯一來源（TODO_PLAN.md 架構決策 1）：
 //   - 顯示值一律經 prefsFromSettings(settings)，設定未載入或舊存檔缺欄位時顯示健身頁預設值；
@@ -349,12 +350,121 @@ function ToggleControl({
   );
 }
 
+/** 寫入失敗時不顯示任何「已儲存」（見 FitnessCategory 的 savedRows）。 */
+const NO_SAVED_ROWS: SavedFlashState = {};
+
+/** 記住最後改動的是哪一列，寫入失敗的提示就放在那一列下方。 */
+function lastRowReducer(_prev: SavedRowKey | null, next: SavedRowKey): SavedRowKey | null {
+  return next;
+}
+
+/**
+ * 設定寫入失敗（Slice 9）：原因＋重試，放在最後改動那一列下方。
+ *
+ * reason 是 AppContext 的 settingsWriteError（lib/saveStatus.ts 依錯誤代碼寫好的白話句子，
+ * 例如連不上伺服器、權限被拒、登入失效）。後面那句照 AppContext 實際行為寫：
+ * updateSettings 是樂觀更新，失敗不回滾，所以畫面上已是新值；待寫的欄位會留著，
+ * 下次改任何設定、或離開／關閉分頁時會再送一次；重新整理會讀回上次存檔的值。
+ * role="alert" 讓報讀軟體立即唸出，不搬焦點。
+ */
+function SaveErrorNotice({ reason, onRetry }: { reason: string; onRetry: () => void }) {
+  return (
+    <div
+      role="alert"
+      className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-2xl border border-island-coral/60 bg-island-coral/10 px-4 py-3"
+    >
+      <div className="flex items-start gap-2.5 min-w-0 flex-1">
+        <TriangleAlert size={18} aria-hidden="true" className="text-island-navy shrink-0 mt-0.5" />
+        <div className="min-w-0">
+          <div className="text-xs font-bold text-island-navy">健身設定沒有存進存檔</div>
+          <div className="text-[11px] text-island-navy">{reason}</div>
+          <div className="text-[10px] text-island-navy-soft mt-1">
+            目前畫面上的設定還沒存到存檔，重新整理頁面會回到上次存檔的設定；下次改任何設定或離開頁面時會自動再送一次，也可以現在按「重試」。
+          </div>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 rounded-xl bg-island-navy text-white text-sm font-bold shrink-0 cursor-pointer transition-[background-color,transform] duration-200 ease-out hover:bg-island-navy-dark active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-island-teal focus-visible:ring-offset-2"
+      >
+        <RotateCw size={18} aria-hidden="true" />
+        重試
+      </button>
+    </div>
+  );
+}
+
+/**
+ * 設定尚未載入（或未登入）時的載入骨架（Slice 9）：灰色塊佔住兩組分段選擇器與四列開關的位置，
+ * 載入完成時版面不跳動。沒有任何可點的元素，所以載入前改不了值。
+ * 不轉圈圈；只有允許動態效果時才淡淡閃爍（motion-safe）。
+ */
+function FitnessCategorySkeleton({ signedOut }: { signedOut: boolean }) {
+  const block = 'bg-island-line/60 motion-safe:animate-pulse';
+  return (
+    <div aria-busy="true" className="w-full flex flex-col gap-6">
+      {signedOut ? (
+        <p className="text-xs font-bold text-island-navy-soft px-1">登入後才能儲存健身設定</p>
+      ) : (
+        <p className="sr-only">正在載入健身設定</p>
+      )}
+      <div aria-hidden="true" className="w-full space-y-3">
+        <div className="flex items-center gap-3 px-1">
+          <div className={`w-10 h-10 rounded-2xl ${block}`} />
+          <div className="space-y-1.5">
+            <div className={`h-3 w-20 rounded ${block}`} />
+            <div className={`h-2.5 w-44 rounded ${block}`} />
+          </div>
+        </div>
+        <div className="bg-island-cream-2 border border-island-line dock-notch rounded-[1.75rem] p-5 space-y-4">
+          {[0, 1].map((i) => (
+            <div key={i} className="flex flex-col gap-3 bg-white border border-island-line rounded-2xl px-4 py-3">
+              <div className={`h-3 w-24 rounded ${block}`} />
+              <div className="grid grid-cols-3 gap-2">
+                {[0, 1, 2].map((j) => (
+                  <div key={j} className={`min-h-[44px] rounded-xl ${block}`} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {[0, 1, 2, 3].map((i) => (
+        <div
+          key={i}
+          aria-hidden="true"
+          className="flex items-center justify-between gap-4 p-5 bg-island-cream-2 rounded-2xl border border-island-line"
+        >
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className={`w-[18px] h-[18px] rounded ${block}`} />
+            <div className="space-y-1.5 flex-1">
+              <div className={`h-3 w-24 rounded ${block}`} />
+              <div className={`h-2.5 w-40 max-w-full rounded ${block}`} />
+            </div>
+          </div>
+          <div className={`w-11 h-6 rounded-full shrink-0 ${block}`} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function FitnessCategory() {
   const { settings, updateSettings } = useApp();
   const { user } = useApp();
+  const { settingsWriteError, retrySettingsWrite } = useApp();
   const prefs = prefsFromSettings(settings);
   const { difficulty, colorMode, mirror, warmup, bgm, voice } = prefs;
-  const { shown: savedRows, flash } = useSavedFlash();
+  const { shown: shownRows, flash } = useSavedFlash();
+  const [lastRow, markLastRow] = useReducer(lastRowReducer, null);
+  // 寫入失敗時任何一列都不顯示「已儲存」：失敗的那批包含所有還沒送出的變更，此時說已儲存是騙人的。
+  const savedRows: SavedFlashState = settingsWriteError === null ? shownRows : NO_SAVED_ROWS;
+
+  // 設定未載入或未登入：顯示載入骨架，不能改值（updateSettings 在這兩種情況本來就什麼都不做）。
+  if (settings === null || user === null) {
+    return <FitnessCategorySkeleton signedOut={user === null} />;
+  }
 
   /**
    * 改一項偏好 → 只把有變的欄位寫回遊戲存檔，並在該列顯示「已儲存」。
@@ -369,14 +479,26 @@ export function FitnessCategory() {
     const patch = settingsPatchFromPrefs(prefs, { ...prefs, [key]: value });
     if (!patch) return;
     playSound(SoundEffect.CLICK);
+    markLastRow(key);
     const willApply = user !== null && settings !== null;
     void updateSettings(patch).then(() => {
       if (willApply) flash(key);
     });
   };
 
+  const retry = () => {
+    playSound(SoundEffect.CLICK);
+    retrySettingsWrite();
+  };
+  /** 寫入失敗提示放在 key 那一列下方；本分類還沒改過值（失敗來自其他分類）時放在 key＝null 的分類頂端。 */
+  const errorBelow = (key: SavedRowKey | null) =>
+    settingsWriteError !== null && lastRow === key ? (
+      <SaveErrorNotice reason={settingsWriteError} onRetry={retry} />
+    ) : null;
+
   return (
     <div className="w-full flex flex-col gap-6">
+      {errorBelow(null)}
       <SettingsSection
         icon={<Dumbbell size={18} />}
         title="訓練設定"
@@ -392,6 +514,7 @@ export function FitnessCategory() {
           onChange={(v) => setPref('difficulty', v)}
           saved={savedRows.difficulty === true}
         />
+        {errorBelow('difficulty')}
         <SegmentedRow
           id="fitness-color-mode"
           icon={<Palette size={18} className="text-island-navy-soft shrink-0" />}
@@ -403,6 +526,7 @@ export function FitnessCategory() {
           renderPreview={(mode) => <PaletteSwatch mode={mode} />}
           saved={savedRows.colorMode === true}
         />
+        {errorBelow('colorMode')}
       </SettingsSection>
 
       <SettingRow
@@ -419,6 +543,7 @@ export function FitnessCategory() {
           />
         }
       />
+      {errorBelow('mirror')}
       <SettingRow
         icon={<Flame className="text-island-teal-dark" size={18} />}
         label="訓練前熱身"
@@ -433,6 +558,7 @@ export function FitnessCategory() {
           />
         }
       />
+      {errorBelow('warmup')}
       <SettingRow
         icon={<Music className="text-island-teal-dark" size={18} />}
         label="訓練音樂"
@@ -447,6 +573,7 @@ export function FitnessCategory() {
           />
         }
       />
+      {errorBelow('bgm')}
       <SettingRow
         icon={<MessageCircle className="text-island-teal-dark" size={18} />}
         label="語音教練"
@@ -461,6 +588,7 @@ export function FitnessCategory() {
           />
         }
       />
+      {errorBelow('voice')}
     </div>
   );
 }
