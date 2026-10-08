@@ -264,6 +264,155 @@ service cloud.firestore {
         && data.timestamp is string;
     }
 
+    // Which top-level fields ONE update to a user profile may touch.
+    //
+    // `keys` is `incoming().diff(existing()).affectedKeys()`, computed ONCE by the caller and passed
+    // in. It used to be written out inline in every one of the ~20 alternatives below, so a write
+    // that matched late re-diffed the whole document ~20 times. Firestore stops evaluating a request
+    // at 1000 expressions and treats that as a DENY — and an island placement, which only matches
+    // the fallback whitelist, the LAST alternative, crossed it once a save grew large (hundreds of
+    // inventory ids). The client saw `permission-denied` on 擺東西 and nothing else, because every
+    // other write matched an earlier clause and stopped in time.
+    //
+    // For the same reason the fallback whitelist is checked first: it is a superset of every clause
+    // below except the two that carry `freeWheelSpins`, so it settles almost every write in one
+    // `hasOnly`. That also means the narrower clauses do not RESTRICT anything the fallback allows —
+    // they document which writes exist and which keys land together. Keep them accurate anyway, and
+    // re-run the rules test (docs/FIRESTORE_RULES.md) before moving a key out of the fallback.
+    function isAllowedProfileUpdate(keys) {
+      return (
+        // The superset. Checked FIRST — see the note above this function for why the order matters.
+        keys.hasOnly([
+          'displayName', 'level', 'currentXp', 'territoryLevel', 'balanceGold',
+          'inventory', 'equippedItems', 'lastUpdated', 'avatar', 'home',
+          'lastLoginDate', 'loginStreak', 'loginAnchorDate', 'loginCycleId', 'loginClaimedDays',
+          'lastPetDate', 'petCountToday', 'dailyLoginAnchor',
+          'itemFragments', 'raffleTickets', 'raffleTicketProgress',
+          'interiorData', 'islandPlacements', 'islandState', 'workoutRewards', 'migrationVersion',
+          'wallet', 'utilityCards', 'limitedShop', 'weeklyTasks'
+        ]) ||
+        keys.hasOnly(['displayName', 'avatar', 'lastUpdated']) ||
+        // Buying. The three fragment keys are in here because a gold purchase SETTLES the
+        // fragments collected toward the item it just bought, in the same write (see
+        // context/useShopActions.ts) — hasOnly is a subset test, so an ordinary purchase that
+        // touches none of them still matches this clause unchanged.
+        keys.hasOnly([
+          'equippedItems', 'inventory', 'balanceGold', 'wallet',
+          'itemFragments', 'raffleTickets', 'raffleTicketProgress', 'lastUpdated'
+        ]) ||
+        // 商品碎片's own two writes: a grant (運動結算 / 每日簽到 / 轉盤) which touches only the
+        // fragment keys, and a 碎片解鎖 which spends a stack and appends the item to the
+        // inventory. Neither may move gold — the fragment route costs no currency, and leaving
+        // `balanceGold` out of this clause is what enforces that rather than a comment saying so.
+        keys.hasOnly([
+          'itemFragments', 'raffleTickets', 'raffleTicketProgress', 'inventory', 'lastUpdated'
+        ]) ||
+        keys.hasOnly(['interiorData', 'balanceGold', 'territoryLevel', 'lastUpdated']) ||
+        keys.hasOnly(['level', 'currentXp', 'balanceGold', 'lastUpdated']) ||
+        // The 每日登入 writes, all three of them: the once-a-day bookkeeping in
+        // AppContext (lastLoginDate/loginStreak/anchor, plus cycle+claims when the round
+        // rolls over), the server-claim mirror, and the offline claim that pays out
+        // locally (useEconomyActions). hasOnly is a subset test, so one clause covers all.
+        // 'wallet' is in this list because the round now PAYS 碎片 while a 補簽 still charges
+        // 金幣, so one claim write touches both halves of the wallet at once. `hasOnly` is a
+        // subset test, so the same clause still covers the mirror write that touches neither.
+        // 'utilityCards' is in this clause and the two below it for one reason: a 功能卡 whose
+        // duration is counted in USES is spent by the very grant it boosted, and that spend has
+        // to land in the same write as the payout — otherwise a failed save either pays twice or
+        // charges a use for nothing. See src/constants/rewardEffects.ts.
+        keys.hasOnly([
+          'lastLoginDate', 'loginStreak', 'loginAnchorDate', 'loginCycleId', 'loginClaimedDays',
+          'balanceGold', 'wallet', 'currentXp', 'utilityCards', 'lastUpdated'
+        ]) ||
+        // 每日登入獎勵's NON-CURRENCY half (src/context/useDailyLoginPrize.ts). The round stopped
+        // being a ladder of one currency on 2026-09-17: a day can now pay 商品碎片, 抽獎券, a
+        // 功能卡, a whole product, or a free turn of the 幸運轉盤, and this is the ONE write that
+        // lands whichever of those the day rolled.
+        //
+        // It is its own clause rather than more keys on the one above, and that is the whole
+        // point of `hasOnly` being a subset test: the claim write moves money and marks the day
+        // off, this one hands over goods and moves no balance at all. Keeping them apart means
+        // `balanceGold` is absent HERE — so a prize write can never move gold, which is enforced
+        // by this list rather than by a comment saying it does not.
+        keys.hasOnly([
+          'itemFragments', 'raffleTickets', 'raffleTicketProgress', 'inventory',
+          'utilityCards', 'freeWheelSpins', 'lastUpdated'
+        ]) ||
+        // 摸摸寵物 — the daily counter and its 碎片/經驗值 payout, in one write so the limit
+        // cannot be raced. See context/useEconomyActions.ts (petDog).
+        keys.hasOnly([
+          'lastPetDate', 'petCountToday', 'wallet', 'currentXp', 'utilityCards', 'lastUpdated'
+        ]) ||
+        // The Economy / Reward Service's standalone grants (grantReward): one currency, or XP,
+        // and nothing else. 島嶼秘寶 and the 管理員測試 supply buttons are the callers today.
+        keys.hasOnly([
+          'wallet', 'balanceGold', 'currentXp', 'utilityCards', 'lastUpdated'
+        ]) ||
+        // 功能卡's own two writes: a grant (a 輪盤 drop, 管理員測試) and a use, which spends a copy
+        // and starts an effect. Both touch this one nested map and nothing else — the same
+        // property that makes 離線回歸's clause a single line, and the reason a second card needs
+        // no rules change. See context/useUtilityCards.ts.
+        keys.hasOnly(['utilityCards', 'lastUpdated']) ||
+        // 幸運轉盤 (context/useWheelActions.ts). ONE write: the turn spent — a free one
+        // (`freeWheelSpins`) or a 抽獎券 — and whatever the wedge paid, which is fragments, more
+        // tickets, an item or a card. They must land together or the wheel either charges for
+        // nothing or spins for free.
+        keys.hasOnly([
+          'raffleTickets', 'raffleTicketProgress', 'freeWheelSpins', 'itemFragments',
+          'inventory', 'utilityCards', 'lastUpdated'
+        ]) ||
+        // 限時商店 purchase (context/useLimitedShop.ts). ONE write: the charge, the goods and the
+        // per-period purchase record. The goods are either a 功能卡 (`utilityCards`) or a catalog
+        // item (`inventory`, plus the fragment settlement a purchase strands), which is why both
+        // appear here — hasOnly is a subset test, so one clause covers both kinds of product and
+        // both currencies. Splitting it would let a charge land without the goods.
+        keys.hasOnly([
+          'limitedShop', 'utilityCards', 'inventory', 'balanceGold', 'wallet',
+          'itemFragments', 'raffleTickets', 'raffleTicketProgress', 'lastUpdated'
+        ]) ||
+        keys.hasOnly(['territoryLevel', 'migrationVersion', 'lastUpdated']) ||
+        // 離線回歸's four writes — the arrival, the 「我還在」 heartbeat, a 整理, and the pet
+        // greeting its owner. All of them touch this one nested map and nothing else, which is
+        // the whole reason the state is a map rather than five top-level fields: one clause here
+        // covers the feature, and a fifth kind of write later needs no rules change at all.
+        keys.hasOnly(['islandState', 'lastUpdated']) ||
+        // 寵物照護 (src/constants/petCare.ts, src/context/usePetCare.ts). A feed spends one bag of
+        // 寵物用品 AND restores the animal, and those cannot be two writes: a failure between them
+        // either takes the food without feeding the pet or feeds it for free, and the player has
+        // no way to tell which happened. Same reasoning as 健身獎勵's clause below.
+        //
+        // Note what this clause does NOT add: a field. The care state lives at
+        // `islandState.pet.care`, inside a map `isValidUser()` already validates as 「a map」, so
+        // no shape clause changed and the feature is writable against a ruleset deployed before
+        // it existed. That was a deliberate choice at the data-modelling stage — see the `care`
+        // field's own note in src/constants/islandReturn.ts. This clause is therefore
+        // documentation of a write that the fallback whitelist already permits, not a gate the
+        // feature is waiting on.
+        keys.hasOnly(['islandState', 'inventory', 'lastUpdated']) ||
+        // 健身獎勵's two writes: the bookkeeping a valid completion produces, and the grant that
+        // pays a reward. The grant touches BOTH keys in one update on purpose — the item and the
+        // record that it was given have to land together, or the save ends up either marked-and-
+        // unpaid or paid-and-unmarked. hasOnly is a subset test, so this one clause covers the
+        // bookkeeping-only write as well. See context/useWorkoutRewards.ts.
+        // 'balanceGold'/'currentXp' joined this clause when the workout PAYOUT moved out of the
+        // fitness screen and into the reward service (context/useWorkoutRewards.ts): the coins,
+        // the XP and the replay guard (`processedIds`, inside `workoutRewards`) now ride in ONE
+        // write, which is what makes a redelivered completion unable to pay twice.
+        keys.hasOnly([
+          'workoutRewards', 'inventory', 'balanceGold', 'currentXp', 'utilityCards', 'lastUpdated'
+        ]) ||
+        // Establishing the Home consumes the Starter House from the inventory in one write;
+        // re-skinning it touches 'home' alone.
+        keys.hasOnly(['home', 'inventory', 'lastUpdated']) ||
+        // 每週任務 — building, editing, deleting a goal, and recording that a week's target was
+        // met. All four touch the one key, and none of them may move anything else: a task is a
+        // goal the player set for themselves, and it has never been a thing that pays out.
+        // Keeping it in its own clause rather than folding it into the fallback whitelist is
+        // what makes that true by construction (see context/useWeeklyTasks.ts).
+        keys.hasOnly(['weeklyTasks', 'lastUpdated'])
+      );
+    }
+
     // --- Path Rules ---
 
     // Connection Health Check
@@ -289,138 +438,8 @@ service cloud.firestore {
       allow update: if isOwner(userId) && isValidId(userId)
         && isValidUser(incoming())
         && incoming().userId == existing().userId   // Immutable user reference identifier
-        && (
-          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'avatar', 'lastUpdated']) ||
-          // Buying. The three fragment keys are in here because a gold purchase SETTLES the
-          // fragments collected toward the item it just bought, in the same write (see
-          // context/useShopActions.ts) — hasOnly is a subset test, so an ordinary purchase that
-          // touches none of them still matches this clause unchanged.
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'equippedItems', 'inventory', 'balanceGold', 'wallet',
-            'itemFragments', 'raffleTickets', 'raffleTicketProgress', 'lastUpdated'
-          ]) ||
-          // 商品碎片's own two writes: a grant (運動結算 / 每日簽到 / 轉盤) which touches only the
-          // fragment keys, and a 碎片解鎖 which spends a stack and appends the item to the
-          // inventory. Neither may move gold — the fragment route costs no currency, and leaving
-          // `balanceGold` out of this clause is what enforces that rather than a comment saying so.
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'itemFragments', 'raffleTickets', 'raffleTicketProgress', 'inventory', 'lastUpdated'
-          ]) ||
-          incoming().diff(existing()).affectedKeys().hasOnly(['interiorData', 'balanceGold', 'territoryLevel', 'lastUpdated']) ||
-          incoming().diff(existing()).affectedKeys().hasOnly(['level', 'currentXp', 'balanceGold', 'lastUpdated']) ||
-          // The 每日登入 writes, all three of them: the once-a-day bookkeeping in
-          // AppContext (lastLoginDate/loginStreak/anchor, plus cycle+claims when the round
-          // rolls over), the server-claim mirror, and the offline claim that pays out
-          // locally (useEconomyActions). hasOnly is a subset test, so one clause covers all.
-          // 'wallet' is in this list because the round now PAYS 碎片 while a 補簽 still charges
-          // 金幣, so one claim write touches both halves of the wallet at once. `hasOnly` is a
-          // subset test, so the same clause still covers the mirror write that touches neither.
-          // 'utilityCards' is in this clause and the two below it for one reason: a 功能卡 whose
-          // duration is counted in USES is spent by the very grant it boosted, and that spend has
-          // to land in the same write as the payout — otherwise a failed save either pays twice or
-          // charges a use for nothing. See src/constants/rewardEffects.ts.
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'lastLoginDate', 'loginStreak', 'loginAnchorDate', 'loginCycleId', 'loginClaimedDays',
-            'balanceGold', 'wallet', 'currentXp', 'utilityCards', 'lastUpdated'
-          ]) ||
-          // 每日登入獎勵's NON-CURRENCY half (src/context/useDailyLoginPrize.ts). The round stopped
-          // being a ladder of one currency on 2026-09-17: a day can now pay 商品碎片, 抽獎券, a
-          // 功能卡, a whole product, or a free turn of the 幸運轉盤, and this is the ONE write that
-          // lands whichever of those the day rolled.
-          //
-          // It is its own clause rather than more keys on the one above, and that is the whole
-          // point of `hasOnly` being a subset test: the claim write moves money and marks the day
-          // off, this one hands over goods and moves no balance at all. Keeping them apart means
-          // `balanceGold` is absent HERE — so a prize write can never move gold, which is enforced
-          // by this list rather than by a comment saying it does not.
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'itemFragments', 'raffleTickets', 'raffleTicketProgress', 'inventory',
-            'utilityCards', 'freeWheelSpins', 'lastUpdated'
-          ]) ||
-          // 摸摸寵物 — the daily counter and its 碎片/經驗值 payout, in one write so the limit
-          // cannot be raced. See context/useEconomyActions.ts (petDog).
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'lastPetDate', 'petCountToday', 'wallet', 'currentXp', 'utilityCards', 'lastUpdated'
-          ]) ||
-          // The Economy / Reward Service's standalone grants (grantReward): one currency, or XP,
-          // and nothing else. 島嶼秘寶 and the 管理員測試 supply buttons are the callers today.
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'wallet', 'balanceGold', 'currentXp', 'utilityCards', 'lastUpdated'
-          ]) ||
-          // 功能卡's own two writes: a grant (a 輪盤 drop, 管理員測試) and a use, which spends a copy
-          // and starts an effect. Both touch this one nested map and nothing else — the same
-          // property that makes 離線回歸's clause a single line, and the reason a second card needs
-          // no rules change. See context/useUtilityCards.ts.
-          incoming().diff(existing()).affectedKeys().hasOnly(['utilityCards', 'lastUpdated']) ||
-          // 幸運轉盤 (context/useWheelActions.ts). ONE write: the turn spent — a free one
-          // (`freeWheelSpins`) or a 抽獎券 — and whatever the wedge paid, which is fragments, more
-          // tickets, an item or a card. They must land together or the wheel either charges for
-          // nothing or spins for free.
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'raffleTickets', 'raffleTicketProgress', 'freeWheelSpins', 'itemFragments',
-            'inventory', 'utilityCards', 'lastUpdated'
-          ]) ||
-          // 限時商店 purchase (context/useLimitedShop.ts). ONE write: the charge, the goods and the
-          // per-period purchase record. The goods are either a 功能卡 (`utilityCards`) or a catalog
-          // item (`inventory`, plus the fragment settlement a purchase strands), which is why both
-          // appear here — hasOnly is a subset test, so one clause covers both kinds of product and
-          // both currencies. Splitting it would let a charge land without the goods.
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'limitedShop', 'utilityCards', 'inventory', 'balanceGold', 'wallet',
-            'itemFragments', 'raffleTickets', 'raffleTicketProgress', 'lastUpdated'
-          ]) ||
-          incoming().diff(existing()).affectedKeys().hasOnly(['territoryLevel', 'migrationVersion', 'lastUpdated']) ||
-          // 離線回歸's four writes — the arrival, the 「我還在」 heartbeat, a 整理, and the pet
-          // greeting its owner. All of them touch this one nested map and nothing else, which is
-          // the whole reason the state is a map rather than five top-level fields: one clause here
-          // covers the feature, and a fifth kind of write later needs no rules change at all.
-          incoming().diff(existing()).affectedKeys().hasOnly(['islandState', 'lastUpdated']) ||
-          // 寵物照護 (src/constants/petCare.ts, src/context/usePetCare.ts). A feed spends one bag of
-          // 寵物用品 AND restores the animal, and those cannot be two writes: a failure between them
-          // either takes the food without feeding the pet or feeds it for free, and the player has
-          // no way to tell which happened. Same reasoning as 健身獎勵's clause below.
-          //
-          // Note what this clause does NOT add: a field. The care state lives at
-          // `islandState.pet.care`, inside a map `isValidUser()` already validates as 「a map」, so
-          // no shape clause changed and the feature is writable against a ruleset deployed before
-          // it existed. That was a deliberate choice at the data-modelling stage — see the `care`
-          // field's own note in src/constants/islandReturn.ts. This clause is therefore
-          // documentation of a write that the fallback whitelist already permits, not a gate the
-          // feature is waiting on.
-          incoming().diff(existing()).affectedKeys().hasOnly(['islandState', 'inventory', 'lastUpdated']) ||
-          // 健身獎勵's two writes: the bookkeeping a valid completion produces, and the grant that
-          // pays a reward. The grant touches BOTH keys in one update on purpose — the item and the
-          // record that it was given have to land together, or the save ends up either marked-and-
-          // unpaid or paid-and-unmarked. hasOnly is a subset test, so this one clause covers the
-          // bookkeeping-only write as well. See context/useWorkoutRewards.ts.
-          // 'balanceGold'/'currentXp' joined this clause when the workout PAYOUT moved out of the
-          // fitness screen and into the reward service (context/useWorkoutRewards.ts): the coins,
-          // the XP and the replay guard (`processedIds`, inside `workoutRewards`) now ride in ONE
-          // write, which is what makes a redelivered completion unable to pay twice.
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'workoutRewards', 'inventory', 'balanceGold', 'currentXp', 'utilityCards', 'lastUpdated'
-          ]) ||
-          // Establishing the Home consumes the Starter House from the inventory in one write;
-          // re-skinning it touches 'home' alone.
-          incoming().diff(existing()).affectedKeys().hasOnly(['home', 'inventory', 'lastUpdated']) ||
-          // 每週任務 — building, editing, deleting a goal, and recording that a week's target was
-          // met. All four touch the one key, and none of them may move anything else: a task is a
-          // goal the player set for themselves, and it has never been a thing that pays out.
-          // Keeping it in its own clause rather than folding it into the fallback whitelist is
-          // what makes that true by construction (see context/useWeeklyTasks.ts).
-          incoming().diff(existing()).affectedKeys().hasOnly(['weeklyTasks', 'lastUpdated']) ||
-          // Fallback whitelist ensuring any partial updates in standard User attributes are fully permitted
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'displayName', 'level', 'currentXp', 'territoryLevel', 'balanceGold',
-            'inventory', 'equippedItems', 'lastUpdated', 'avatar', 'home',
-            'lastLoginDate', 'loginStreak', 'loginAnchorDate', 'loginCycleId', 'loginClaimedDays',
-            'lastPetDate', 'petCountToday', 'dailyLoginAnchor',
-            'itemFragments', 'raffleTickets', 'raffleTicketProgress',
-            'interiorData', 'islandPlacements', 'islandState', 'workoutRewards', 'migrationVersion',
-            'wallet', 'utilityCards', 'limitedShop', 'weeklyTasks'
-          ])
-        );
-      
+        && isAllowedProfileUpdate(incoming().diff(existing()).affectedKeys());
+
       // Sub-collections under User Profile
       match /inventory/{itemId} {
         allow read: if isOwner(userId) && isValidId(userId);
