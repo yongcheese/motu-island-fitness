@@ -42,6 +42,7 @@
 - Slice 2：`types.ts`（AppSettings 新增選填 fitnessDifficulty／fitnessColorMode／fitnessMirror／fitnessBgm，純新增 8 行）、`package.json`
 - Slice 4：`GeneralCategory.tsx`（移除「AI 語音引導」列與未用的 `Mic` import；語音改由健身分類寫 `voiceGuideEnabled`）
 - Slice 5：`constants/workoutRewards.ts`（`WorkoutCompletion.detector?`、新增 `workoutLogDetectorFields()`）、`context/useWorkoutRewards.ts`（log 展開 detector 欄位、`WorkoutLogEntry.detector?`）
+- Slice 6：`vite.config.ts`（`define` 注入 `__APP_BUILD_TIME__`、`__APP_COMMIT__`，git 失敗回 'unknown'）、`vite-env.d.ts`（宣告兩常數）、`AboutCategory.tsx`（接真實內容）、`package.json`
 
 ## 設計鐵律速查
 - 沿用遊戲組 Motu 設計系統：`island-*` token、`SettingsSection`／`SettingRow`／`Toggle`（`DesignKit.tsx`）、`rounded-2xl`／`rounded-xl` ｜ `lucide-react` `size={18}` ｜ 免費優先
@@ -62,7 +63,7 @@
 
 ## 進度總覽
 - 總 Slice 數：9
-- 已完成：5 / 9
+- 已完成：6 / 9
 - 平行組：無（全部序列）
 
 ---
@@ -153,7 +154,7 @@
 - **依賴**：無
 - **平行組**：獨立
 
-### [ ] Slice 6 — 填入關於頁的真實內容
+### [x] Slice 6 — 填入關於頁的真實內容
 - **目標**：「關於」顯示系統版本、團隊分工、資料與技術來源，每一條都有出處。
 - **範圍內**：版本（取 build 時間或 git commit 短碼，施工時決定，不寫死）；團隊（健身組／遊戲組與各自負責區塊，**不寫個人姓名**，除非使用者提供）；資料來源（國健署、WHO 運動建議，沿用 `app/features/workout/safety.js` 已查證的 `SAFETY_SOURCES`；MediaPipe Pose 與授權；Three.js 等主要開源套件與授權，從 `package.json`／`vendor/` 實際讀出）。
 - **範圍外**：視覺打磨、動畫。
@@ -166,7 +167,7 @@
   - [ ] 沒有未查證的敘述
 - **測試策略**：`test-fitness-about.ts` — 每筆來源有 name/url、網址為 https、來源清單包含 `SAFETY_SOURCES` 全部項目
 - **完成定義**：Type Check PASS + 指定測試 PASS + UI QA PASS
-- **對外介面**：
+- **對外介面**：`aboutContent.ts` export `AboutSource`、`AboutSourceGroup`、`AboutTeamGroup`、`AppBuildInfo`、`ABOUT_TEAM`、`ABOUT_SAFETY_SOURCES`（由 `SAFETY_SOURCES` 對應）、`ABOUT_TECH_SOURCES`、`ABOUT_SOURCE_GROUPS`、`getBuildInfo()`、`formatBuildDate(iso)`；全域 `__APP_BUILD_TIME__`／`__APP_COMMIT__`。授權讀自 node_modules 的 package.json（MediaPipe Apache-2.0、Three.js MIT、React MIT），測試執行時重新比對。動到建置設定 → vite build 通過；dev 伺服器已拿到 commit。測試 41/41。slice-reviewer PASS。
 - **依賴**：Slice 1
 - **平行組**：獨立
 

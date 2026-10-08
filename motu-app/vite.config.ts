@@ -1,11 +1,26 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import {execSync} from 'child_process';
 import path from 'path';
 import {defineConfig} from 'vite';
+
+// 關於頁的版本資訊（健身組第三階段 Slice 6）：建置時注入，不寫死版本字串。
+// 取不到 git（例如打包成壓縮檔後在別處建置）時退回 'unknown'。
+function gitShortCommit(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', {stdio: ['ignore', 'pipe', 'ignore']}).toString().trim() || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
 
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+    define: {
+      __APP_BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+      __APP_COMMIT__: JSON.stringify(gitShortCommit()),
+    },
     resolve: {
       alias: {
         '@': path.resolve(process.cwd(), '.'),
