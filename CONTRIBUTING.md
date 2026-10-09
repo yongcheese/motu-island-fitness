@@ -1,0 +1,181 @@
+# 共編指南：三個人怎麼一起改這個專案
+
+> 給第一次用 Git／GitHub 的人。照著做就不會把別人的東西弄壞。
+> 專案網址：https://github.com/yongcheese/motu-island-fitness （私人，只有受邀的人看得到）
+
+---
+
+## 0. 先懂三個詞
+
+| 詞 | 白話 |
+|---|---|
+| **repo**（倉庫） | 整個專案資料夾，放在 GitHub 上，大家共用同一份 |
+| **branch**（分支） | 你自己的工作區。在分支上怎麼改都不會影響別人，做完再合回去 |
+| **PR**（Pull Request，合併申請） | 「我改好了，請幫我看一下，沒問題就合進主線」的申請單 |
+
+主線叫 **`main`**，它永遠要是「可以跑、可以 Demo」的狀態。所以：**誰都不直接改 `main`**，一律開分支 → 開 PR → 別人看過 → 合併。
+
+---
+
+## 1. 第一次設定（每台電腦只做一次）
+
+1. **接受邀請**：GitHub 會寄邀請信（或到 https://github.com/notifications 看），按 Accept。
+2. **安裝工具**
+   - Git：https://git-scm.com/downloads
+   - Node.js 20 以上（建議 LTS）：https://nodejs.org/
+   - 怕打指令的人可以裝 **GitHub Desktop**（https://desktop.github.com/），下面每一步都有按鈕可以按，概念完全一樣。
+3. **告訴 Git 你是誰**（換成你的名字和 GitHub 用的 email）：
+   ```bash
+   git config --global user.name "你的名字"
+   git config --global user.email "你的GitHub信箱"
+   ```
+4. **把專案抓下來**：
+   ```bash
+   git clone https://github.com/yongcheese/motu-island-fitness.git
+   cd motu-island-fitness
+   ```
+   第一次會跳出 GitHub 登入，照畫面登入即可。
+5. **安裝套件、跑起來**：
+   ```bash
+   cd motu-app
+   npm install
+   npm run dev        # 打開 http://localhost:3000
+   ```
+   看到島嶼就成功了。健身頁要允許瀏覽器使用鏡頭。
+
+---
+
+## 2. 每天的工作流程（最重要，記這 7 步）
+
+```
+① 拿最新版 → ② 開分支 → ③ 改程式 → ④ 存檔(commit) → ⑤ 上傳(push) → ⑥ 開 PR → ⑦ 審過就合併
+```
+
+**① 拿最新版**（每次開工前都做）
+```bash
+git checkout main
+git pull
+```
+
+**② 開自己的分支**（一件事一個分支，名字用英文小寫加連字號）
+```bash
+git checkout -b feature/health-remove-calories
+```
+命名習慣：新功能 `feature/…`、修錯 `fix/…`、文件 `docs/…`。
+
+**③ 改程式**，改完在瀏覽器實際測一次。
+
+**④ 存檔（commit）**：可以存很多次，每次一小步。
+```bash
+git add 改過的檔案          # 或 git add . 全部加入（加之前先 git status 看一下有沒有不該上傳的東西）
+git commit -m "健康頁：總覽拿掉卡路里格"
+```
+訊息用中文寫「改了什麼」，讓別人一眼看懂。
+
+**⑤ 上傳到 GitHub**
+```bash
+git push -u origin feature/health-remove-calories
+```
+
+**⑥ 開 PR**：打開 GitHub 專案頁，會出現黃色的「Compare & pull request」按鈕 → 按下去 → 照範本填（改了什麼、為什麼、影響範圍）→ 右邊 Reviewers 選一個隊友 → Create pull request。
+
+**⑦ 審查與合併**
+- 審查的人看 Files changed，有問題就留言；沒問題按 **Approve**。
+- 自動檢查（下面第 5 節）全部綠勾 ✅、而且有人 Approve 之後，由**開 PR 的人**按 **Squash and merge**（把這次的多個小存檔壓成一個，主線比較乾淨）。
+- 合併完按「Delete branch」，然後回到第 ① 步。
+
+> **沒人審自己的 PR**：三個人輪流互審。急件也至少請一個人看過再合。
+
+---
+
+## 3. 我改到一半，主線有新東西了怎麼辦？
+
+```bash
+git checkout main
+git pull
+git checkout 你的分支名
+git merge main
+```
+如果出現 **衝突（conflict）**：代表你和別人改到同一段。
+1. 打開有衝突的檔案，會看到：
+   ```
+   <<<<<<< HEAD
+   你的版本
+   =======
+   主線的版本
+   >>>>>>> main
+   ```
+2. 決定留哪一段（或兩段合在一起），把 `<<<<<<<`、`=======`、`>>>>>>>` 三行刪掉。
+3. 存檔後：
+   ```bash
+   git add 那個檔案
+   git commit -m "合併 main，解決衝突"
+   ```
+看不懂衝突就**先別亂刪**，在群組喊一聲，請改到同一段的人一起看。
+
+---
+
+## 4. 誰負責哪裡
+
+| 線 | 負責的資料夾 | 一句話 |
+|---|---|---|
+| **健身線** | `app/`、`tests/`、`vendor/`、`spikes/`、`motu-app/src/components/fitness/` | AI 動作判定、健身訓練頁、健身設定、後端複驗 |
+| **遊戲線** | `motu-app/` 裡健身以外的部分（島嶼、商店、健康頁、登入、存檔） | 遊戲本體 |
+| **文書** | `README.md`、`docs/`、比賽文件 | 文件、簡報、驗收試用 |
+
+**交界檔案**：下面這些兩邊都會用到，改之前先在群組說一聲，PR 一定要請另一線的人審：
+
+- `motu-app/src/components/fitness/gameContract.ts`（健身頁 ↔ 遊戲的資料約定）
+- `motu-app/src/App.tsx`、`motu-app/src/types.ts`、`motu-app/src/context/AppContext.tsx`
+- `motu-app/src/components/UI/settings/`（設定頁，健身分類在這裡）
+- `motu-app/src/constants/workoutRewards.ts`、`motu-app/src/context/useWorkoutRewards.ts`（發獎與訓練紀錄）
+- `motu-app/src/index.css`、`motu-app/package.json`、`motu-app/vite.config.ts`、`motu-app/tsconfig.json`
+- `motu-app/firestore.rules`（雲端資料庫規則；**改了要另外部署才生效**，部署前先跟大家確認）
+- `.github/`（自動檢查設定）
+
+---
+
+## 5. 自動檢查（CI）
+
+每次開 PR，GitHub 會自動跑三組檢查（設定在 `.github/workflows/ci.yml`）：
+
+| 檢查 | 在檢查什麼 | 自己電腦先跑 |
+|---|---|---|
+| fitness-engine | 動作判定引擎的 500 多項測試 | 專案根目錄 `npm test` |
+| check | 型別、能不能建置、健身整合與發獎測試 | `cd motu-app && npm run lint && npm run build && npm run test:fitness && npm run test:workout-rewards` |
+| audit | 遊戲場景（重疊、髮型、室內、擺放） | `cd motu-app && npm run audit:zfighting`（另有 hair／interior／placements） |
+
+PR 頁面最下面會顯示 ✅ 或 ❌。**有 ❌ 不要合併**：點 Details 看哪裡錯，在自己分支修好再 push，檢查會自動重跑。
+
+---
+
+## 6. 絕對不要做的事
+
+- ❌ 直接在 `main` 上改、直接 push 到 `main`
+- ❌ `git push --force`、`git reset --hard`（會把別人的東西蓋掉、救不回來）
+- ❌ 上傳密碼、金鑰、`.env` 檔（`.gitignore` 已經擋掉 `.env`，但上傳前還是 `git status` 看一眼）
+- ❌ 一個 PR 塞好幾件不相關的事（審的人看不完，出錯也找不到原因）
+- ❌ 刪掉或關掉測試來讓檢查變綠燈
+
+> 補充：GitHub 免費方案的**私人** repo 不能設定「強制保護 main」，所以上面這些靠大家遵守。
+
+---
+
+## 7. 救命指令
+
+| 狀況 | 指令 |
+|---|---|
+| 想看現在改了哪些檔 | `git status` |
+| 想看改了什麼內容 | `git diff` |
+| 某個檔改壞了，想回到上次存檔的樣子（**還沒 commit**） | `git restore 檔名` |
+| 不小心在 `main` 上改了（還沒 commit） | `git checkout -b feature/新分支名`，改動會一起帶過去 |
+| 看最近的存檔紀錄 | `git log --oneline -10` |
+| 搞不清楚狀況 | 先不要再打任何指令，截圖丟群組 |
+
+---
+
+## 8. 其他
+
+- 專案說明、怎麼跑：見 [README.md](README.md)
+- 技術文件：`docs/README.md`
+- 遊戲組原本的開發說明：`motu-app/CONTRIBUTING.md`、`motu-app/AI_START_HERE.md`（流程以本文件為準）

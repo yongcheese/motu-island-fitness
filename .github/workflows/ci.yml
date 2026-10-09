@@ -1,0 +1,86 @@
+name: CI
+
+# 每次開 PR 到 main、或 main 有新 commit 時自動跑。
+# 三組檢查都要綠燈，PR 才算可以合併（見 CONTRIBUTING.md「自動檢查」）。
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  # 健身端：動作判定引擎與健身頁邏輯（專案根目錄的 npm test，純 Node，不需安裝套件）
+  fitness-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 判定引擎測試
+        run: npm test
+
+  # 整合版：型別檢查、建置、健身整合測試、健身獎勵測試
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: motu-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: motu-app/package-lock.json
+
+      - run: npm ci
+
+      - name: Type check
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: 健身整合測試
+        run: npm run test:fitness
+
+      - name: 健身獎勵測試
+        run: npm run test:workout-rewards
+
+  # 遊戲組原有的場景檢查
+  audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: motu-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: motu-app/package-lock.json
+
+      - run: npm ci
+
+      - name: Audit z-fighting
+        if: ${{ !cancelled() }}
+        run: npm run audit:zfighting
+
+      - name: Audit hair assets
+        if: ${{ !cancelled() }}
+        run: npm run audit:hair
+
+      - name: Audit interior shell
+        if: ${{ !cancelled() }}
+        run: npm run audit:interior
+
+      - name: Audit placements
+        if: ${{ !cancelled() }}
+        run: npm run audit:placements
