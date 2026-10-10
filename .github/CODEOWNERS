@@ -1,0 +1,42 @@
+# 誰負責哪裡：改到這些路徑的 PR，GitHub 會自動請負責人審查。
+# ⚠️ 私人 repo 要 GitHub Pro 才會自動生效（免費方案只當說明用，見 CONTRIBUTING.md 第 4 節）。
+# 規則：越下面的優先；同一行多人時，任一人核准即可。
+#
+# @yongcheese        健身線（AI 判定、健身頁、後端複驗）
+# @liuryan0415-sudo  遊戲線（島嶼、商店、健康頁、登入、存檔）
+# @Al0b0             文書（README、docs、比賽文件、驗收）
+
+# 預設：沒寫到的檔案由健身線與遊戲線任一人審
+*                                           @yongcheese @liuryan0415-sudo
+
+# 🎮 遊戲線
+/motu-app/                                  @liuryan0415-sudo
+
+# 🏃 健身線
+/app/                                       @yongcheese
+/tests/                                     @yongcheese
+/vendor/                                    @yongcheese
+/spikes/                                    @yongcheese
+/motu-app/src/components/fitness/           @yongcheese
+/motu-app/scripts/test-fitness-*            @yongcheese
+
+# ⚠️ 交界檔案：兩線都要看（任一人核准即可，但請兩邊都知道）
+/motu-app/src/App.tsx                       @yongcheese @liuryan0415-sudo
+/motu-app/src/types.ts                      @yongcheese @liuryan0415-sudo
+/motu-app/src/context/AppContext.tsx        @yongcheese @liuryan0415-sudo
+/motu-app/src/context/useWorkoutRewards.ts  @yongcheese @liuryan0415-sudo
+/motu-app/src/constants/workoutRewards.ts   @yongcheese @liuryan0415-sudo
+/motu-app/src/components/UI/settings/       @yongcheese @liuryan0415-sudo
+/motu-app/src/components/UI/CoachSprite.tsx @yongcheese @liuryan0415-sudo
+/motu-app/src/index.css                     @yongcheese @liuryan0415-sudo
+/motu-app/package.json                      @yongcheese @liuryan0415-sudo
+/motu-app/vite.config.ts                    @yongcheese @liuryan0415-sudo
+/motu-app/tsconfig.json                     @yongcheese @liuryan0415-sudo
+/motu-app/server.ts                         @yongcheese @liuryan0415-sudo
+/motu-app/firestore.rules                   @yongcheese @liuryan0415-sudo
+/.github/                                   @yongcheese @liuryan0415-sudo
+
+# 📝 文書
+/README.md                                  @Al0b0 @yongcheese
+/CONTRIBUTING.md                            @Al0b0 @yongcheese
+/docs/                                      @Al0b0 @yongcheese
