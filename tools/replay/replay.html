@@ -32,7 +32,7 @@ const spec = {
     const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
     const hip = mid(f[23], f[24]), knee = mid(f[25], f[26]);
     cap = { hipY: hip.y, kneeY: knee.y, legLength: s.legLength, hipDrop: s.hipDrop ?? null,
-            progress: r.progress, gatePass: r.gatePass, faults: (r.faults || []).map(x => x.id || x.code || x) };
+            progress: r.progress, gatePass: r.gatePass, swr: +(s.shoulderWidth / s.torsoLength).toFixed(3), faults: (r.faults || []).map(x => x.id || x.code || x) };
     return r;
   },
 };
@@ -57,16 +57,20 @@ for (let i = from; i <= to; i++) {
   const row = { i, t: +(tMs / 1000).toFixed(2), seen: !!lm };
   if (lm) {
     // 跟引擎同一組取景條件（深蹲的 gateLandmarks、visMin 0.4），才能看出引擎為什麼判「看不到」
-    const rep = framingReport(lm, { gateLandmarks: squat.gateLandmarks, visMin: 0.4, requireHead: squat.requireHead !== false });
+    const rep = framingReport(lm, { gateLandmarks: squat.gateLandmarks, gatePairs: squat.gatePairs || [], visMin: 0.4, requireHead: squat.requireHead !== false });
     row.framing = rep.ok ? 'ok' : (rep.reason || rep.code || 'bad');
     row.gateVis = squat.gateLandmarks.map(k => +(lm[k].visibility ?? 0).toFixed(2));
+    // 下半身與肩的座標（[左肩,右肩,左髖,右髖,左膝,右膝,左踝,右踝]），找估錯的幀用
+    row.ly = [11, 12, 23, 24, 25, 26, 27, 28].map(k => +lm[k].y.toFixed(3));
+    row.lx = [11, 12, 23, 24, 25, 26, 27, 28].map(k => +lm[k].x.toFixed(3));
     const res = det.update(lm, tMs);
     row.phase = res.phase; row.visible = res.visible; row.signal = +(res.signal ?? 0).toFixed(3);
     row.counted = !!res.repCountedThisFrame;
+    if (res.framing?.issue === 'implausible') row.implausible = true;   // 被骨架合理性檢查擋下的幀
     if (cap) Object.assign(row, {
       depth: +((cap.hipY - cap.kneeY) / cap.legLength).toFixed(3),
       drop: cap.hipDrop === null ? null : +cap.hipDrop.toFixed(3),
-      gate: cap.gatePass, faults: cap.faults.join(','),
+      gate: cap.gatePass, swr: cap.swr, faults: cap.faults.join(','),
       ankleY: +(((lm[27].y + lm[28].y) / 2)).toFixed(3), ankleVis: +(((lm[27].visibility + lm[28].visibility) / 2)).toFixed(2),
     });
     const s = det.summary();

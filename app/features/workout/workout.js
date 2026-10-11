@@ -806,6 +806,7 @@ function gateHtml() {
               <li class="lv-gate-chk">膝蓋</li>
             </ul>
             <div class="lv-gate-s">全部打勾並站穩 2 秒，就會<b>自動開始</b></div>
+            <div class="lv-gate-tip">筆電放桌上也可以：螢幕立直讓鏡頭平視前方，人往後退到頭到腳都在畫面裡；深蹲正面、側身都能計次</div>
             <div class="lv-gate-bar" aria-hidden="true"><i></i></div>
             <div class="lv-gate-alt" hidden>
               <span>偵測一直過不了？</span>

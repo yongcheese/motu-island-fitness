@@ -395,7 +395,14 @@ export function createDetector(spec, opts = {}) {
     _flag = null;
     // 取景判定（framing.js 單一事實來源）：可見度 + 座標真的在框內 + 頭部 + 跨幅。
     // 舊版只看 visibility，MediaPipe 對出框點的外插值會讓「人太近」照樣通過 —— 這是 Bug1 的根因。
-    const report = framingReport(frame, { ...framingOpts, baselineSpan: standSpan });
+    let report = framingReport(frame, { ...framingOpts, baselineSpan: standSpan });
+    // 動作自訂的「骨架合理性」檢查（2026-10-11）：MediaPipe 偶爾會把整副骨架估成上下顛倒
+    // （真人錄影：雙手舉高站著，一幀之內肩跑到髖下面、腳踝跑到畫面上方），各點可見度仍高、
+    // 也都在框內，取景判定攔不住。這種幀當成取景壞幀處理（凍結、不評估），
+    // 而且要在 stableScale 之前攔，免得錯的座標灌進尺度 EMA 與站立基準。
+    if (report.ok && spec.plausible && !spec.plausible(frame, { standTorso })) {
+      report = { ok: false, issue: 'implausible', parts: [], text: '動作辨識不穩，請站穩、保持全身入鏡', span: report.span };
+    }
     framingWin.push(report.ok ? 0 : 1);
     if (framingWin.length > cfg.framingWindow) framingWin.shift();
     const framingBad = framingWin.reduce((a, b) => a + b, 0) >= cfg.framingBadNeed;
