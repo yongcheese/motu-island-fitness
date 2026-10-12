@@ -65,26 +65,23 @@ motu-island-fitness/
 
 ---
 
-## 🌿 接下來要做的事：該開什麼分支
+## 🌿 分支：每一線一條，名字用中文
 
-一件事開一個分支。下面是目前已知要做的事，**直接照這個名字開**就好：
+2026-10-12 起，每一線只用**一條長期分支**，平常的改動都進這裡；GitHub 上只會看到 `main` 加上這幾條：
 
-| 誰 | 要做的事 | 分支名稱 |
+| 誰 | 長期分支 | 放什麼 |
 |---|---|---|
-| 🎮 遊戲線 | **把 9/20 之後你們改過、還沒交的程式放進來**（最優先，見下方說明） | `feature/game-sync-after-0920` |
-| 🎮 遊戲線 | 健康頁拿掉卡路里（總覽那格、活動紀錄、每週任務選項） | `feature/health-remove-calories` |
-| 🎮 遊戲線 | 健康頁加「單次紀錄」詳細畫面 | `feature/health-session-detail` |
-| 🏃 健身線 | 真人鏡頭實測後修計次與門檻 | `fix/camera-test-tuning` |
-| 🏃 健身線 | 後端複驗（金幣只准後端寫） | `feature/backend-verify` |
-| 📝 文書 | 使用說明、Demo 操作手冊 | `docs/user-manual` |
+| 🏃 健身線 | `健身` | 計次與判定、健身頁、鏡頭、後端複驗 |
+| 🎮 遊戲線 | `遊戲介面修改` | 島嶼、商店、健康頁、登入與存檔 |
 
-不在表上的事，自己取名：新功能 `feature/做什麼`、修錯 `fix/修什麼`、文件 `docs/寫什麼`，英文小寫，字中間用 `-` 連起來。
+想把一件事分開做，可以在**自己電腦上**另開小分支（例如 `健身-深蹲鏡頭`），做完合回長期分支就刪掉，**不用推上 GitHub**。
+一個段落做完、**自己實際測過**，再開 PR 從長期分支合進 `main`。細節見 [CONTRIBUTING.md 第 2 節](CONTRIBUTING.md)。
 
 ### 🎮 遊戲組：怎麼把你們的新版程式放進來
 
 你們手上的版本比這裡新，這裡的遊戲程式停在 9/20。請照這樣做：
 
-1. 照下面「開 PR 的步驟」第 1、2 步，開分支 `feature/game-sync-after-0920`
+1. 切到遊戲線的長期分支 `遊戲介面修改`（2026-10-12 已經有了：10-12 推上的那一版）
 2. 把你們電腦上**比較新的檔案**複製進 `motu-app/` 裡對應的位置，**覆蓋舊的**
 3. ⚠️ **這幾個檔案不要直接覆蓋**，裡面有健身頁的接線，覆蓋會讓健身頁消失。請用「比對」的方式只加入你們的改動，或在群組找健身線一起合：
    - `motu-app/src/App.tsx`
@@ -104,17 +101,14 @@ motu-island-fitness/
 
 > 第一次用？先照 [CONTRIBUTING.md 第 1 節](CONTRIBUTING.md#1-第一次設定每台電腦只做一次) 裝好工具、把專案抓下來。
 
-**1. 拿最新版**
+**1. 切到自己那一線的分支並拿最新版**
 ```bash
-git checkout main
+git checkout 健身          # 遊戲線換成 遊戲介面修改
 git pull
 ```
-
-**2. 開分支**（名字照上面的表）
-```bash
-git checkout -b feature/health-remove-calories
-```
 打 `git branch` 會看到前面有 `*` 的就是你現在所在的分支。
+
+**2.（可省略）開小分支**：只在自己電腦上，做完合回長期分支，見 [CONTRIBUTING.md 第 2 節](CONTRIBUTING.md)。
 
 **3. 改程式**，存檔後打開 `npm run dev` 實際看一次。
 
@@ -127,25 +121,27 @@ git commit -m "健康頁：總覽拿掉卡路里格"
 
 **5. 上傳**
 ```bash
-git push -u origin feature/health-remove-calories
+git push origin 健身          # 遊戲線換成 遊戲介面修改
 ```
 
-**6. 在 GitHub 開 PR**
+**6. 在 GitHub 開 PR**（長期分支 → `main`，一個段落做完、自己測過才開；還沒測完就開成**草稿 Draft**）
 1. 打開 https://github.com/yongcheese/motu-island-fitness
 2. 上方會出現黃色的 **Compare & pull request** → 按下去
    （沒出現的話：點上方 **Pull requests** → **New pull request** → 右邊 `compare:` 選你的分支）
 3. 標題寫「改了什麼」，內容照範本勾選
-4. 右邊 **Reviewers** 選一個隊友
-5. 按 **Create pull request**
+4. 審查人 GitHub 會依 CODEOWNERS 自動指定
+5. 按 **Create pull request**（還沒測完就按旁邊的箭頭選 **Create draft pull request**）
+6. **別人的草稿不要幫忙按 Ready for review**，由開 PR 的人自己測完再按
 
 **7. 等審查、合併**
 - 頁面下方等自動檢查跑完，三個都是綠勾 ✅
-- 審查的人按 **Approve** 之後，你按 **Squash and merge** → **Confirm**
-- 分支會自動刪掉。回到第 1 步開始下一件事
+- `main` 要 **2 個人 Approve** 才能合併（開 PR 的人不能核准自己的）
+- 兩人都 Approve 之後，你按 **Create a merge commit** → **Confirm**
+  ⚠️ 長期分支**不要用 Squash and merge**，也**不要刪掉分支**，合完回到第 1 步繼續用
 
 **被要求修改怎麼辦？** 不用重開 PR。在同一個分支改好，再 `git add .`、`git commit -m "…"`、`git push`，PR 會自動更新。
 
-**審別人的 PR**：打開 PR → **Files changed** 看改了什麼 → 有問題在那一行按 `+` 留言 → 都 OK 就按右上 **Review changes** → 選 **Approve** → **Submit review**。
+**審別人的 PR**：先切到那條分支實際跑起來測 → 打開 PR → **Files changed** 看改了什麼 → 有問題在那一行按 `+` 留言 → 都 OK 就按右上 **Review changes** → 選 **Approve** → **Submit review**。
 
 衝突、改壞了怎麼救、絕對不要做的事：見 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
