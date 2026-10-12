@@ -195,7 +195,7 @@ export const squat = {
   requiredLandmarks: [LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE, LM.LEFT_ANKLE, LM.RIGHT_ANKLE, LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER],
   // 入鏡判定不含腳踝：深度只看髖 vs 膝，腳被切到框外仍可練（腳踝僅用於估腿長，已有備援）
   gateLandmarks: [LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER, LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE],
-  // 2026-10-11 真人錄影（筆電放桌上、側身深蹲）：遠側膝蓋被身體擋住，可見度中位僅 0.23，
+  // 2026-10-11 真人錄影（MacBook 放在地上離人較遠、側身深蹲；10-12 更正：先前誤記為放桌上）：遠側膝蓋被身體擋住，可見度中位僅 0.23，
   // 要求左右都看得見會讓 91% 的幀判「看不到」、整段 0 計次。改為每一對「至少一側」可信即可
   // （與伏地挺身同機制）。深度仍用左右中點：遠側被擋住時 MediaPipe 仍會估出位置，
   // 重播實測側身 9 次深蹲全數計到、前段走動與準備動作 0 次誤計，不需要另挑一側。
