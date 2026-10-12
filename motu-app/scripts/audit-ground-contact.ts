@@ -50,10 +50,9 @@ import {
   getFurnitureInteractions,
   interactionAnchoring,
   interactionPosture,
-  poseRootHeight,
 } from '../src/constants/furnitureInteractions';
-import { getPosture } from '../src/constants/interactionPostures';
 import { resolveInteractionSpot } from '../src/lib/furnitureInteraction';
+import { occupantLowestY } from '../src/lib/occupantFit';
 import { getFootprint, measureFootprint, registerFootprint } from '../src/lib/furniturePlacement';
 import { ItemCategory, PlacedItem, UserProfile } from '../src/types';
 import {
@@ -386,7 +385,9 @@ check(
 //                       exists is the torso resting on the tub floor.
 //
 // So the check asks for the lowest REAL part in both cases, which is the thing the invariant was
-// always a proxy for, and still fails a bath anchored below the floor it stands on.
+// always a proxy for, and still fails a bath anchored below the floor it stands on. It is now read
+// straight off the rig's body volumes as the seat fit placed them (lib/occupantFit.ts's
+// occupantLowestY), rather than re-derived here per leg mode.
 
 console.log('\n=== part 4: a body on furniture is above the floor it came from ===');
 
@@ -409,19 +410,17 @@ for (const item of ALL_ITEMS) {
       rotation: 0,
     };
     const spot = resolveInteractionSpot(placement, interaction, LEGACY_SKELETON);
-    if (!spot) continue;
+    if (!spot?.fit) continue;
 
-    const rise = poseRootHeight(anchoring, interaction.surfaceY ?? 0, LEGACY_SKELETON, interaction.give);
-    // The lowest part of the body that is actually there — see the note above.
-    const legsGoForward = getPosture(posture).legs === 'extendForward';
-    const lowest = legsGoForward
-      ? spot.y + toWorld(LEGACY_SKELETON.torso.y - LEGACY_SKELETON.torso.halfWidth)
-      : spot.y;
+    // The lowest part of the body that is actually there — see the note above. Solved from the
+    // rig's body volumes (lib/occupantFit.ts), so it is the soles of legs hanging over a seat's
+    // edge, the torso resting on a bath floor, the back of a body lying on a mattress.
+    const lowest = occupantLowestY(spot.fit, LEGACY_SKELETON, posture);
     check(
       `${item.name} (${posture}): the body settles above the floor`,
       lowest >= floorY - 1e-9,
-      `${legsGoForward ? 'torso underside' : 'root'} ${lowest.toFixed(4)}, floor ${floorY.toFixed(4)}`
-        + ` — ${mm(rise)} of ${posture} rise off the piece's base`,
+      `lowest body volume ${lowest.toFixed(4)}, floor ${floorY.toFixed(4)}`
+        + ` — ${mm(lowest - floorY)} clear`,
     );
   }
 }

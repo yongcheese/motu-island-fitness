@@ -39,6 +39,7 @@ import {
   civilWeekday,
   type CivilDate,
 } from './civilTime';
+import type { WeeklyTaskRewardLedger } from './weeklyTaskRewards';
 
 export type { CivilDate };
 
@@ -98,8 +99,8 @@ export function cycleFromWeekStart(weekStart: CivilDate): WeeklyCycle {
  * 一個每週任務可以追蹤什麼。
  *
  * 每一個都必須對應到**目前真的拿得到的數字**，否則它會是一條永遠停在 0 的進度條。目前系統實際
- * 產生的運動資料只有四種（見 lib/healthData.ts 與 context/useWorkoutRewards.ts 寫進
- * `workout_logs` 的欄位）：次數、時間、動作次數、卡路里。
+ * 產生的運動資料只有三種（見 lib/healthData.ts 與 context/useWorkoutRewards.ts 寫進
+ * `workout_logs` 的欄位）：次數、時間、動作次數。
  *
  * {@link WeeklyTaskMetric} 裡仍然列出 `steps`，而且它被明確標成「尚未支援」。把它留在型別裡而不
  * 是假裝它不存在，是因為規格直接問到步數：一個列在這裡、在 UI 上被標為灰色並寫明原因的目標類
@@ -111,7 +112,6 @@ export type WeeklyTaskMetric =
   | 'workout_count'
   | 'workout_minutes'
   | 'workout_reps'
-  | 'calories'
   | 'activity_type_count'
   | 'steps';
 
@@ -120,7 +120,7 @@ export interface WeeklyTaskMetricSpec {
   id: WeeklyTaskMetric;
   /** 表單與卡片上的名字。 */
   label: string;
-  /** 數值後面那個字：次、分鐘、大卡。 */
+  /** 數值後面那個字：次、分鐘、下。 */
   unit: string;
   /** 表單上的一行說明，講清楚這個數字實際上從哪裡來。 */
   hint: string;
@@ -129,7 +129,7 @@ export interface WeeklyTaskMetricSpec {
   /** 目標值的下限與上限，表單驗證用。 */
   minTarget: number;
   maxTarget: number;
-  /** 目標值要不要允許小數。時間與卡路里也用整數，因為玩家不會設 2.5 分鐘的週目標。 */
+  /** 目標值要不要允許小數。時間也用整數，因為玩家不會設 2.5 分鐘的週目標。 */
   step: number;
   /** 目前有沒有資料來源。false 代表 UI 要把它標示為尚未支援並擋下建立。 */
   available: boolean;
@@ -179,17 +179,6 @@ export const METRIC_SPECS: readonly WeeklyTaskMetricSpec[] = [
     available: true,
   },
   {
-    id: 'calories',
-    label: '每週消耗卡路里',
-    unit: '大卡',
-    hint: '由運動時間與動作次數推估，不是實測值。',
-    defaultTarget: 300,
-    minTarget: 10,
-    maxTarget: 20000,
-    step: 10,
-    available: true,
-  },
-  {
     id: 'activity_type_count',
     label: '每週完成指定運動',
     unit: '次',
@@ -215,7 +204,10 @@ export const METRIC_SPECS: readonly WeeklyTaskMetricSpec[] = [
   },
 ] as const;
 
-/** 目標類型的規格。未知的 id 回 null —— 舊存檔裡被移除的類型走的就是這條路。 */
+/**
+ * 目標類型的規格。未知的 id 回 null —— 舊存檔裡被移除的類型走的就是這條路（例如 2026-10 移除的
+ * `calories`：{@link normalizeWeeklyTaskState} 讀到時直接略過那個任務，不報錯也不換算成別的目標）。
+ */
 export function getMetricSpec(metric: string): WeeklyTaskMetricSpec | null {
   return METRIC_SPECS.find((spec) => spec.id === metric) ?? null;
 }
@@ -266,6 +258,11 @@ export interface WeeklyTaskDefinition {
 /** 存在 `profile.weeklyTasks` 的那一整包。一個巢狀 map，理由同 `workoutRewards`：它只佔一個欄位。 */
 export interface WeeklyTaskState {
   tasks?: WeeklyTaskDefinition[];
+  /**
+   * 這一週的完成獎勵領取帳（constants/weeklyTaskRewards.ts）。跟 `tasks` 分開寫入，而且**不跟著
+   * 任務走**：刪掉任務不會刪掉帳上那一筆，所以「領完、刪掉、重建、再領」行不通。
+   */
+  rewardClaims?: WeeklyTaskRewardLedger;
 }
 
 /** 一個帳號最多能有幾個每週任務。 */
@@ -295,8 +292,6 @@ export interface HealthActivity {
   durationSeconds: number;
   /** 偵測到的動作次數。沒有動作概念的活動（例如跑步）是 0。 */
   reps: number;
-  /** 大卡。目前是推估值 —— 見 {@link METRIC_SPECS} 裡 `calories` 的 hint。 */
-  calories: number;
 }
 
 // --- 進度 --------------------------------------------------------------------
@@ -348,8 +343,6 @@ export function measureActivity(activity: HealthActivity, task: WeeklyTaskDefini
       return Math.max(0, activity.durationSeconds) / 60;
     case 'workout_reps':
       return Math.max(0, activity.reps);
-    case 'calories':
-      return Math.max(0, activity.calories);
     case 'activity_type_count':
       return task.activityType && activity.type === task.activityType ? 1 : 0;
     case 'steps':
@@ -438,7 +431,6 @@ export interface WeeklyHealthSummary {
   workouts: number;
   minutes: number;
   reps: number;
-  calories: number;
   /** 完成的任務數 / 任務總數（只算這一週生效的任務）。 */
   tasksCompleted: number;
   tasksActive: number;
@@ -454,7 +446,6 @@ export function summariseWeek(
   let workouts = 0;
   let seconds = 0;
   let reps = 0;
-  let calories = 0;
   for (const activity of activities) {
     const at = Date.parse(activity.completedAt);
     if (!Number.isFinite(at)) continue;
@@ -462,7 +453,6 @@ export function summariseWeek(
     workouts += 1;
     seconds += Math.max(0, activity.durationSeconds);
     reps += Math.max(0, activity.reps);
-    calories += Math.max(0, activity.calories);
   }
   const live = progress.filter((entry) => entry.status !== 'upcoming');
   return {
@@ -470,7 +460,6 @@ export function summariseWeek(
     workouts,
     minutes: Math.round(seconds / 60),
     reps,
-    calories: Math.round(calories),
     tasksCompleted: live.filter((entry) => entry.completed).length,
     tasksActive: live.length,
   };

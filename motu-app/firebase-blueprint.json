@@ -58,11 +58,10 @@
         "type": { "type": "string" },
         "duration": { "type": "integer" },
         "counts": { "type": "integer" },
-        "calories": { "type": "number" },
         "goldEarned": { "type": "integer" },
         "timestamp": { "type": "string", "format": "date-time" }
       },
-      "required": ["logId", "userId", "type", "duration", "counts", "calories", "goldEarned", "timestamp"]
+      "required": ["logId", "userId", "type", "duration", "counts", "goldEarned", "timestamp"]
     },
     "AppSettings": {
       "title": "App Settings",

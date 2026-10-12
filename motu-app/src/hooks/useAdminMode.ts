@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useApp } from '../context/AppContext';
+import { useAppPick } from '../context/AppContext';
 
 /**
  * True while the signed-in account has 管理員測試模式 switched on (SettingsView).
@@ -21,6 +21,9 @@ import { useApp } from '../context/AppContext';
  * game screen it happens to be about.
  */
 export function useAdminMode(): boolean {
-  const { settings } = useApp();
+  // Picked, not `useApp()`: this is called from components that otherwise subscribe to very
+  // little (the dormant house interior among them), and a whole-context read here made each of
+  // them re-render on every coin, weather tick and proximity flag in the game.
+  const { settings } = useAppPick('settings');
   return !!settings?.adminTestMode;
 }

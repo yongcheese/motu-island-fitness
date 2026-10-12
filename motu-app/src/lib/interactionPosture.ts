@@ -7,7 +7,6 @@ import {
   BodyPose,
   JointPose,
   PostureId,
-  PostureLegs,
   PostureMotion,
   PostureSpec,
   RigJointName,
@@ -36,11 +35,10 @@ import {
  *
  * ## The one thing that is NOT in the posture table
  *
- * Angles that depend on the character's PROPORTIONS, or on the size of the piece. A seat's leg
- * swing is the example ({@link solveLegSwing}): it is different for a dining chair and a deep
- * sofa, it changes if the character's legs get longer, and it is therefore derived from
- * measurements every frame rather than typed into a row. The table holds body LANGUAGE; this
- * file holds body GEOMETRY. A number that could go stale belongs here.
+ * Anything that depends on the character's PROPORTIONS or on the piece: where the hips go on a
+ * seat, how far a lying head is held up, where the legs actually point once the body leans. Those
+ * are solved from the rig's body volumes by lib/occupantFit.ts, which calls this module for the
+ * body LANGUAGE and then places it. The table holds language; the fit holds geometry.
  */
 
 /** What a posture resolves to for one frame. */
@@ -61,80 +59,19 @@ export interface PostureFrame {
   weight: number;
 }
 
-/** Everything the leg solver needs, all of it measured rather than declared. */
-export interface LegGeometry {
-  /** Hip joint to sole, world units — the rig's own leg length. */
-  legLength: number;
-  /** How far the seated hip joint sits ABOVE the floor the player was standing on. */
-  hipDrop: number;
-  /**
-   * How far the seat still reaches ahead of the anchor, along the direction the occupant faces.
-   * From `InteractionSpot.reachAhead` — the seat's own front lip for a piece that declares one
-   * (constants/furnitureInteractions.ts's `seatFront`), and the piece's measured box otherwise.
-   */
-  reachAhead: number;
-  /**
-   * THE POSTURE'S OWN LEAN, radians, positive forward — and the reason it has to be here.
-   *
-   * The legs hang off the character ROOT, and the root is what a posture's `lean` pitches. So a
-   * leg's angle in the WORLD is its joint angle plus the root's, while everything this solver is
-   * clearing — the floor, the seat's front lip — is in the world. Solving in the joint's own
-   * frame and then writing the answer onto a leaning body gives the lean straight back: `sit`
-   * leans 0.12 forward, which swings a hanging leg 0.12 BACKWARD against the world, so the feet
-   * land 7 degrees shy of wherever they were solved to.
-   *
-   * Against the old bounding-box clearance that error was absorbed by an armrest and never
-   * showed. Against a seat's real lip it is the whole answer: at `sit`'s lean the foot came down
-   * 2 mm INSIDE the cushion on every one of the twelve seats, which is the bug this rework is
-   * about, one order of magnitude smaller.
-   *
-   * Optional, defaulting to 0, because `dangle`, `climbOver` and `extendForward` do not solve
-   * anything against the world and a caller for those has nothing to say.
-   */
-  lean?: number;
-}
-
 /**
- * How far past a seat's own front edge the feet are put when the legs have to swing clear of it
- * rather than reach the floor. A shoe's length, roughly: enough that the toes are visibly outside
- * the cushion and not so much that the legs read as kicked out.
+ * How far a swing's rider lets each leg trail the arc, radians — the posture's `ride.legTrail`
+ * times the tilt the body is carrying, with the far leg a shade behind the near one so the two do
+ * not read as one welded pair.
+ *
+ * Returned rather than written onto the joints, because the legs of a seated body are placed in
+ * the PIECE'S frame and clamped to the swing that stays clear of the seat (lib/occupantFit.ts); a
+ * trail added straight onto a joint angle was how a rider's legs used to swing back into the plank
+ * at the back of every arc.
  */
-export const SIT_KNEE_CLEARANCE = 0.06;
-
-/**
- * WHERE THE LEGS GO, worked out rather than posed by hand — because the right answer is
- * different for every piece and this character makes it awkward: its legs are 0.53 long against
- * a sofa 1.15 deep, so "drop the feet to the floor" buries both shins in the cushion.
- *
- *   `reachFloor`     two constraints, and the legs take whichever is the WIDER swing: reach
- *                    down to the ground the player was standing on, or clear the piece's own
- *                    front edge. A dining chair takes the first and plants its feet; a deep
- *                    sofa takes the second and lets them hang. Neither number is in the catalog.
- *   `extendForward`  a quarter turn: straight out, level with the hips. A bathtub has no floor
- *                    to reach for and its far end is a metre and a half away, so both of the
- *                    constraints above would peg at the same place — stating it directly says
- *                    what is meant instead of relying on a clamp.
- *   `climbOver`      not a resting angle at all; the climb is animated against the mount's own
- *                    progress. Returns 0 and is handled by the caller.
- *
- * Both constraints are solved for the leg's angle IN THE WORLD and the posture's own lean is
- * taken back out at the end — see {@link LegGeometry.lean}. A body that leans forward has
- * already swung its hanging legs backward, and the floor and the cushion do not lean with it.
- *
- * Negative is forward, matching the rig's sign convention.
- */
-export function solveLegSwing(legs: PostureLegs | undefined, g: LegGeometry): number {
-  if (legs === 'extendForward') return -Math.PI / 2;
-  // `dangle` shares the zero with `climbOver` but means something different: not "the caller
-  // handles it" but "the answer is straight down, and the two constraints below would both get
-  // it wrong". See PostureLegs.
-  if (legs !== 'reachFloor') return 0;
-  // World angle off vertical, positive forward. Whichever constraint is the wider swing wins.
-  const floorAngle = Math.acos(clamp(g.hipDrop / g.legLength, 0, 1));
-  const clearAngle = Math.asin(clamp((g.reachAhead + SIT_KNEE_CLEARANCE) / g.legLength, 0, 1));
-  const world = Math.max(floorAngle, clearAngle);
-  // The joint angle that PRODUCES that world angle on a root already pitched by `lean`.
-  return -world - (g.lean ?? 0);
+export function rideLegTrail(spec: PostureSpec, tilt: number): { left: number; right: number } {
+  const trail = spec.ride?.legTrail ?? 0;
+  return { left: tilt * trail, right: tilt * trail * 1.15 };
 }
 
 /**
@@ -244,8 +181,12 @@ export interface OccupancyPhase {
   settle: number;
   /** Seconds, for the sustained idle. Any monotonic clock. */
   time: number;
-  /** What the legs have to do; from {@link solveLegSwing}. */
-  legSwing: number;
+  /**
+   * The legs' joint angle once settled, for a posture whose legs are placed by the fit rather than
+   * animated here. Optional: lib/occupantFit.ts places hanging and outstretched legs in the
+   * piece's frame itself (it has to — see there), so it leaves this out and writes them after.
+   */
+  legSwing?: number;
   /**
    * How far the piece itself is tilted this frame, radians — from lib/outdoorMotion.ts's
    * `suspendedAngle`, and 0 (or absent) for a piece that does not move.
@@ -287,7 +228,7 @@ export function resolveOccupancyFrame(id: PostureId, phase: OccupancyPhase): Pos
   }
 
   // The legs' resting swing, which is geometry rather than language and so is not in `hold`.
-  if (spec.legs === 'reachFloor' || spec.legs === 'extendForward') {
+  if (legSwing !== undefined && spec.legs !== 'climbOver') {
     axis(joints, 'leftLeg', 'x', legSwing * settle);
     axis(joints, 'rightLeg', 'x', legSwing * settle);
   }
@@ -296,15 +237,12 @@ export function resolveOccupancyFrame(id: PostureId, phase: OccupancyPhase): Pos
   //
   // Laid on before the entry and the idle so those still read on top of it, and scaled by
   // `settle` like everything else here — a body still climbing on has not started riding yet.
+  // The legs' share (`legTrail`) is NOT added here: a seated body's legs are placed in the
+  // piece's frame and clamped clear of the seat by lib/occupantFit.ts, which reads it through
+  // `rideLegTrail`. Added straight onto the joint, it swung the legs back into the plank.
   const ride = spec.ride;
   if (ride && tilt !== 0 && settle > 0) {
     const t = tilt * settle;
-    if (ride.legTrail) {
-      addAxis(joints, 'leftLeg', 'x', t * ride.legTrail);
-      // The far leg trails a shade more, which is all it takes to stop the two reading as one
-      // welded pair of legs at this scale.
-      addAxis(joints, 'rightLeg', 'x', t * ride.legTrail * 1.15);
-    }
     if (ride.leanBack) addAxis(joints, 'torso', 'x', t * ride.leanBack);
     if (ride.armBrace) {
       addAxis(joints, 'leftArm', 'x', t * ride.armBrace);

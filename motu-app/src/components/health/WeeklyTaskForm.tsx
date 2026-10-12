@@ -4,7 +4,9 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Loader2, Target } from 'lucide-react';
+import { AlertCircle, Gift, Loader2, Target } from 'lucide-react';
+import { rewardForTask } from '../../constants/weeklyTaskRewards';
+import { RewardChip } from './TaskRewardStrip';
 import {
   METRIC_SPECS,
   getMetricSpec,
@@ -93,6 +95,11 @@ export function WeeklyTaskForm({
   const spec = getMetricSpec(metric);
   const localErrors = validateWeeklyTaskDraft(draft, existingTasks, editing?.taskId);
   const errors: WeeklyTaskErrors = submitted ? { ...localErrors, ...serverErrors } : serverErrors;
+  // 目標還不合法時不預覽：一個 0 或 99999 的報價會讓人以為那是能存的值。
+  const rewardQuote =
+    spec && !localErrors.target && !localErrors.metric
+      ? rewardForTask({ metric: spec.id, target: Number(String(target).trim()) })
+      : null;
 
   const changeMetric = (next: string) => {
     setMetric(next);
@@ -154,9 +161,11 @@ export function WeeklyTaskForm({
 
           <Field label="目標類型" error={errors.metric}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {METRIC_SPECS.map((option) => {
+              {METRIC_SPECS.map((option, index) => {
                 const isActive = option.id === metric;
                 const disabled = !option.available;
+                // 類型數是奇數時，最後一格橫跨兩欄，兩欄排版的最後一列才不會缺一格。
+                const spanLast = index === METRIC_SPECS.length - 1 && METRIC_SPECS.length % 2 === 1;
                 return (
                   <button
                     key={option.id}
@@ -165,7 +174,7 @@ export function WeeklyTaskForm({
                     onClick={() => changeMetric(option.id)}
                     // 尚未支援的類型仍然「在」清單上，只是不能選，而且下面就寫著為什麼。把它藏
                     // 起來只會讓玩家一直問遊戲能不能算步數。
-                    className={`text-left rounded-2xl border p-3 transition-all ${
+                    className={`text-left rounded-2xl border p-3 transition-all ${spanLast ? 'sm:col-span-2' : ''} ${
                       disabled
                         ? 'bg-island-cream-2 border-island-line opacity-55 cursor-not-allowed'
                         : isActive
@@ -250,6 +259,23 @@ export function WeeklyTaskForm({
                     {value}
                   </button>
                 ))}
+              </div>
+            )}
+            {/* 完成獎勵的預覽。跟任務卡讀同一個 rewardForTask()，所以這裡看到的就是做完能領的。 */}
+            {rewardQuote && (
+              <div className="mt-3 flex items-center gap-2 flex-wrap text-[11px] font-black text-island-navy-soft">
+                <span className="flex items-center gap-1">
+                  <Gift size={13} strokeWidth={2.6} className="text-island-teal-dark" />
+                  完成獎勵
+                  <span className="h-5 px-1.5 rounded-md bg-white border border-island-line text-[10px] flex items-center">
+                    {rewardQuote.tier.label}
+                  </span>
+                </span>
+                <span className="flex flex-wrap gap-1.5">
+                  {rewardQuote.rewards.map((reward, i) => (
+                    <RewardChip key={i} reward={reward} compact />
+                  ))}
+                </span>
               </div>
             )}
           </Field>

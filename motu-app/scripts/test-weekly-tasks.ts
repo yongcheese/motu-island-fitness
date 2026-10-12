@@ -44,7 +44,9 @@ import {
   type WeeklyTaskDefinition,
 } from '../src/constants/weeklyTasks';
 import { civilDateAt } from '../src/constants/civilTime';
+import { rewardForTask } from '../src/constants/weeklyTaskRewards';
 import { activityFromWorkoutLog, WORKOUT_LOG_METRICS } from '../src/lib/healthData';
+import type { WorkoutLog } from '../src/types';
 
 let failures = 0;
 let checks = 0;
@@ -97,7 +99,6 @@ function activity(at: string, overrides: Partial<HealthActivity> = {}): HealthAc
     type: '開合跳',
     durationSeconds: 600,
     reps: 40,
-    calories: 112,
     ...overrides,
   };
 }
@@ -179,12 +180,11 @@ console.log('\n-- progress comes from the records, and only from them ----------
 {
   const now = taipei('2026-09-23T12:00:00');
   const activities = [
-    activity('2026-09-21T09:00:00', { durationSeconds: 600, reps: 40, calories: 100, type: '深蹲' }),
-    activity('2026-09-22T09:00:00', { durationSeconds: 900, reps: 60, calories: 150, type: '開合跳' }),
+    activity('2026-09-21T09:00:00', { durationSeconds: 600, reps: 40, type: '深蹲' }),
+    activity('2026-09-22T09:00:00', { durationSeconds: 900, reps: 60, type: '開合跳' }),
   ];
   eq('workout_minutes sums the durations', computeWeeklyTaskProgress(task({ metric: 'workout_minutes', target: 60 }), activities, now).current, 25);
   eq('workout_reps sums the reps', computeWeeklyTaskProgress(task({ metric: 'workout_reps', target: 200 }), activities, now).current, 100);
-  eq('calories sums the calories', computeWeeklyTaskProgress(task({ metric: 'calories', target: 500 }), activities, now).current, 250);
   eq(
     'activity_type_count counts only the named type',
     computeWeeklyTaskProgress(task({ metric: 'activity_type_count', activityType: '深蹲', target: 3 }), activities, now).current,
@@ -377,6 +377,18 @@ console.log('\n-- a corrupt save is normalised, not rendered -------------------
   });
   eq('only the sound one survives', dirty.tasks?.map((entry) => entry.taskId), ['good']);
 
+  // The calorie goal was removed in 2026-10. A save that still has one must load: that task is
+  // skipped (not converted into some other goal), and the player's other tasks are untouched.
+  const removedMetric = { taskId: 'kcal', name: '燃燒 500', metric: 'calories', target: 500, createdAt: '', startWeek: '2026-09-14' };
+  ok('the removed calorie goal has no spec any more', getMetricSpec('calories') === null);
+  eq(
+    'a saved calorie task is dropped, the rest survive',
+    normalizeWeeklyTaskState({ tasks: [task({ taskId: 'a' }), removedMetric, task({ taskId: 'b', name: 'b' })] }).tasks?.map((entry) => entry.taskId),
+    ['a', 'b'],
+  );
+  eq('and it is offered no reward', rewardForTask({ metric: 'calories' as never, target: 500 }), null);
+  ok('and the form cannot create one', !!validateWeeklyTaskDraft({ name: 'x', metric: 'calories', target: '500' }).metric);
+
   const overLong = normalizeWeeklyTaskState({
     tasks: Array.from({ length: MAX_WEEKLY_TASKS + 5 }, (_, i) => task({ taskId: `t${i}`, name: `任務 ${i}` })),
   });
@@ -388,9 +400,9 @@ console.log('\n-- the week summary and the list order --------------------------
 {
   const now = taipei('2026-09-24T12:00:00');
   const activities = [
-    activity('2026-09-21T09:00:00', { durationSeconds: 600, reps: 40, calories: 100 }),
-    activity('2026-09-23T09:00:00', { durationSeconds: 300, reps: 20, calories: 50 }),
-    activity('2026-09-19T09:00:00', { durationSeconds: 999, reps: 999, calories: 999 }), // last week
+    activity('2026-09-21T09:00:00', { durationSeconds: 600, reps: 40 }),
+    activity('2026-09-23T09:00:00', { durationSeconds: 300, reps: 20 }),
+    activity('2026-09-19T09:00:00', { durationSeconds: 999, reps: 999 }), // last week
   ];
   const entries = [
     computeWeeklyTaskProgress(task({ taskId: 'a', target: 2 }), activities, now),
@@ -400,7 +412,6 @@ console.log('\n-- the week summary and the list order --------------------------
   eq('only this week is summed', summary.workouts, 2);
   eq('minutes', summary.minutes, 15);
   eq('reps', summary.reps, 60);
-  eq('calories', summary.calories, 150);
   eq('completed tasks', summary.tasksCompleted, 1);
   eq('active tasks', summary.tasksActive, 2);
 
@@ -432,7 +443,6 @@ console.log('\n-- the health data adapter --------------------------------------
     type: '深蹲',
     duration: 300,
     counts: 25,
-    calories: 44,
     goldEarned: 10,
     timestamp: '2026-09-22T09:00:00.000Z',
   });
@@ -442,11 +452,25 @@ console.log('\n-- the health data adapter --------------------------------------
     type: '深蹲',
     durationSeconds: 300,
     reps: 25,
-    calories: 44,
   });
 
+  // Logs written before the calorie estimate was removed still carry a `calories` field. It must
+  // be read past, not carried into the activity and not trip anything.
+  const legacy = activityFromWorkoutLog({
+    logId: 'log-1',
+    userId: 'u',
+    type: '深蹲',
+    duration: 300,
+    counts: 25,
+    calories: 44,
+    goldEarned: 10,
+    timestamp: '2026-09-22T09:00:00.000Z',
+  } as Partial<WorkoutLog>);
+  eq('a legacy log with the removed field translates to the same activity', legacy, full);
+  ok('and the removed field is not carried through', legacy !== null && !('calories' in legacy));
+
   const sparse = activityFromWorkoutLog({ timestamp: '2026-09-22T09:00:00.000Z' });
-  eq('missing numbers become zero, not NaN', [sparse?.durationSeconds, sparse?.reps, sparse?.calories], [0, 0, 0]);
+  eq('missing numbers become zero, not NaN', [sparse?.durationSeconds, sparse?.reps], [0, 0]);
   ok('and it still has a type', !!sparse?.type);
 
   eq('a log with no timestamp is dropped', activityFromWorkoutLog({ logId: 'x' }), null);

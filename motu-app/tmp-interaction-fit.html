@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Interaction fit</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #e8eef2; }
+      #root { width: 100vw; height: 100vh; }
+      #label { position: fixed; top: 8px; left: 10px; color: #16323f; font: 600 13px system-ui; z-index: 9; }
+      #report { position: fixed; top: 28px; left: 10px; color: #16323f; font: 12px ui-monospace, monospace; z-index: 9; white-space: pre; background: rgba(255,255,255,.72); padding: 4px 6px; border-radius: 4px; }
+      pre#err { position: fixed; bottom: 0; left: 0; color: #b91c1c; font: 12px monospace; z-index: 9; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="label"></div>
+    <div id="report"></div>
+    <pre id="err"></pre>
+    <script>
+      const show = (m) => { document.getElementById('err').textContent += m + '\n'; };
+      window.addEventListener('error', (e) => show('ERROR: ' + (e.message || e.error) + ' @ ' + e.filename));
+      window.addEventListener('unhandledrejection', (e) => show('REJECT: ' + e.reason));
+    </script>
+    <script type="module" src="/tmp-interaction-fit.tsx"></script>
+  </body>
+</html>

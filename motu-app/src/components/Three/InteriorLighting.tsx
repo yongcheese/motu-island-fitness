@@ -65,7 +65,8 @@ const CANDLE_SCRATCH = new THREE.Vector3();
  * 就等於速率快了一倍。其他所有讀 `interiorLights.level` 的人都只讀不寫。
  */
 export function InteriorAmbience({ isBuildMode }: { isBuildMode: boolean }) {
-  const { gl, scene } = useThree();
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
   const ambientRef = useRef<THREE.AmbientLight>(null);
   const sunRef = useRef<THREE.DirectionalLight>(null);
 
