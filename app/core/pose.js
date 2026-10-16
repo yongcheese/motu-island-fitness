@@ -124,6 +124,36 @@ export async function createPose({ model = 'full', numPoses = 3, delegate = 'GPU
   };
 }
 
+// 相機請求的嘗試順序。
+//
+// 實機量測（2026-10-16，M4 Pro MacBook Pro）：鏡頭原生模式只有 640×480、1760×1328（4:3）、
+// 1920×1080、1280×720（16:9）與直立 1328×1760，沒有 1280×960。直接要 1280×960 時，
+// Chrome 會拿 16:9 畫面再裁掉左右湊成 4:3（resizeMode = crop-and-scale），
+// 結果寬、高都只剩原生 4:3 完整畫面的約 75% —— 「筆電放桌上照不到全身」的根因。
+//
+// 所以第一順位：只接受鏡頭「原生」的橫向 4:3（不准瀏覽器裁切），寬度取最大的那個模式。
+// 比例用範圍而不是 exact 4/3：1760×1328 實際是 1.325。範圍也排除了直立模式 ——
+// 判定門檻是在橫向 4:3 的正規化座標上校準的，比例一變角度就跟著變。
+// 鏡頭沒有原生 4:3（或瀏覽器不支援 resizeMode）時拿不到 → 退回原本的請求，行為與修正前相同。
+export function cameraRequests({ width = 640, height = 480, facingMode = 'user' } = {}) {
+  return [
+    { width: { ideal: 1920 }, aspectRatio: { min: 1.3, max: 1.37 }, resizeMode: { exact: 'none' }, facingMode },
+    { width: { ideal: width }, height: { ideal: height }, aspectRatio: { ideal: width / height }, facingMode },
+  ];
+}
+
+// 依序嘗試 cameraRequests；只有「條件無法滿足」才換下一個，權限被拒等錯誤直接往外丟。
+export async function openCameraStream(getUserMedia, opts) {
+  const reqs = cameraRequests(opts);
+  for (let i = 0; i < reqs.length; i++) {
+    try { return await getUserMedia({ video: reqs[i], audio: false }); }
+    catch (e) {
+      const unmet = e && (e.name === 'OverconstrainedError' || e.name === 'ConstraintNotSatisfiedError' || e.name === 'TypeError');
+      if (!unmet || i === reqs.length - 1) throw e;
+    }
+  }
+}
+
 // 啟動相機並接到指定 <video>。回傳 { video, stream, stop }。
 // 失敗時丟出帶有 .name 的錯誤，呼叫端據此顯示明確原因。
 export async function startCamera({ video = null, width = 640, height = 480, facingMode = 'user' } = {}) {
@@ -134,9 +164,7 @@ export async function startCamera({ video = null, width = 640, height = 480, fac
   if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     throw new DOMException('此瀏覽器不支援相機 API', 'NotSupportedError');
   }
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { width: { ideal: width }, height: { ideal: height }, aspectRatio: { ideal: width / height }, facingMode }, audio: false,
-  });
+  const stream = await openCameraStream((c) => navigator.mediaDevices.getUserMedia(c), { width, height, facingMode });
   // 嘗試把相機變焦調到最廣（對付預設自動放大/置中的鏡頭，如 macOS 人物置中）；不支援則忽略。
   let track = null, zoom = null;
   try {
