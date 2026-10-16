@@ -567,7 +567,7 @@ async function startLive(ex, doWarmup) {
   // 階段一：相機
   try {
     statusEl.innerHTML = `<div class="lv-loading">${icon('camera', { size: 24 })} 啟動相機中…<br><span>瀏覽器跳出詢問時請按「允許」</span></div>`;
-    const cam = await startCamera({ video, width: 1280, height: 960 });   // 先要鏡頭原生 4:3（不裁切）；沒有才退回 1280×960，見 pose.js cameraRequests
+    const cam = await startCamera({ video, width: 1280, height: 960 });   // 4:3：垂直視野較大，全身較易入鏡
     if (live !== run) { cam.stop(); return; }   // 等待期間已離開/重開 → 關掉 stream 退出
     live.cam = cam;
     bindZoom(cam);
