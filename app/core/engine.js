@@ -66,8 +66,6 @@ class CycleTracker {
 const UNSEEN_CRITICAL = 0.85;
 const UNSEEN_MAX_RATIO = 0.25;   // 漏看幀數佔該次動作的比例上限
 const UNSEEN_MAX_RUN = 4;        // 最長連續漏看幀數（30fps 下約 0.13 秒）
-// 髖、膝站立基準只收「相對基準下降量」低於此值的幀（單位：站立大腿長）。見 updateStandBaseline。
-export const STAND_DROP_MAX = 0.05;
 function makeTrack(th) {
   return {
     tk: new CycleTracker(th), faults: new Set(), peakSig: -1, gateAtPeak: true, buf: [],
@@ -233,23 +231,9 @@ export function createDetector(spec, opts = {}) {
   function updateStandBaseline(frameTorso, isUpright, frameSpan, frameThigh, frameHipY, frameKneeY, frameThighRaw) {
     if (!isUpright) return;
     if (Number.isFinite(frameHipY) && Number.isFinite(frameKneeY) && Number.isFinite(frameThighRaw) && frameThighRaw > 1e-6) {
-      if (standHipY === null) {
-        standHipY = frameHipY; standKneeY = frameKneeY; standThighRaw = frameThighRaw;
-      } else {
-        // 2026-10-16 真人錄影（正面、全身入鏡）：站直時 hipDrop 長期是 −0.05～−0.12，
-        // 代表基準被拉得比真正站直還低，每一下的下降量都被少算約 0.1 —— 明明蹲到大腿水平，
-        // 深度條卻停在白線下。兩個成因：
-        //   1. 「直立」條件是 progress < 0.15，約等於 hipDrop < 0.16：開始往下蹲的前幾幀也被當成站姿寫進基準。
-        //   2. 人一進畫面就開始蹲時，第一幀就是半蹲姿勢，之後以 0.05 慢慢爬回來要好幾秒。
-        // 改成：已經往下超過 STAND_DROP_MAX 的幀不寫入；比基準還高（站得更直）的幀用較快的速度追上。
-        const d = ((frameHipY - standHipY) - (frameKneeY - standKneeY)) / standThighRaw;
-        if (d < STAND_DROP_MAX) {
-          const a = d < 0 ? 0.2 : 0.05;
-          standHipY = a * frameHipY + (1 - a) * standHipY;
-          standKneeY = a * frameKneeY + (1 - a) * standKneeY;
-          standThighRaw = a * frameThighRaw + (1 - a) * standThighRaw;
-        }
-      }
+      standHipY = standHipY === null ? frameHipY : 0.05 * frameHipY + 0.95 * standHipY;
+      standKneeY = standKneeY === null ? frameKneeY : 0.05 * frameKneeY + 0.95 * standKneeY;
+      standThighRaw = standThighRaw === null ? frameThighRaw : 0.05 * frameThighRaw + 0.95 * standThighRaw;
     }
     standTorso = standTorso === null ? frameTorso : 0.05 * frameTorso + 0.95 * standTorso;
     if (Number.isFinite(frameSpan) && frameSpan > 0) {
