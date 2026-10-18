@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type React from 'react';
 import { Check, Pencil, Trash2, CalendarRange } from 'lucide-react';
 import { motion } from 'motion/react';
 import type { WeeklyTaskProgress } from '../../constants/weeklyTasks';
@@ -21,6 +22,9 @@ import { cycleRangeLabel, remainingLabel, statusAccent, statusLabel } from './he
  *      大的字，而不是被夾在說明文字中間。
  *   3. **週期與剩餘天數** —— 次要，所以小、灰、在最底下。
  *
+ * 第二層與第三層之間夾著完成獎勵（TaskRewardStrip）：它回答的是「做完拿什麼」，所以緊貼在進度
+ * 條下面，而不是跟週期一起沉到最底。它由呼叫端傳進來，這張卡本身不知道任何獎勵規則。
+ *
  * 編輯／刪除是圖示按鈕，放在右上角，而不是卡片底部的兩顆文字按鈕：它們是偶爾才用一次的動作，不
  * 該跟進度爭同一層視覺重量。
  *
@@ -37,10 +41,22 @@ export function WeeklyTaskCard({
   entry,
   onEdit,
   onDelete,
+  reward,
+  highlighted = false,
+  showCycle = true,
 }: {
   entry: WeeklyTaskProgress;
   onEdit: () => void;
   onDelete: () => void;
+  /** 完成獎勵那一條（TaskRewardStrip）。沒傳就不畫 —— 舊的呼叫端與範例頁不受影響。 */
+  reward?: React.ReactNode;
+  /** 從首頁「重要提醒」點進來的那幾個任務：多一圈框，讓玩家一眼找到。 */
+  highlighted?: boolean;
+  /**
+   * 要不要畫第三層（週期與剩餘天數）。任務頁的「本週總覽」已經講了這一週與剩幾天，每張卡再講一次
+   * 是同一句話重複 N 遍，所以那裡傳 false。
+   */
+  showCycle?: boolean;
 }) {
   const { task, spec, current, target, ratio, percent, rawPercent, completed, status, cycle } = entry;
   const unit = spec?.unit ?? '';
@@ -50,7 +66,7 @@ export function WeeklyTaskCard({
     <div
       className={`bg-white rounded-[1.75rem] border p-4 sm:p-5 flex flex-col gap-4 transition-colors ${
         completed ? 'border-island-teal/45' : 'border-island-line'
-      }`}
+      } ${highlighted ? 'ring-2 ring-island-teal ring-offset-2 ring-offset-white' : ''}`}
     >
       {/* 第一層：名字與狀態。`min-w-0` 讓 truncate 真的會截斷，而不是把按鈕推出去。 */}
       <div className="flex items-start justify-between gap-3">
@@ -127,16 +143,21 @@ export function WeeklyTaskCard({
         </div>
       </div>
 
+      {/* 進度的下一行就是獎勵：「做到哪了」緊接著「做完拿什麼」。 */}
+      {reward}
+
       {/* 第三層：週期。小、灰、在最下面。 */}
-      <div className="flex items-center justify-between gap-2 flex-wrap text-[11px] font-bold text-island-navy-soft/70">
-        <span className="inline-flex items-center gap-1.5 min-w-0">
-          <CalendarRange size={13} strokeWidth={2.5} className="flex-shrink-0" />
-          <span className="truncate">{cycleRangeLabel(cycle.weekStart, cycle.weekEnd)}</span>
-        </span>
-        <span className={completed ? 'text-island-teal-dark' : ''}>
-          {completed ? '本週目標已達成' : remainingLabel(entry.remaining)}
-        </span>
-      </div>
+      {showCycle && (
+        <div className="flex items-center justify-between gap-2 flex-wrap text-[11px] font-bold text-island-navy-soft/70">
+          <span className="inline-flex items-center gap-1.5 min-w-0">
+            <CalendarRange size={13} strokeWidth={2.5} className="flex-shrink-0" />
+            <span className="truncate">{cycleRangeLabel(cycle.weekStart, cycle.weekEnd)}</span>
+          </span>
+          <span className={completed ? 'text-island-teal-dark' : ''}>
+            {completed ? '本週目標已達成' : remainingLabel(entry.remaining)}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

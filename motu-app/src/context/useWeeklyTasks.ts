@@ -4,10 +4,27 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { db, doc, handleFirestoreError, OperationType, updateDoc } from '../lib/firebase';
+import { arrayUnion, db, doc, handleFirestoreError, OperationType, updateDoc } from '../lib/firebase';
 import type { AuthUser } from '../auth/types';
 import type { UserProfile } from '../types';
 import { healthDataSource, type HealthActivity, type HealthDataAdapter } from '../lib/healthData';
+import { buildCurrencyUpdate } from './useEconomyActions';
+import { currencyPatch, getBalance } from '../constants/currency';
+import { describeGrant, type Reward } from '../constants/rewards';
+import type { RewardEffectContext } from '../constants/rewardEffects';
+import { grantCards } from '../constants/utilityCards';
+import {
+  claimCountForWeek,
+  normalizeRewardLedger,
+  planTaskRewardPayout,
+  recordRewardClaim,
+  rewardStatusFor,
+  WEEKLY_TASK_REWARD_CLAIMS_PER_WEEK,
+  WEEKLY_TASK_REWARD_SOURCE,
+  type WeeklyTaskRewardClaim,
+  type WeeklyTaskRewardLedger,
+  type WeeklyTaskRewardStatus,
+} from '../constants/weeklyTaskRewards';
 import {
   applyWeeklyTaskEdit,
   computeWeeklyTaskProgress,
@@ -55,6 +72,23 @@ import {
  *
  * 寫入是冪等的（`markWeekCompleted` 已經記過就原樣回傳），而且失敗了也不影響進度 —— 進度本來就
  * 不是從它來的。
+ *
+ * ## 完成獎勵（constants/weeklyTaskRewards.ts）
+ *
+ * 第五種寫入是 {@link claimTaskReward}：玩家在一個達標的任務上按「領取獎勵」。它是整個服務唯一
+ * 會動到玩家資源的寫入，形狀跟 context/useWorkoutRewards.ts 一樣：
+ *
+ *   算出狀態（rewardStatusFor）→ 必須是 claimable → 報價（rewardForTask）→ 發放計畫
+ *   → 一次 updateDoc：領取帳 ＋ 碎片／經驗值（buildCurrencyUpdate）＋ 功能卡 ＋ 商品
+ *   → 成功之後才改畫面
+ *
+ * 領取帳與入帳在同一次寫入裡，所以不存在「記了領過但沒入帳」或「入帳了但沒記」—— 前者少發、後者
+ * 會在下一次重新整理之後再發一次。這裡同樣**沒有樂觀更新**，理由同 useEconomyActions 的
+ * `grantReward`：先顯示再收回，是獎勵畫面能說的最重的謊。
+ *
+ * 任務定義（`weeklyTasks.tasks`）與領取帳（`weeklyTasks.rewardClaims`）是兩條分開的 dotted path。
+ * 以前 `writeTasks` 整個 `weeklyTasks` 一起寫，那在這個 map 裡只有一個欄位時沒有差別；多了領取帳
+ * 之後，每次編輯任務或自動記錄達標都會把帳蓋掉，而帳一不見，這一週領過的獎勵就可以再領一次。
  */
 
 /** 一次寫入做了什麼。`ok: false` 的每一種都是 UI 要講給玩家聽的狀態，不是例外。 */
@@ -66,6 +100,23 @@ export type WeeklyTaskOutcome =
 export type WeeklyTaskDeleteOutcome =
   | { ok: true; taskId: string }
   | { ok: false; reason: 'no-profile' | 'not-found' | 'save-failed' };
+
+/** 領取完成獎勵的結果。每一種失敗都是任務卡要講給玩家聽的狀態。 */
+export type WeeklyTaskClaimOutcome =
+  | { ok: true; claim: WeeklyTaskRewardClaim }
+  | {
+      ok: false;
+      reason:
+        | 'no-profile'
+        | 'not-found'
+        | 'not-completed'
+        | 'no-reward'
+        | 'already-claimed'
+        | 'cap-reached'
+        | 'in-flight'
+        | 'refused'
+        | 'save-failed';
+    };
 
 export interface WeeklyTaskView {
   /** 這一週的起訖。每分鐘重新確認一次 —— 見下面的跨週偵測。 */
@@ -84,6 +135,13 @@ export interface WeeklyTaskView {
   error: boolean;
   /** 還能不能再建一個。 */
   canCreate: boolean;
+  /**
+   * 每個任務的完成獎勵狀態，taskId → 狀態。跟 `progress` 一起算出來，所以進度說「完成了」的那一
+   * 刻，獎勵就是「可以領」—— 兩者不可能不同步。
+   */
+  rewardStatus: Record<string, WeeklyTaskRewardStatus>;
+  /** 本週已經領了幾個任務的獎勵，與上限。任務頁標題下的「本週獎勵 N / 3」。 */
+  rewardClaims: { used: number; cap: number };
 }
 
 /**
@@ -159,6 +217,22 @@ export function useWeeklyTasks(
     [profile?.weeklyTasks],
   );
 
+  /** 這一週的領取帳（正規化過的）。 */
+  const ledger = useMemo(
+    () => normalizeRewardLedger(profile?.weeklyTasks?.rewardClaims),
+    [profile?.weeklyTasks?.rewardClaims],
+  );
+
+  /**
+   * 存檔裡最新的 `weeklyTasks`，給本地 patch 合併用。
+   *
+   * `applyProfilePatch` 是淺層合併，所以寫 `tasks` 的那一次 patch 必須帶著目前的 `rewardClaims`
+   * （反之亦然），否則本地畫面會把另一半弄丟，直到下一次訂閱送來完整文件。用 ref 而不是閉包，因為
+   * 自動記錄達標的 effect 可能在領取寫入剛完成、還沒重新 render 的那一刻觸發。
+   */
+  const weeklyRef = useRef(profile?.weeklyTasks);
+  weeklyRef.current = profile?.weeklyTasks;
+
   const view: WeeklyTaskView = useMemo(() => {
     // `clockKey` 只是依賴項：它一變就代表日期變了，這一整包要重算。
     void clockKey;
@@ -167,30 +241,41 @@ export function useWeeklyTasks(
     const progress = sortProgress(
       tasks.map((task) => computeWeeklyTaskProgress(task, activities, now, cycle)),
     );
+    const rewardStatus: Record<string, WeeklyTaskRewardStatus> = {};
+    for (const entry of progress) rewardStatus[entry.task.taskId] = rewardStatusFor(entry, ledger);
+    // 有獎勵可以領的排最前面。`sortProgress` 把已完成的排到最後（它們不再需要注意），但「完成了、
+    // 還沒領」正好相反 —— 那是這一頁唯一在等玩家動手的東西，而首頁的摘要只放得下前三個。
+    // Array.prototype.sort 是穩定的，所以其餘任務維持 sortProgress 的順序。
+    const claimableFirst = [...progress].sort(
+      (a, b) =>
+        Number(rewardStatus[b.task.taskId].kind === 'claimable') - Number(rewardStatus[a.task.taskId].kind === 'claimable'),
+    );
     return {
       cycle,
       tasks,
-      progress,
+      progress: claimableFirst,
       summary: summariseWeek(activities, progress, now, cycle),
       activities,
       loading,
       error,
       canCreate: tasks.length < MAX_WEEKLY_TASKS,
+      rewardStatus,
+      rewardClaims: { used: claimCountForWeek(ledger, cycle), cap: WEEKLY_TASK_REWARD_CLAIMS_PER_WEEK },
     };
-  }, [tasks, activities, loading, error, clockKey]);
+  }, [tasks, activities, loading, error, clockKey, ledger]);
 
   /**
    * 寫入任務清單。
    *
-   * 整份 `weeklyTasks` 一起寫，而不是 dotted path：一份最多八個元素的陣列沒有部分更新的必要，而
-   * 「部分更新一個陣列」在 Firestore 裡本來就做不到（索引路徑寫法會在並行時互相蓋掉）。這裡也沒
-   * 有心跳或背景寫入在競爭同一個欄位 —— 只有玩家自己按下的那三個按鈕會動它。
+   * 寫的是 `weeklyTasks.tasks` 這一條 dotted path，而不是整個 `weeklyTasks`：同一個 map 裡還有領取
+   * 帳，整包覆寫會把它清掉（見檔頭「完成獎勵」）。陣列本身仍然整份寫 —— 一份最多八個元素的陣列沒
+   * 有部分更新的必要，而「部分更新一個陣列」在 Firestore 裡本來就做不到。
    */
   const writeTasks = useCallback(
     async (next: WeeklyTaskDefinition[]): Promise<boolean> => {
       if (!uid) return false;
       try {
-        await updateDoc(doc(db, 'users', uid), { weeklyTasks: { tasks: next } });
+        await updateDoc(doc(db, 'users', uid), { 'weeklyTasks.tasks': next });
       } catch (writeError) {
         console.error('[weekly] 每週任務沒有存檔成功：', writeError);
         handleFirestoreError(writeError, OperationType.UPDATE, `users/${uid}`);
@@ -198,7 +283,7 @@ export function useWeeklyTasks(
       }
       // 存進去了才改畫面。一個先動、失敗後又跳回去的任務列表，玩家沒有辦法分辨自己到底建立成功
       // 了沒有 —— 這是整個專案一致的規則（見 context/useUtilityCards.ts）。
-      applyProfilePatch({ weeklyTasks: { tasks: next } });
+      applyProfilePatch({ weeklyTasks: { ...weeklyRef.current, tasks: next } });
       return true;
     },
     [uid, applyProfilePatch],
@@ -271,7 +356,162 @@ export function useWeeklyTasks(
     });
   }, [uid, newlyCompleted, tasks, view.cycle.weekStart, writeTasks]);
 
-  return { weeklyTaskView: view, createTask, updateTask, deleteTask, newlyCompleted };
+  /**
+   * 正在領取中的任務。擋的是寫入回來之前的第二次點擊 —— 那一刻帳上還沒有這一筆，狀態仍然是
+   * claimable，沒有這一層的話連點兩下就是兩次入帳。
+   */
+  const claimingRef = useRef(new Set<string>());
+
+  /**
+   * 領取一個任務的完成獎勵。見檔頭「完成獎勵」。
+   *
+   * 狀態是**在這裡重新算的**，而不是相信按鈕：按鈕是某一次 render 的快照，而這一刻帳上可能已經
+   * 多了一筆（另一個分頁剛領完、額度剛好用完）。
+   */
+  const claimTaskReward = useCallback(
+    async (taskId: string): Promise<WeeklyTaskClaimOutcome> => {
+      if (!uid || !profile) return { ok: false, reason: 'no-profile' };
+      if (claimingRef.current.has(taskId)) return { ok: false, reason: 'in-flight' };
+      const entry = view.progress.find((candidate) => candidate.task.taskId === taskId);
+      if (!entry) return { ok: false, reason: 'not-found' };
+
+      const built = buildTaskRewardClaim(entry, ledger, profile, Date.now());
+      if (!built.ok) return built;
+
+      claimingRef.current.add(taskId);
+      try {
+        try {
+          await updateDoc(doc(db, 'users', uid), built.fields);
+        } catch (writeError) {
+          console.error('[weekly] 任務獎勵沒有存檔成功：', writeError);
+          handleFirestoreError(writeError, OperationType.UPDATE, `users/${uid}`);
+          return { ok: false, reason: 'save-failed' };
+        }
+        for (const reward of built.claim.rewards) {
+          console.info(describeGrant({ reward, source: WEEKLY_TASK_REWARD_SOURCE, reason: built.reason }));
+        }
+        // 存進去了才改畫面：帳、錢包、經驗值、背包，一次 patch。
+        applyProfilePatch({
+          ...built.patch,
+          weeklyTasks: { ...weeklyRef.current, rewardClaims: built.ledger },
+        });
+        return { ok: true, claim: built.claim };
+      } finally {
+        claimingRef.current.delete(taskId);
+      }
+    },
+    [uid, profile, view.progress, ledger, applyProfilePatch],
+  );
+
+  return { weeklyTaskView: view, createTask, updateTask, deleteTask, newlyCompleted, claimTaskReward };
+}
+
+/** {@link buildTaskRewardClaim} 組好的一次領取：要寫的欄位、寫成功後的本地 patch、領取紀錄。 */
+export type BuiltTaskRewardClaim =
+  | {
+      ok: true;
+      /** 一次 `updateDoc` 的全部欄位：領取帳 ＋ 入帳。 */
+      fields: Record<string, unknown>;
+      /** 寫入成功後的本地 patch（不含 `weeklyTasks`，那一半由呼叫端跟最新的存檔合併）。 */
+      patch: Partial<UserProfile>;
+      claim: WeeklyTaskRewardClaim;
+      ledger: WeeklyTaskRewardLedger;
+      /** log 用的來由。 */
+      reason: string;
+    }
+  | Extract<WeeklyTaskClaimOutcome, { ok: false }>;
+
+/**
+ * 把一次領取組成**一次寫入**。不碰網路、不碰 React —— scripts/test-weekly-task-rewards.ts 直接呼
+ * 叫它，比對「卡片上顯示的」與「這一次實際會寫進存檔的」。
+ *
+ * 狀態在這裡重新算，而不是相信按鈕：按鈕是某一次 render 的快照，而這一刻帳上可能已經多了一筆
+ * （另一個分頁剛領完、額度剛好用完）。
+ */
+export function buildTaskRewardClaim(
+  entry: WeeklyTaskProgress,
+  ledger: WeeklyTaskRewardLedger | null,
+  profile: UserProfile,
+  nowMs: number,
+): BuiltTaskRewardClaim {
+  const status = rewardStatusFor(entry, ledger);
+  switch (status.kind) {
+    case 'claimed':
+      return { ok: false, reason: 'already-claimed' };
+    case 'capped':
+      return { ok: false, reason: 'cap-reached' };
+    case 'locked':
+      return { ok: false, reason: 'not-completed' };
+    case 'none':
+      return { ok: false, reason: 'no-reward' };
+  }
+
+  const plan = planTaskRewardPayout(status.quote.rewards);
+  if (plan.unpayable.length > 0) {
+    // 表寫錯了（scripts/test-weekly-task-rewards.ts 應該已經紅了）。整筆拒絕，而不是只發付得出來
+    // 的那幾樣 —— 少發的那一樣會被記成「領過了」，再也領不回來。
+    console.error('[weekly] 任務獎勵裡有付不出來的東西，整筆拒絕：', plan.unpayable);
+    return { ok: false, reason: 'refused' };
+  }
+
+  const reason = `每週任務「${entry.task.name}」`;
+  let effects: RewardEffectContext = { cards: profile.utilityCards ?? null, nowMs };
+  const fields: Record<string, unknown> = {};
+  const patch: Partial<UserProfile> = {};
+  const paid: Reward[] = [];
+
+  // 碎片與經驗值：經濟服務的同一個 seam —— 政策檢查、加成卡結算、increment。
+  let patched: UserProfile = profile;
+  for (const reward of plan.currency) {
+    const built = buildCurrencyUpdate({ reward, source: WEEKLY_TASK_REWARD_SOURCE, reason }, effects);
+    if (!built) return { ok: false, reason: 'refused' };
+    Object.assign(fields, built.fields);
+    if (built.settled.cardsAfter) effects = { ...effects, cards: built.settled.cardsAfter };
+    paid.push(built.settled.reward);
+    if (reward.kind === 'xp') {
+      patch.currentXp = (patched.currentXp ?? 0) + built.amount;
+    } else if (reward.kind === 'currency') {
+      Object.assign(patch, currencyPatch(patched, reward.currency, getBalance(patched, reward.currency) + built.amount));
+    }
+    patched = { ...profile, ...patch };
+  }
+
+  // 功能卡：背包上限由 grantCards 管。滿了的那幾張沒有發，領取紀錄裡就不寫它 —— 紀錄說的是真的
+  // 入帳的東西。
+  let cards = effects.cards ?? null;
+  let cardsChanged = cards !== (profile.utilityCards ?? null);
+  for (const card of plan.cards) {
+    const granted = grantCards(cards, card.cardId, card.quantity);
+    if (granted.granted > 0) {
+      cards = granted.state;
+      cardsChanged = true;
+      paid.push({ ...card, quantity: granted.granted });
+    }
+  }
+  if (cardsChanged && cards) {
+    fields.utilityCards = cards;
+    patch.utilityCards = cards;
+  }
+
+  // 商品：只能擁有一件的東西，已經有了就不再發（也不記）。
+  const inventory = profile.inventory ?? [];
+  const newItems = plan.items.filter((item) => !inventory.includes(item.itemId));
+  if (newItems.length > 0) {
+    fields.inventory = arrayUnion(...newItems.map((item) => item.itemId));
+    patch.inventory = [...inventory, ...newItems.map((item) => item.itemId)];
+    paid.push(...newItems);
+  }
+
+  const claim: WeeklyTaskRewardClaim = {
+    claimedAt: new Date(nowMs).toISOString(),
+    tier: status.quote.tier.id,
+    rewards: paid,
+    taskName: entry.task.name,
+  };
+  const nextLedger = recordRewardClaim(ledger, entry.cycle.weekStart, entry.task.taskId, claim);
+  fields['weeklyTasks.rewardClaims'] = nextLedger;
+
+  return { ok: true, fields, patch, claim, ledger: nextLedger, reason };
 }
 
 /**
