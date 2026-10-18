@@ -603,10 +603,11 @@ async function preStart(statusEl, run) {
     <div class="lv-prestart">
       <div class="lv-ps-name">${exIcon(ex.id)} ${ex.name}</div>
       <p>${ex.meta.voiceIntro || ex.meta.desc}</p>
-      <div class="lv-ps-tip">請站到鏡頭中、全身入鏡，準備開始</div>
+      <div class="lv-ps-tip">${ex.meta.placementTip || '請站到鏡頭中、全身入鏡，準備開始'}</div>
     </div>`;
-  if (run.voice && ex.meta.voiceIntro) CTX.coach.say(ex.meta.voiceIntro, 'mid');
-  await sleep(2600);             // 讓使用者讀說明、就定位
+  // placementTip：動作對機位有要求時（目前只有深蹲要放低）接在說明後面一起念，不另開一句，免得被語音優先序蓋掉
+  if (run.voice && ex.meta.voiceIntro) CTX.coach.say(ex.meta.voiceIntro + (ex.meta.placementTip ? `${ex.meta.placementTip}。` : ''), 'mid');
+  await sleep(ex.meta.placementTip ? 4600 : 2600);   // 讓使用者讀說明、就定位；有擺放提示時多留 2 秒搬裝置
   if (live !== run) return false;
   // Slice3 R3 取景關卡（僅 camera 路徑；demo 合成幀永遠可見故跳過——已申報）
   if (run.mode !== 'demo' && run.pose) {

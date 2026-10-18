@@ -235,7 +235,10 @@ export const squat = {
     ECCENTRIC: '站直站穩，準備下一下',
   },
   meta: { desc: '雙腳與肩同寬，臀部後坐下蹲', target: '臀腿、股四頭肌', sets: 3, repsPerSet: 12, restSec: 30, difficulty: 1,
-    voiceIntro: '開始深蹲。雙腳與肩同寬，腳尖微微朝外，臀部向後向下蹲，蹲到髖部低於膝蓋，再用力站起來。' },
+    voiceIntro: '開始深蹲。雙腳與肩同寬，腳尖微微朝外，臀部向後向下蹲，蹲到髖部低於膝蓋，再用力站起來。',
+    // 2026-10-18 講台實測：筆電放講台（鏡頭約 1.4m）正面深蹲，深度在畫面上被透視吃掉，0 下有效；
+    // 改判定（3D 膝角保底，見分支「健身-講台測試」）對站位與螢幕角度太敏感，不採用。改為開始前引導放低裝置。
+    placementTip: '深蹲請把裝置放在地上或矮凳上，鏡頭大約在膝蓋到腰的高度，再往後退到全身入鏡' },
   evaluate(f, s) {
     const hipC = midpoint(f[LM.LEFT_HIP], f[LM.RIGHT_HIP]);
     const kneeC = midpoint(f[LM.LEFT_KNEE], f[LM.RIGHT_KNEE]);
