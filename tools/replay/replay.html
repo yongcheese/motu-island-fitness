@@ -14,6 +14,7 @@
 import { createPose } from '../../app/core/pose.js';
 import { createDetector } from '../../app/core/engine.js';
 import { squat } from '../../app/core/exercises/squat.js';
+import { EXERCISES } from '../../app/core/exercises/index.js';
 import { framingReport } from '../../app/core/framing.js';
 
 const q = new URLSearchParams(location.search);
@@ -21,11 +22,14 @@ const dir = q.get('dir') || 'frames/s1';
 const fps = Number(q.get('fps') || 15);
 const from = Number(q.get('from') || 1);
 const to = Number(q.get('to') || 999999);
+// ?ex=pushup／jumpingjack／highknees：用該動作自己的判定重播（預設深蹲；深蹲才記髖膝細節）
+const exId = q.get('ex') || 'squat';
+const base = EXERCISES[exId] || squat;
 const log = (t) => { document.getElementById('log').textContent = t; };
 
 // 包裝 evaluate：用引擎當下實際算出的 s（腿長、站立基準、hipDrop）取值，不另寫一套量測（踩雷筆記雷 5）
 let cap = null;
-const spec = {
+const spec = exId !== 'squat' ? base : {
   ...squat,
   evaluate(f, s) {
     const r = squat.evaluate(f, s);
@@ -57,9 +61,9 @@ for (let i = from; i <= to; i++) {
   const row = { i, t: +(tMs / 1000).toFixed(2), seen: !!lm };
   if (lm) {
     // 跟引擎同一組取景條件（深蹲的 gateLandmarks、visMin 0.4），才能看出引擎為什麼判「看不到」
-    const rep = framingReport(lm, { gateLandmarks: squat.gateLandmarks, gatePairs: squat.gatePairs || [], visMin: 0.4, requireHead: squat.requireHead !== false });
+    const rep = framingReport(lm, { gateLandmarks: base.gateLandmarks || base.requiredLandmarks, gatePairs: base.gatePairs || [], visMin: 0.4, requireHead: base.requireHead !== false });
     row.framing = rep.ok ? 'ok' : (rep.reason || rep.code || 'bad');
-    row.gateVis = squat.gateLandmarks.map(k => +(lm[k].visibility ?? 0).toFixed(2));
+    row.gateVis = (base.gateLandmarks || base.requiredLandmarks).map(k => +(lm[k].visibility ?? 0).toFixed(2));
     // 下半身與肩的座標（[左肩,右肩,左髖,右髖,左膝,右膝,左踝,右踝]），找估錯的幀用
     row.ly = [11, 12, 23, 24, 25, 26, 27, 28].map(k => +lm[k].y.toFixed(3));
     row.lx = [11, 12, 23, 24, 25, 26, 27, 28].map(k => +lm[k].x.toFixed(3));
