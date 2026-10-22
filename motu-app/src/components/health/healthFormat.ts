@@ -96,7 +96,7 @@ export function dayHeading(date: CivilDate, today: CivilDate, yesterday: CivilDa
   return date.replace(/^\d{4}-/, '').replace('-', '/');
 }
 
-/** 大數字加千分位，讓 12000 大卡不用一位一位數。 */
+/** 大數字加千分位，讓 12000 下不用一位一位數。 */
 export function formatNumber(value: number): string {
   return Math.round(value).toLocaleString('en-US');
 }

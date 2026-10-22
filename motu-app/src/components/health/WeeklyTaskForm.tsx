@@ -4,16 +4,20 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Loader2, Target } from 'lucide-react';
+import { AlertCircle, Gift, Loader2, Minus, Plus, Target } from 'lucide-react';
+import { rewardForTask } from '../../constants/weeklyTaskRewards';
+import { RewardChip } from './TaskRewardStrip';
 import {
   METRIC_SPECS,
   getMetricSpec,
   hasErrors,
+  snapStepperTarget,
   TASK_NAME_MAX,
   validateWeeklyTaskDraft,
   type WeeklyTaskDefinition,
   type WeeklyTaskDraft,
   type WeeklyTaskErrors,
+  type WeeklyTaskMetric,
 } from '../../constants/weeklyTasks';
 import { selectableActivityTypes, type HealthActivity } from '../../lib/healthData';
 import { Button, ModalOverlay, ModalShell, PanelHeader } from '../UI/DesignKit';
@@ -54,7 +58,7 @@ export function WeeklyTaskForm({
   onSubmit: (draft: WeeklyTaskDraft) => Promise<WeeklyTaskErrors | null>;
 }) {
   const [name, setName] = useState('');
-  const [metric, setMetric] = useState<string>('workout_count');
+  const [metric, setMetric] = useState<string>(DEFAULT_METRIC);
   const [target, setTarget] = useState('');
   const [activityType, setActivityType] = useState('');
   const [submitted, setSubmitted] = useState(false);
@@ -71,14 +75,16 @@ export function WeeklyTaskForm({
     setSaving(false);
     setServerErrors({});
     if (editing) {
+      const editingSpec = getMetricSpec(editing.metric);
       setName(editing.name);
       setMetric(editing.metric);
-      setTarget(String(editing.target));
+      // 舊的時間任務可能是 45 分鐘這種 ± 按鈕走不到的值，收進最近的一格。
+      setTarget(String(editingSpec?.stepper ? snapStepperTarget(editingSpec, editing.target) : editing.target));
       setActivityType(editing.activityType ?? typeOptions[0] ?? '');
     } else {
-      const spec = getMetricSpec('workout_count');
+      const spec = getMetricSpec(DEFAULT_METRIC);
       setName('');
-      setMetric('workout_count');
+      setMetric(DEFAULT_METRIC);
       setTarget(String(spec?.defaultTarget ?? 3));
       setActivityType(typeOptions[0] ?? '');
     }
@@ -91,8 +97,21 @@ export function WeeklyTaskForm({
 
   const draft: WeeklyTaskDraft = { name, metric, target, activityType };
   const spec = getMetricSpec(metric);
+  // 停用的舊類型（例如「每週運動次數」）不給新建，但編輯一個本來就是它的任務時要列出來，否則
+  // 玩家打開編輯會看到一張沒有任何一格被選中的表。
+  const metricOptions = useMemo(() => {
+    // 不用 availableMetrics()：尚未支援的類型要留在清單上、標成灰色（見下面的按鈕）。
+    const options = METRIC_SPECS.filter((option) => !option.legacy);
+    const legacySpec = editing ? getMetricSpec(editing.metric) : null;
+    return legacySpec?.legacy ? [...options, legacySpec] : options;
+  }, [editing]);
   const localErrors = validateWeeklyTaskDraft(draft, existingTasks, editing?.taskId);
   const errors: WeeklyTaskErrors = submitted ? { ...localErrors, ...serverErrors } : serverErrors;
+  // 目標還不合法時不預覽：一個 0 或 99999 的報價會讓人以為那是能存的值。
+  const rewardQuote =
+    spec && !localErrors.target && !localErrors.metric
+      ? rewardForTask({ metric: spec.id, target: Number(String(target).trim()) })
+      : null;
 
   const changeMetric = (next: string) => {
     setMetric(next);
@@ -147,16 +166,18 @@ export function WeeklyTaskForm({
                 setServerErrors({});
               }}
               maxLength={40}
-              placeholder="例如：每週運動 3 次"
+              placeholder="例如：每週運動 3 天"
               className={inputClass(!!errors.name)}
             />
           </Field>
 
           <Field label="目標類型" error={errors.metric}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {METRIC_SPECS.map((option) => {
+              {metricOptions.map((option, index) => {
                 const isActive = option.id === metric;
                 const disabled = !option.available;
+                // 類型數是奇數時，最後一格橫跨兩欄，兩欄排版的最後一列才不會缺一格。
+                const spanLast = index === metricOptions.length - 1 && metricOptions.length % 2 === 1;
                 return (
                   <button
                     key={option.id}
@@ -165,7 +186,7 @@ export function WeeklyTaskForm({
                     onClick={() => changeMetric(option.id)}
                     // 尚未支援的類型仍然「在」清單上，只是不能選，而且下面就寫著為什麼。把它藏
                     // 起來只會讓玩家一直問遊戲能不能算步數。
-                    className={`text-left rounded-2xl border p-3 transition-all ${
+                    className={`text-left rounded-2xl border p-3 transition-all ${spanLast ? 'sm:col-span-2' : ''} ${
                       disabled
                         ? 'bg-island-cream-2 border-island-line opacity-55 cursor-not-allowed'
                         : isActive
@@ -217,39 +238,74 @@ export function WeeklyTaskForm({
           <Field
             label="目標數值"
             error={errors.target}
-            hint={spec ? `${spec.minTarget} – ${spec.maxTarget} ${spec.unit}` : undefined}
+            hint={spec && !spec.stepper ? `${spec.minTarget} – ${spec.maxTarget} ${spec.unit}` : undefined}
           >
-            <div className="flex items-center gap-2">
-              <input
-                value={target}
-                onChange={(e) => {
-                  setTarget(e.target.value);
+            {spec?.stepper ? (
+              <TargetStepper
+                value={Number(target)}
+                min={spec.minTarget}
+                max={spec.maxTarget}
+                step={spec.step}
+                unit={spec.unit}
+                defaultValue={spec.defaultTarget}
+                noun={STEPPER_NOUN[spec.id] ?? '目標'}
+                onChange={(value) => {
+                  setTarget(String(value));
                   setServerErrors({});
                 }}
-                // `inputMode="numeric"` 而不是 `type="number"`：數字型 input 在手機上會吃掉自
-                // 己的值（空字串／`e`／小數點的行為各家瀏覽器不同），而驗證本來就在
-                // constants/weeklyTasks.ts 做，這裡只需要叫出數字鍵盤。
-                inputMode="numeric"
-                placeholder={String(spec?.defaultTarget ?? '')}
-                className={`${inputClass(!!errors.target)} font-mono`}
               />
+            ) : (
+              <>
+              <div className="flex items-center gap-2">
+                <input
+                  value={target}
+                  onChange={(e) => {
+                    setTarget(e.target.value);
+                    setServerErrors({});
+                  }}
+                  // `inputMode="numeric"` 而不是 `type="number"`：數字型 input 在手機上會吃掉自
+                  // 己的值（空字串／`e`／小數點的行為各家瀏覽器不同），而驗證本來就在
+                  // constants/weeklyTasks.ts 做，這裡只需要叫出數字鍵盤。
+                  inputMode="numeric"
+                  placeholder={String(spec?.defaultTarget ?? '')}
+                  className={`${inputClass(!!errors.target)} font-mono`}
+                />
+                {spec && (
+                  <span className="text-sm font-black text-island-navy-soft/70 flex-shrink-0">{spec.unit}</span>
+                )}
+              </div>
+              {/* 快速填入。手機上打數字是這張表單最煩的一步。 */}
               {spec && (
-                <span className="text-sm font-black text-island-navy-soft/70 flex-shrink-0">{spec.unit}</span>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {quickTargets(spec.defaultTarget, spec.minTarget, spec.maxTarget).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setTarget(String(value))}
+                      className="h-9 px-3 rounded-lg border border-island-line bg-island-cream-2 text-xs font-black font-mono text-island-navy-soft hover:border-island-teal hover:text-island-teal transition-all active:scale-95"
+                    >
+                      {value}
+                    </button>
+                  ))}
+                </div>
               )}
-            </div>
-            {/* 快速填入。手機上打數字是這張表單最煩的一步。 */}
-            {spec && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {quickTargets(spec.defaultTarget, spec.minTarget, spec.maxTarget).map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setTarget(String(value))}
-                    className="h-9 px-3 rounded-lg border border-island-line bg-island-cream-2 text-xs font-black font-mono text-island-navy-soft hover:border-island-teal hover:text-island-teal transition-all active:scale-95"
-                  >
-                    {value}
-                  </button>
-                ))}
+              </>
+            )}
+            {/* 完成獎勵的預覽。跟任務卡讀同一個 rewardForTask()，所以這裡看到的就是做完能領的。 */}
+            {rewardQuote && (
+              <div className="mt-3 flex items-center gap-2 flex-wrap text-[11px] font-black text-island-navy-soft">
+                <span className="flex items-center gap-1">
+                  <Gift size={13} strokeWidth={2.6} className="text-island-teal-dark" />
+                  完成獎勵
+                  <span className="h-5 px-1.5 rounded-md bg-white border border-island-line text-[10px] flex items-center">
+                    {rewardQuote.tier.label}
+                  </span>
+                </span>
+                <span className="flex flex-wrap gap-1.5">
+                  {rewardQuote.rewards.map((reward, i) => (
+                    <RewardChip key={i} reward={reward} compact />
+                  ))}
+                </span>
               </div>
             )}
           </Field>
@@ -274,6 +330,77 @@ export function WeeklyTaskForm({
         </ModalShell>
       </ModalOverlay>
     </FloatingPanelPortal>
+  );
+}
+
+/** 建立任務時預選的目標類型。 */
+const DEFAULT_METRIC: WeeklyTaskMetric = 'workout_days';
+
+/** ± 按鈕的無障礙名稱裡那個名詞：「減少天數」「增加時間」。 */
+const STEPPER_NOUN: Partial<Record<WeeklyTaskMetric, string>> = {
+  workout_days: '天數',
+  workout_minutes: '時間',
+};
+
+/**
+ * 目標數值的 ± 按鈕。不能打字 —— 值只會是 `min + n × step`，所以驗證永遠不會在這裡擋人。
+ *
+ * 值不在格子上（例如還沒換過來的舊值）時，顯示的是 `defaultValue`，按鈕也從它開始走。
+ */
+function TargetStepper({
+  value,
+  min,
+  max,
+  step,
+  unit,
+  defaultValue,
+  noun,
+  onChange,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  unit: string;
+  defaultValue: number;
+  noun: string;
+  onChange: (value: number) => void;
+}) {
+  const current = Number.isFinite(value) && value >= min && value <= max ? value : defaultValue;
+  const canDecrease = current - step >= min;
+  const canIncrease = current + step <= max;
+  const buttonClass = (enabled: boolean) =>
+    `w-12 h-12 rounded-xl border flex items-center justify-center flex-shrink-0 transition-all ${
+      enabled
+        ? 'bg-island-teal text-white border-island-teal-dark/40 hover:bg-island-teal-dark active:scale-95'
+        : 'bg-island-cream-2 text-island-navy-soft/30 border-island-line cursor-not-allowed'
+    }`;
+
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-island-line bg-white p-2">
+      <button
+        type="button"
+        aria-label={`減少${noun}`}
+        disabled={!canDecrease}
+        onClick={() => onChange(current - step)}
+        className={buttonClass(canDecrease)}
+      >
+        <Minus size={20} strokeWidth={3} />
+      </button>
+      <div className="flex-1 flex items-baseline justify-center gap-1.5" aria-live="polite">
+        <span className="text-2xl font-black font-mono text-island-navy leading-none">{current}</span>
+        <span className="text-sm font-black text-island-navy-soft/70">{unit}</span>
+      </div>
+      <button
+        type="button"
+        aria-label={`增加${noun}`}
+        disabled={!canIncrease}
+        onClick={() => onChange(current + step)}
+        className={buttonClass(canIncrease)}
+      >
+        <Plus size={20} strokeWidth={3} />
+      </button>
+    </div>
   );
 }
 

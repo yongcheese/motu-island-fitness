@@ -10,8 +10,8 @@
  *
  * 每週任務要算的是「這一週運動了幾次」，而不是「`users/<uid>/workout_logs` 這個集合裡
  * `timestamp` 落在這一週的文件有幾份」。第二句話把功能綁死在**目前**這個原型上：欄位叫
- * `counts`、卡路里是推估的、紀錄是健身畫面自己寫的。規格直接要求「若運動系統仍屬於暫時性或模擬
- * 實作，請使用抽象介面隔離資料來源」，這個檔案就是那個介面。
+ * `counts`、紀錄是健身畫面自己寫的。規格直接要求「若運動系統仍屬於暫時性或模擬實作，請使用抽
+ * 象介面隔離資料來源」，這個檔案就是那個介面。
  *
  *   健身原型 →  workout_logs  ─┐
  *                               ├→ HealthDataAdapter → HealthActivity[] → 每週任務 / 總覽 / 歷史
@@ -23,8 +23,8 @@
  * ## 目前真的拿得到什麼
  *
  * {@link WORKOUT_LOG_METRICS} 是這個轉接器能餵飽的目標類型清單，而它是從 `workout_logs` 實際寫
- * 進去的欄位推出來的（見 context/useWorkoutRewards.ts）：次數、時間、動作次數、推估卡路里。
- * 步數不在裡面，而且沒有任何地方會假裝它在 —— 見 constants/weeklyTasks.ts 的 `steps`。
+ * 進去的欄位推出來的（見 context/useWorkoutRewards.ts）：次數、時間、動作次數。
+ * 步數不在裡面（沒有計步資料來源），所以目標類型裡也沒有它。
  */
 
 import { collection, db, handleFirestoreError, limit, onSnapshot, OperationType, orderBy, query } from './firebase';
@@ -76,10 +76,10 @@ export const ACTIVITY_FETCH_LIMIT = 200;
 
 /** 這個轉接器餵得動的目標類型。跟 constants/weeklyTasks.ts 的 `available` 標記必須一致。 */
 export const WORKOUT_LOG_METRICS: readonly WeeklyTaskMetric[] = [
+  'workout_days',
   'workout_count',
   'workout_minutes',
   'workout_reps',
-  'calories',
   'activity_type_count',
 ];
 
@@ -89,6 +89,9 @@ export const WORKOUT_LOG_METRICS: readonly WeeklyTaskMetric[] = [
  * 這是整個遊戲裡唯一知道 `counts` 是「動作次數」的地方。壞掉的欄位在這裡被補成 0，而不是往下游
  * 傳一個 `undefined` —— 一個 `undefined` 加進總和裡會變成 NaN，而 NaN 畫出來是一條空白的進度條，
  * 不是一個錯誤。
+ *
+ * 只挑認得的欄位，其餘一律不讀。2026-10 之前寫下的紀錄還帶著已移除的 `calories` 估算值：它留在舊
+ * 文件裡被忽略，不顯示也不重算（`workout_logs` 在 rules 裡只能建立、不能修改，本來也清不掉）。
  */
 export function activityFromWorkoutLog(log: Partial<WorkoutLog>): HealthActivity | null {
   const completedAt = typeof log.timestamp === 'string' ? log.timestamp : null;
@@ -99,7 +102,6 @@ export function activityFromWorkoutLog(log: Partial<WorkoutLog>): HealthActivity
     type: typeof log.type === 'string' && log.type ? log.type : '運動',
     durationSeconds: numberOr(log.duration, 0),
     reps: numberOr(log.counts, 0),
-    calories: numberOr(log.calories, 0),
   };
 }
 

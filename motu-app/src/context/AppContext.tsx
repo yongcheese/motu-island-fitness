@@ -44,6 +44,7 @@ import { useLimitedShop, type LimitedPurchaseResult } from './useLimitedShop';
 import { useWheelRewards, type WheelRewardOutcome } from './useWheelRewards';
 import {
   useWeeklyTasks,
+  type WeeklyTaskClaimOutcome,
   type WeeklyTaskDeleteOutcome,
   type WeeklyTaskOutcome,
   type WeeklyTaskView,
@@ -315,6 +316,8 @@ interface AppContextType {
   createWeeklyTask: (draft: WeeklyTaskDraft) => Promise<WeeklyTaskOutcome>;
   updateWeeklyTask: (taskId: string, draft: WeeklyTaskDraft) => Promise<WeeklyTaskOutcome>;
   deleteWeeklyTask: (taskId: string) => Promise<WeeklyTaskDeleteOutcome>;
+  /** 領取一個達標任務的完成獎勵（constants/weeklyTaskRewards.ts）。 */
+  claimWeeklyTaskReward: (taskId: string) => Promise<WeeklyTaskClaimOutcome>;
 }
 
 const WEATHER_CYCLE_ORDER = [
@@ -522,8 +525,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // 每週任務. Provider-level like every other write service, and for one reason of its own: it holds
   // the subscription to the player's activity record, and a subscription that mounts with the
   // 健康 screen would re-read everything each time the player walks in and out of it.
-  const { weeklyTaskView, createTask: createWeeklyTask, updateTask: updateWeeklyTask, deleteTask: deleteWeeklyTask } =
-    useWeeklyTasks(user, profile, applyProfilePatch);
+  const {
+    weeklyTaskView,
+    createTask: createWeeklyTask,
+    updateTask: updateWeeklyTask,
+    deleteTask: deleteWeeklyTask,
+    claimTaskReward: claimWeeklyTaskReward,
+  } = useWeeklyTasks(user, profile, applyProfilePatch);
   // 商品碎片. Takes `settings` because 多餘碎片轉換成抽獎券 is a per-save switch, and
   // `applyProfilePatch` because a fragment bar has to move on the frame the reward lands rather
   // than whenever the realtime listener next delivers — same reason the economy actions take it.
@@ -1453,7 +1461,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       feedPet, pendingPetFood, armPetFeeding, cancelPetFeeding, setPetCare,
       grantUtilityCards, useUtilityCard, resetUtilityCards,
       buyLimitedOffer, markMerchantGreeted, spinWheel,
-      weeklyTaskView, createWeeklyTask, updateWeeklyTask, deleteWeeklyTask
+      weeklyTaskView, createWeeklyTask, updateWeeklyTask, deleteWeeklyTask, claimWeeklyTaskReward
     }}>
       {children}
     </AppContext.Provider>
