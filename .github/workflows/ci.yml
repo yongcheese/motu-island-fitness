@@ -1,13 +1,13 @@
 name: CI
 
-# 每次開 PR 到 main、或 main 有新 commit 時自動跑。
+# 每次開 PR 到 main 或各線長期分支、或這些分支有新 commit 時自動跑。
 # 三組檢查都要綠燈，PR 才算可以合併（見 CONTRIBUTING.md「自動檢查」）。
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 健身, 遊戲介面修改]
   push:
-    branches: [main]
+    branches: [main, 健身, 遊戲介面修改]
 
 jobs:
   # 健身端：動作判定引擎與健身頁邏輯（專案根目錄的 npm test，純 Node，不需安裝套件）

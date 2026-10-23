@@ -153,6 +153,41 @@ export const DROP_GATE = 0.72;
 /** 髖下降量換算成 progress：DROP_GATE 對齊原本的 GATE_PROGRESS，量表上的達標線因此不變。 */
 export const dropProgress = (drop) => Math.max(0, Math.min(1, drop * GATE_PROGRESS / DROP_GATE));
 
+// ══ 骨架合理性（2026-10-11，真人錄影 s1「雙手舉高站著卻多算一下」：249.3–249.5 秒估錯 5 幀、249.9 秒誤計）══════════════
+// 該處 MediaPipe 把整副骨架估成上下顛倒：一幀之內肩 y 0.10→0.45（跑到髖 0.30 下面）、
+// 腳踝 0.70→0.15（跑到膝上面），可見度仍 0.6 以上。hipDrop 因此灌到 1.37，被當成一次深蹲。
+// 深蹲全程（正面、45°、側身）都不可能出現以下兩種情形，所以這樣的幀直接不評估：
+//   1. 軀幹「垂直」投影（髖 y − 肩 y）小於站立軀幹長的 TORSO_FLIP_RATIO 倍 —— 包含肩跑到髖下面。
+//      正常深蹲前傾後的軀幹投影比 p05 為 0.587（見 TORSO_FOLD_RATIO 的標定），0.35 留足餘裕。
+//      重播實測：故障那 5 幀為 0.20、0.15 或負值。整段錄影另外擋下的幀全是「彎腰摸地」與
+//      「有人貼著鏡頭走過」—— 都不是深蹲；擋下它們也讓站立基準不再被彎腰污染。
+//      代價：側身段第一下（髖下降量 0.737，壓線過 0.72）在基準不再被污染後量得 0.709，改判未達標。
+//      人往前彎超過約 70° 才會低於 0.35；側身深蹲正常前傾約 45°（垂直投影 0.71），不受影響。
+//   2. 腳踝在膝蓋上方（只在兩踝都可信、座標在框內時判）—— 小腿在深蹲中不會翻到膝上。
+// 站立基準建立前（standTorso 為 null）只判第 2 條。
+export const TORSO_FLIP_RATIO = 0.35;
+export function squatPlausible(f, { standTorso = null } = {}) {
+  const sh = midpoint(f[LM.LEFT_SHOULDER], f[LM.RIGHT_SHOULDER]);
+  const hip = midpoint(f[LM.LEFT_HIP], f[LM.RIGHT_HIP]);
+  if (standTorso && standTorso > 1e-6 && (hip.y - sh.y) / standTorso < TORSO_FLIP_RATIO) return false;
+  if (landmarkOk(f[LM.LEFT_ANKLE], 0.5) && landmarkOk(f[LM.RIGHT_ANKLE], 0.5)) {
+    const knee = midpoint(f[LM.LEFT_KNEE], f[LM.RIGHT_KNEE]);
+    const ankle = midpoint(f[LM.LEFT_ANKLE], f[LM.RIGHT_ANKLE]);
+    if (ankle.y <= knee.y) return false;
+  }
+  return true;
+}
+
+// ══ 側身判定（2026-10-11）══════════════════════════════════════════════════════════
+// 膝內夾（膝距÷肩寬）、頭側傾（鼻相對肩中心的水平偏移÷肩寬）都是「正面」才量得到的量：
+// 側身時肩寬在畫面上縮成一小段，鼻子又本來就在肩的前方，兩項都會亂報。
+// 真人錄影實測：側身 9 次深蹲，頭側傾報了 10 次、膝內夾 9 次，全是誤報（畫面上一直叫使用者「頭擺正」）。
+// 以肩寬÷軀幹長（兩者皆為尺度 EMA）判斷是否側身：
+//   正面 s1 p05 0.345／中位 0.508；側身 s2 深蹲段 中位 0.102／p95 0.316。取 0.30。
+// 側身時這兩項不判（它們本來就是 advisory，不影響計次）。
+export const SIDE_VIEW_SWR = 0.30;
+export const isSideView = (s) => s.torsoLength > 1e-6 && s.shoulderWidth / s.torsoLength < SIDE_VIEW_SWR;
+
 export const squat = {
   id: 'squat', name: '深蹲', group: 'lower',
   met: 5.4, baseCoinPerRep: 10, intensity: 1.0,
@@ -160,6 +195,14 @@ export const squat = {
   requiredLandmarks: [LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE, LM.LEFT_ANKLE, LM.RIGHT_ANKLE, LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER],
   // 入鏡判定不含腳踝：深度只看髖 vs 膝，腳被切到框外仍可練（腳踝僅用於估腿長，已有備援）
   gateLandmarks: [LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER, LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE],
+  // 2026-10-11 真人錄影（MacBook 放在地上離人較遠、側身深蹲；10-12 更正：先前誤記為放桌上）：遠側膝蓋被身體擋住，可見度中位僅 0.23，
+  // 要求左右都看得見會讓 91% 的幀判「看不到」、整段 0 計次。改為每一對「至少一側」可信即可
+  // （與伏地挺身同機制）。深度仍用左右中點：遠側被擋住時 MediaPipe 仍會估出位置，
+  // 重播實測側身 9 次深蹲全數計到、前段走動與準備動作 0 次誤計，不需要另挑一側。
+  gatePairs: [
+    [LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER], [LM.LEFT_HIP, LM.RIGHT_HIP], [LM.LEFT_KNEE, LM.RIGHT_KNEE],
+  ],
+  plausible: squatPlausible,
   thresholds: { attemptEnter: 0.25, targetEnter: 0.62, readyReturn: 0.20 },   // Demo 校準 0.75→0.62：真機低角度鏡頭髖顯偏高，標準/近平行蹲可過；半蹲峰值僅 0.28 仍遠低於門檻
   // ⚠️ 2026-08-29：torso_lean 由 'block' 降為 'advisory'。
   //   理由（UI-PRMD Vicon 3D 真值驗證）：torsoRatio 這個量會隨**鏡頭高度**大幅改變。
@@ -192,7 +235,10 @@ export const squat = {
     ECCENTRIC: '站直站穩，準備下一下',
   },
   meta: { desc: '雙腳與肩同寬，臀部後坐下蹲', target: '臀腿、股四頭肌', sets: 3, repsPerSet: 12, restSec: 30, difficulty: 1,
-    voiceIntro: '開始深蹲。雙腳與肩同寬，腳尖微微朝外，臀部向後向下蹲，蹲到髖部低於膝蓋，再用力站起來。' },
+    voiceIntro: '開始深蹲。雙腳與肩同寬，腳尖微微朝外，臀部向後向下蹲，蹲到髖部低於膝蓋，再用力站起來。',
+    // 2026-10-18 講台實測：筆電放講台（鏡頭約 1.4m）正面深蹲，深度在畫面上被透視吃掉，0 下有效；
+    // 改判定（3D 膝角保底，見分支「健身-講台測試」）對站位與螢幕角度太敏感，不採用。改為開始前引導放低裝置。
+    placementTip: '深蹲請把裝置放在地上或矮凳上，鏡頭大約在膝蓋到腰的高度，再往後退到全身入鏡' },
   evaluate(f, s) {
     const hipC = midpoint(f[LM.LEFT_HIP], f[LM.RIGHT_HIP]);
     const kneeC = midpoint(f[LM.LEFT_KNEE], f[LM.RIGHT_KNEE]);
@@ -283,14 +329,15 @@ export const squat = {
     //   正面機位測不到（與 torso_lean 同類限制），故本作品只實作「側傾」這一子項，
     //   不得對外宣稱已涵蓋 BSA ① 全部。
     const nose = f[LM.NOSE];
-    if (progress >= 0.15 && (nose?.visibility ?? 0) >= 0.5 && s.shoulderWidth > 1e-6) {
+    const sideOn = isSideView(s);   // 側身時膝內夾、頭側傾不判（見 SIDE_VIEW_SWR）
+    if (!sideOn && progress >= 0.15 && (nose?.visibility ?? 0) >= 0.5 && s.shoulderWidth > 1e-6) {
       if (Math.abs(nose.x - shC.x) / s.shoulderWidth > HEAD_TILT_RATIO) faults.push('head_tilt');
     }
 
 
     const kneeSpan = Math.abs(f[LM.RIGHT_KNEE].x - f[LM.LEFT_KNEE].x);
     // 只在蹲到一定深度後才判：站直時膝自然併攏，淺處判定會誤觸發。
-    if (progress > 0.5 && s.shoulderWidth > 1e-6) {
+    if (!sideOn && progress > 0.5 && s.shoulderWidth > 1e-6) {
       if (kneeSpan / s.shoulderWidth < KNEE_SPAN_MIN_RATIO) faults.push('knee_valgus');
     }
     const legColor = gatePass ? 'green' : (progress > 0.3 ? 'yellow' : 'green');

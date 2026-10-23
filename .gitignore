@@ -17,3 +17,7 @@ motu-app/.env
 # Claude Code 的個人設定與交接筆記（每個人不同，不進版控）
 .claude/settings.local.json
 .claude/RESUME.md
+
+# 影片重播工具的影格與輸出（每次分析產生，不進版控）
+tools/replay/frames/
+tools/replay/out/

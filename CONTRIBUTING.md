@@ -57,11 +57,28 @@ git checkout main
 git pull
 ```
 
-**② 開自己的分支**（一件事一個分支，名字用英文小寫加連字號）
+**② 切到自己那一線的分支**（2026-10-12 起：每一線一條長期分支，名字用中文）
+
+| 線 | 長期分支 |
+|---|---|
+| 健身線 | `健身` |
+| 遊戲線 | `遊戲介面修改` |
+
+平常的改動都進自己那一線的分支，GitHub 上就只會看到 `main` 加上各線一條，不會一堆分支。
 ```bash
-git checkout -b feature/health-remove-calories
+git checkout 健身
+git pull
 ```
-命名習慣：新功能 `feature/…`、修錯 `fix/…`、文件 `docs/…`。
+想把一件事分開做，可以在**自己電腦上**另開小分支，名字用「線名-做什麼」，例如 `健身-深蹲鏡頭`。
+做完合回長期分支、刪掉小分支，**小分支不用推上 GitHub**。
+```bash
+git checkout -b 健身-深蹲鏡頭     # 開小分支
+# …改程式、commit…
+git checkout 健身
+git merge 健身-深蹲鏡頭           # 合回長期分支
+git branch -d 健身-深蹲鏡頭       # 刪掉小分支
+```
+> ⚠️ 已經有 `健身` 這條分支，就不能再取 `健身/…`（有斜線的）名字，git 會拒絕，所以小分支用「-」連接。
 
 **③ 改程式**，改完在瀏覽器實際測一次。
 
@@ -74,15 +91,20 @@ git commit -m "健康頁：總覽拿掉卡路里格"
 
 **⑤ 上傳到 GitHub**
 ```bash
-git push -u origin feature/health-remove-calories
+git push origin 健身
 ```
 
-**⑥ 開 PR**：打開 GitHub 專案頁，會出現黃色的「Compare & pull request」按鈕 → 按下去 → 照範本填（改了什麼、為什麼、影響範圍）→ 右邊 Reviewers 選一個隊友 → Create pull request。
+**⑥ 開 PR**（長期分支 → `main`）：一個段落做完、**自己實際測過**，才開 PR 合進 `main`。
+- 還沒測完就想先讓大家看到：開成**草稿（Draft）**。草稿不會請人審、也不能合併。
+- **別人的草稿不要幫忙按「Ready for review」**，由開 PR 的人自己測完再按。
+- 轉成正式後，GitHub 會依 `.github/CODEOWNERS` 自動請負責人審查。
 
 **⑦ 審查與合併**
-- 審查的人看 Files changed，有問題就留言；沒問題按 **Approve**。
-- 自動檢查（下面第 5 節）全部綠勾 ✅、而且有人 Approve 之後，由**開 PR 的人**按 **Squash and merge**（把這次的多個小存檔壓成一個，主線比較乾淨）。
-- 合併完按「Delete branch」，然後回到第 ① 步。
+- 審查的人切到那條分支、實際跑起來測，看 Files changed，有問題就留言；沒問題按 **Approve**。
+- `main` 設定成**要 2 個人 Approve 才能合併**（開 PR 的人不能核准自己的，所以另外兩人都要按）。
+- 自動檢查（下面第 5 節）全部綠勾 ✅、兩人都 Approve 之後，由**開 PR 的人**按 **Create a merge commit**。
+  ⚠️ 長期分支**不要用 Squash and merge**：壓成一個存檔後，長期分支和 `main` 的歷史會對不起來，下次合併會重複或衝突。
+- 長期分支**不要刪**，合併完回到第 ① 步繼續用。
 
 > **沒人審自己的 PR**：三個人輪流互審。急件也至少請一個人看過再合。
 
@@ -170,7 +192,7 @@ PR 頁面最下面會顯示 ✅ 或 ❌。**有 ❌ 不要合併**：點 Details
 | 想看現在改了哪些檔 | `git status` |
 | 想看改了什麼內容 | `git diff` |
 | 某個檔改壞了，想回到上次存檔的樣子（**還沒 commit**） | `git restore 檔名` |
-| 不小心在 `main` 上改了（還沒 commit） | `git checkout -b feature/新分支名`，改動會一起帶過去 |
+| 不小心在 `main` 上改了（還沒 commit） | `git checkout -b 健身-新工作`（遊戲線用 `遊戲-新工作`），改動會一起帶過去 |
 | 看最近的存檔紀錄 | `git log --oneline -10` |
 | 搞不清楚狀況 | 先不要再打任何指令，截圖丟群組 |
 
