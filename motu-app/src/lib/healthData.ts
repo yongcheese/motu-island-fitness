@@ -24,7 +24,7 @@
  *
  * {@link WORKOUT_LOG_METRICS} 是這個轉接器能餵飽的目標類型清單，而它是從 `workout_logs` 實際寫
  * 進去的欄位推出來的（見 context/useWorkoutRewards.ts）：次數、時間、動作次數。
- * 步數不在裡面，而且沒有任何地方會假裝它在 —— 見 constants/weeklyTasks.ts 的 `steps`。
+ * 步數不在裡面（沒有計步資料來源），所以目標類型裡也沒有它。
  */
 
 import { collection, db, handleFirestoreError, limit, onSnapshot, OperationType, orderBy, query } from './firebase';
@@ -76,6 +76,7 @@ export const ACTIVITY_FETCH_LIMIT = 200;
 
 /** 這個轉接器餵得動的目標類型。跟 constants/weeklyTasks.ts 的 `available` 標記必須一致。 */
 export const WORKOUT_LOG_METRICS: readonly WeeklyTaskMetric[] = [
+  'workout_days',
   'workout_count',
   'workout_minutes',
   'workout_reps',

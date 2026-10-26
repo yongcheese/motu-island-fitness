@@ -5,7 +5,7 @@
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronLeft, Target, X } from 'lucide-react';
+import { ChevronLeft, X } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { View } from '../../types';
 import type { WeeklyTaskView } from '../../context/useWeeklyTasks';
@@ -41,7 +41,8 @@ const LEGACY_HEALTH_REQUESTED =
  * ## 版面（健康頁 V2）
  *
  * 一個卡片首頁（HealthHome）加六個子頁：今天、連續達標、我的趨勢、個人紀錄、每週任務、活動紀
- * 錄。首頁右上是「設定目標」，子頁左上是「‹ 健康」。哪張卡片進哪一頁、為什麼，見
+ * 錄。子頁左上是「‹ 健康」；每週目標從「連續達標」頁的「調整每週目標」改（首頁右上原本的「設定
+ * 目標」2026-10 拿掉了）。哪張卡片進哪一頁、為什麼，見
  * healthSections.ts。
  *
  * 外框仍然是一個全螢幕捲動頁，跟商店與設定同一個形狀 —— `page-shell-x/y` 留出瀏海與圓角的安全
@@ -166,20 +167,10 @@ export function HealthScreen({
         {/* 標題列。`pr-16 sm:pr-20` 讓出右上角那顆固定的關閉鍵。 */}
         <header className="pr-16 sm:pr-20 pt-1 sm:pt-2 pb-4 sm:pb-6 min-h-[88px] flex items-end justify-between gap-3">
           {isHome ? (
-            <>
-              <div className="flex flex-col gap-0.5 min-w-0">
-                <span className="text-[13px] font-bold text-island-navy-soft/70">{longDateLabel(snapshot.today)}</span>
-                <h1 className="text-[34px] sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight">健康</h1>
-              </div>
-              <button
-                type="button"
-                onClick={openGoals}
-                className="h-10 sm:h-11 px-3.5 sm:px-4 flex items-center gap-1.5 rounded-full bg-white border border-island-line text-sm font-black text-island-navy shadow-[0_2px_10px_rgba(38,70,83,0.06)] hover:border-island-teal-light hover:-translate-y-0.5 active:scale-95 transition-all flex-shrink-0 mb-1"
-              >
-                <Target size={16} strokeWidth={2.6} className="text-island-teal" />
-                設定目標
-              </button>
-            </>
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <span className="text-[13px] font-bold text-island-navy-soft/70">{longDateLabel(snapshot.today)}</span>
+              <h1 className="text-[34px] sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight">健康</h1>
+            </div>
           ) : (
             <div className="flex flex-col gap-1 min-w-0">
               <button

@@ -1,6 +1,7 @@
 // MediaPipe Pose 包裝（瀏覽器專用）。全部資產本地 vendor，可離線。
 import { PoseLandmarker, FilesetResolver } from '../../vendor/mediapipe/vision_bundle.mjs';
 import { createSubjectTracker } from './subject.js';
+import { createFrameGate } from './frameGate.js';
 
 // 資產根目錄：舊版頁面就在專案根目錄，預設 ./vendor；整合版由宿主注入（合體第二階段整合 Slice 1）
 const DEFAULT_ASSET_ROOT = './vendor';
@@ -83,17 +84,24 @@ export async function createPose({ model = 'full', numPoses = 3, delegate = 'GPU
   const smoother = smoothing === false ? null : makePoseSmoother(smoothing || {});
   const tracker = createSubjectTracker(subject || {});
   let lastState = 'none';
+  // 同一張相機畫面只辨識一次，其餘迴圈直接回傳上一次的結果（原因見 frameGate.js）
+  const frames = createFrameGate();
+  let lastOut = null;
 
   return {
     /** 上一幀的鎖定狀態：'locked' | 'acquired' | 'reacquired' | 'none' */
     get subjectState() { return lastState; },
     /** 上一幀畫面中偵測到幾個人（供 UI 提示「畫面中有其他人」） */
     peopleCount: 0,
-    resetSubject() { tracker.reset(); smoother?.reset(); lastState = 'none'; },
+    resetSubject() { tracker.reset(); smoother?.reset(); lastState = 'none'; frames.reset(); lastOut = null; },
 
     /** @returns {Array<{x,y,z,visibility}>|null} 33 點正規化座標（已 One-Euro 平滑） */
     detect(videoEl, tMs) {
       if (!videoEl || videoEl.readyState < 2) return null;
+      if (!frames.isNewFrame(videoEl, tMs)) return lastOut;
+      return (lastOut = this._detectNew(videoEl, tMs));
+    },
+    _detectNew(videoEl, tMs) {
       const res = landmarker.detectForVideo(videoEl, tMs);
       const all = res?.landmarks || [];
       this.peopleCount = all.length;

@@ -102,18 +102,16 @@ export function cycleFromWeekStart(weekStart: CivilDate): WeeklyCycle {
  * 產生的運動資料只有三種（見 lib/healthData.ts 與 context/useWorkoutRewards.ts 寫進
  * `workout_logs` 的欄位）：次數、時間、動作次數。
  *
- * {@link WeeklyTaskMetric} 裡仍然列出 `steps`，而且它被明確標成「尚未支援」。把它留在型別裡而不
- * 是假裝它不存在，是因為規格直接問到步數：一個列在這裡、在 UI 上被標為灰色並寫明原因的目標類
- * 型，會讓「這個遊戲量不到步數」變成一件玩家看得到的事；把它刪掉只會讓下一個人重新問一次。接上
- * 計步資料的那一天，改動是 {@link METRIC_SPECS} 裡的一個 `available: true` 加上
- * lib/healthData.ts 裡的一個轉接器，不是一次資料結構重做。
+ * 2026-10 移除了 `steps`（沒有計步資料來源）：舊存檔裡的步數任務跟 `calories` 一樣，讀檔時直接
+ * 略過。同一次把「每週運動次數」換成「每週運動天數」（`workout_days`）；`workout_count` 留著只為
+ * 了讓舊任務照原本的意思繼續顯示與計算，見 {@link WeeklyTaskMetricSpec.legacy}。
  */
 export type WeeklyTaskMetric =
+  | 'workout_days'
   | 'workout_count'
   | 'workout_minutes'
   | 'workout_reps'
-  | 'activity_type_count'
-  | 'steps';
+  | 'activity_type_count';
 
 /** 一種目標類型長什麼樣子：怎麼稱呼、用什麼單位、目前有沒有資料。 */
 export interface WeeklyTaskMetricSpec {
@@ -126,6 +124,11 @@ export interface WeeklyTaskMetricSpec {
   hint: string;
   /** 建立任務時預填的目標值 —— 一個合理的一週份量，不是 1。 */
   defaultTarget: number;
+  /**
+   * 完成獎勵分級的基準（constants/weeklyTaskRewards.ts 的 `minRatio` 是它的幾倍）。沒寫就是
+   * `defaultTarget`。分開寫，是因為預填值可以為了好上手而調低，獎勵的難度卻不該跟著一起變便宜。
+   */
+  rewardBaseTarget?: number;
   /** 目標值的下限與上限，表單驗證用。 */
   minTarget: number;
   maxTarget: number;
@@ -137,35 +140,50 @@ export interface WeeklyTaskMetricSpec {
   unavailableReason?: string;
   /** 需不需要再指定一個運動項目（只有 `activity_type_count`）。 */
   needsActivityType?: boolean;
+  /**
+   * 目標值用 ± 按鈕調整，不能打字。此時目標值一定是 `minTarget + n × step`，驗證也照這個擋 ——
+   * 例如時間只能是 30 的倍數。
+   */
+  stepper?: boolean;
+  /**
+   * 只為了讀舊存檔而留著的類型：表單不再列出、不能新建；既有的任務照原本的意思繼續顯示與計算，
+   * 編輯時也可以保留。換掉一個類型的意思時，用這個而不是原地改 —— 原地改會讓舊任務的進度在
+   * 玩家不知情的情況下換一種算法（「每週 10 次」會變成永遠達不到的「每週 10 天」）。
+   */
+  legacy?: boolean;
 }
 
 /**
  * 目標類型的表。新增一種目標就是這裡加一列 ＋ {@link measureActivity} 裡加一個 case。
  *
- * 排序就是表單上的顯示順序：先放最好懂的「幾次」，最後放尚未支援的那一個。
+ * 排序就是表單上的顯示順序：先放最好懂的「幾天」。`legacy` 的類型放最後，表單不列。
  */
 export const METRIC_SPECS: readonly WeeklyTaskMetricSpec[] = [
   {
-    id: 'workout_count',
-    label: '每週運動次數',
-    unit: '次',
-    hint: '完成一次健身就 +1，不論做了多久。',
+    id: 'workout_days',
+    label: '每週運動天數',
+    unit: '天',
+    hint: '這一週有健身的天數，同一天運動多次只算 1 天。',
     defaultTarget: 3,
     minTarget: 1,
-    maxTarget: 50,
+    maxTarget: DAYS_PER_WEEK,
     step: 1,
     available: true,
+    stepper: true,
   },
   {
     id: 'workout_minutes',
     label: '每週運動時間',
     unit: '分鐘',
     hint: '把這一週每次健身的時間加起來。',
-    defaultTarget: 60,
-    minTarget: 5,
-    maxTarget: 2000,
-    step: 5,
+    defaultTarget: 30,
+    // 預填值 2026-10 從 60 調成 30，獎勵分級維持「60 分鐘＝標準」。
+    rewardBaseTarget: 60,
+    minTarget: 30,
+    maxTarget: 600,
+    step: 30,
     available: true,
+    stepper: true,
   },
   {
     id: 'workout_reps',
@@ -191,30 +209,34 @@ export const METRIC_SPECS: readonly WeeklyTaskMetricSpec[] = [
     needsActivityType: true,
   },
   {
-    id: 'steps',
-    label: '每週累積步數',
-    unit: '步',
-    hint: '需要計步資料來源。',
-    defaultTarget: 30000,
-    minTarget: 1000,
-    maxTarget: 500000,
-    step: 1000,
-    available: false,
-    unavailableReason: '遊戲目前沒有計步資料來源，接上穿戴裝置或健康 API 後才會開放。',
+    // 2026-10 之前的「每週運動次數」。新任務改用 `workout_days`；見 WeeklyTaskMetricSpec.legacy。
+    id: 'workout_count',
+    label: '每週運動次數',
+    unit: '次',
+    hint: '完成一次健身就 +1，不論做了多久。',
+    defaultTarget: 3,
+    minTarget: 1,
+    maxTarget: 50,
+    step: 1,
+    available: true,
+    legacy: true,
   },
 ] as const;
 
 /**
  * 目標類型的規格。未知的 id 回 null —— 舊存檔裡被移除的類型走的就是這條路（例如 2026-10 移除的
- * `calories`：{@link normalizeWeeklyTaskState} 讀到時直接略過那個任務，不報錯也不換算成別的目標）。
+ * `calories` 與 `steps`：{@link normalizeWeeklyTaskState} 讀到時直接略過那個任務，不報錯也不換算
+ * 成別的目標）。
  */
 export function getMetricSpec(metric: string): WeeklyTaskMetricSpec | null {
   return METRIC_SPECS.find((spec) => spec.id === metric) ?? null;
 }
 
-/** 現在真的可以建立的目標類型。表單只列這些。 */
+/**
+ * 現在真的可以建立的目標類型。表單只列這些（編輯一個舊類型的任務時，表單會把那一個也補上）。
+ */
 export function availableMetrics(): WeeklyTaskMetricSpec[] {
-  return METRIC_SPECS.filter((spec) => spec.available);
+  return METRIC_SPECS.filter((spec) => spec.available && !spec.legacy);
 }
 
 /** 列出來但還沒有資料來源的目標類型。健康頁的「資料來源」區塊照這份清單說明。 */
@@ -334,9 +356,15 @@ export interface WeeklyTaskProgress {
   celebrated: boolean;
 }
 
-/** 一次活動對某個任務貢獻多少。未知的目標類型貢獻 0，而不是拋錯 —— 見 {@link computeWeeklyTaskProgress}。 */
+/**
+ * 一次活動對某個任務貢獻多少。未知的目標類型貢獻 0，而不是拋錯 —— 見 {@link computeWeeklyTaskProgress}。
+ *
+ * `workout_days` 在這裡是「這一筆算不算」的 1；同一天的多筆只算一天，是在
+ * {@link computeWeeklyTaskProgress} 依日期去重的，因為單看一筆紀錄不知道那天是不是已經算過。
+ */
 export function measureActivity(activity: HealthActivity, task: WeeklyTaskDefinition): number {
   switch (task.metric) {
+    case 'workout_days':
     case 'workout_count':
       return 1;
     case 'workout_minutes':
@@ -345,9 +373,6 @@ export function measureActivity(activity: HealthActivity, task: WeeklyTaskDefini
       return Math.max(0, activity.reps);
     case 'activity_type_count':
       return task.activityType && activity.type === task.activityType ? 1 : 0;
-    case 'steps':
-      // 沒有資料來源，所以是 0 —— 不是「先給個數字之後再說」。見 METRIC_SPECS。
-      return 0;
     default:
       return 0;
   }
@@ -375,13 +400,21 @@ export function computeWeeklyTaskProgress(
   const today = civilDateAt(now);
 
   let current = 0;
+  // 「運動天數」數的是遊戲時區的不同日曆日，所以同一天練兩次只算一天。
+  const activeDays = new Set<CivilDate>();
   for (const activity of activities) {
     const at = Date.parse(activity.completedAt);
     // 無法解析的時間戳不算數。一筆壞掉的紀錄不該讓整條進度條變成 NaN。
     if (!Number.isFinite(at)) continue;
     if (at < cycle.startMs || at >= cycle.endMs) continue;
-    current += measureActivity(activity, task);
+    const amount = measureActivity(activity, task);
+    if (task.metric === 'workout_days') {
+      if (amount > 0) activeDays.add(civilDateAt(new Date(at)));
+    } else {
+      current += amount;
+    }
   }
+  if (task.metric === 'workout_days') current = activeDays.size;
   current = roundMetricValue(task.metric, current);
 
   const target = Math.max(1, task.target);
@@ -505,10 +538,15 @@ export function validateWeeklyTaskDraft(
   }
 
   const spec = getMetricSpec(draft.metric);
+  // 舊類型只能「留著」：編輯一個本來就是這個類型的任務可以，新建或改成它不行。
+  const keepsLegacyMetric =
+    !!editingTaskId && existing.some((task) => task.taskId === editingTaskId && task.metric === spec?.id);
   if (!spec) {
     errors.metric = '請選擇目標類型。';
   } else if (!spec.available) {
     errors.metric = spec.unavailableReason ?? '這個目標類型目前還沒有資料來源。';
+  } else if (spec.legacy && !keepsLegacyMetric) {
+    errors.metric = '這個目標類型已經停用，請選擇其他類型。';
   }
 
   const target = typeof draft.target === 'number' ? draft.target : Number(String(draft.target).trim());
@@ -522,6 +560,8 @@ export function validateWeeklyTaskDraft(
     errors.target = `至少要 ${spec.minTarget} ${spec.unit}。`;
   } else if (spec && target > spec.maxTarget) {
     errors.target = `最多 ${spec.maxTarget} ${spec.unit}。`;
+  } else if (spec?.stepper && (target - spec.minTarget) % spec.step !== 0) {
+    errors.target = `請以 ${spec.step} ${spec.unit}為一格調整。`;
   }
 
   if (spec?.needsActivityType && !draft.activityType?.trim()) {
@@ -529,6 +569,19 @@ export function validateWeeklyTaskDraft(
   }
 
   return errors;
+}
+
+/**
+ * 把任意數字收進 stepper 走得到的格子：夾在上下限內，再取最近的一格。
+ *
+ * 給「編輯一個舊任務」用 —— 2026-10 之前建立的時間任務可能是 45 或 2000 分鐘，而 ± 按鈕只走得
+ * 到 30、60…600。不收進格子裡，表單會打開在一個按了也走不回去、存了又會被驗證擋下的值上。
+ */
+export function snapStepperTarget(spec: WeeklyTaskMetricSpec, value: number): number {
+  if (!Number.isFinite(value)) return spec.defaultTarget;
+  const clamped = Math.min(spec.maxTarget, Math.max(spec.minTarget, value));
+  const steps = Math.round((clamped - spec.minTarget) / spec.step);
+  return Math.min(spec.maxTarget, spec.minTarget + steps * spec.step);
 }
 
 /** 驗證結果有沒有問題。`Object.keys(...).length === 0` 散在四處會被寫錯一次。 */
@@ -543,7 +596,7 @@ export function makeWeeklyTask(draft: WeeklyTaskDraft, now: Date = new Date()): 
   return {
     taskId: newTaskId(),
     name: draft.name.trim(),
-    metric: (spec?.id ?? 'workout_count') as WeeklyTaskMetric,
+    metric: (spec?.id ?? 'workout_days') as WeeklyTaskMetric,
     target: Math.round(target),
     ...(spec?.needsActivityType && draft.activityType?.trim()
       ? { activityType: draft.activityType.trim() }

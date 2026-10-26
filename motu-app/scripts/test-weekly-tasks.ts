@@ -34,6 +34,7 @@ import {
   markWeekCompleted,
   measureActivity,
   normalizeWeeklyTaskState,
+  snapStepperTarget,
   sortProgress,
   summariseWeek,
   unsupportedMetrics,
@@ -198,6 +199,42 @@ console.log('\n-- progress comes from the records, and only from them ----------
 }
 
 {
+  // 「每週運動天數」counts distinct days, so two workouts on one day are one day.
+  const now = taipei('2026-09-25T20:00:00'); // Friday
+  const days = (activities: HealthActivity[]) =>
+    computeWeeklyTaskProgress(task({ metric: 'workout_days', target: 3 }), activities, now).current;
+  const sameDayTwice = [
+    activity('2026-09-22T09:00:00', { activityId: 'morning' }),
+    activity('2026-09-22T19:00:00', { activityId: 'evening' }),
+  ];
+  eq('two workouts on the same day are one day', days(sameDayTwice), 1);
+  eq('the legacy count task still counts both', computeWeeklyTaskProgress(task(), sameDayTwice, now).current, 2);
+  eq(
+    'three different days are three days',
+    days([...sameDayTwice, activity('2026-09-21T09:00:00'), activity('2026-09-25T07:00:00')]),
+    3,
+  );
+  // Days are game-timezone days: 23:30 and 00:30 Taipei share a UTC date but are two days here.
+  eq(
+    'days split at Taipei midnight, not UTC midnight',
+    days([activity('2026-09-22T23:30:00'), activity('2026-09-23T00:30:00')]),
+    2,
+  );
+  eq(
+    'last Sunday and next Monday do not count',
+    days([activity('2026-09-20T23:59:00'), activity('2026-09-28T00:00:00'), activity('2026-09-24T12:00:00')]),
+    1,
+  );
+  const fullWeek = computeWeeklyTaskProgress(
+    task({ metric: 'workout_days', target: 7 }),
+    Array.from({ length: 14 }, (_, i) => activity(`2026-09-2${1 + (i % 7)}T0${i % 10}:00:00`, { activityId: `d${i}` })),
+    taipei('2026-09-27T22:00:00'),
+  );
+  eq('seven days twice over is still seven days', fullWeek.current, 7);
+  eq('and that completes a 7-day goal', fullWeek.completed, true);
+}
+
+{
   // 「完成度不應超過 100% 的視覺上限」 AND 「原始進度資料仍應正確保存」 — both, at once.
   const now = taipei('2026-09-23T12:00:00');
   const activities = Array.from({ length: 7 }, (_, i) => activity(`2026-09-2${1 + (i % 3)}T0${i}:00:00`, { activityId: `a${i}` }));
@@ -211,9 +248,10 @@ console.log('\n-- progress comes from the records, and only from them ----------
 }
 
 {
-  // 步數 has no data source, so a steps task measures zero — not a plausible-looking invented number.
-  const stepsTask = task({ metric: 'steps', target: 30000 });
-  eq('a steps activity contributes nothing', measureActivity(activity('2026-09-22T09:00:00'), stepsTask), 0);
+  // 步數 was removed in 2026-10 (it never had a data source). A stray steps task measures zero —
+  // not a plausible-looking invented number.
+  const stepsTask = task({ metric: 'steps' as never, target: 30000 });
+  eq('a removed steps metric contributes nothing', measureActivity(activity('2026-09-22T09:00:00'), stepsTask), 0);
 }
 
 console.log('\n-- remaining days are computed, never hardcoded ----------------------');
@@ -285,7 +323,7 @@ console.log('\n-- validation: the invalid inputs the brief names ---------------
 
 {
   const existing = [task({ taskId: 'a', name: '每週運動' })];
-  const valid = { name: '每週深蹲', metric: 'workout_count', target: '3' };
+  const valid = { name: '每週深蹲', metric: 'workout_days', target: '3' };
 
   eq('a valid draft passes', validateWeeklyTaskDraft(valid, existing), {});
   ok('an empty name is refused', !!validateWeeklyTaskDraft({ ...valid, name: '' }, existing).name);
@@ -307,7 +345,33 @@ console.log('\n-- validation: the invalid inputs the brief names ---------------
 
   ok('an unknown metric is refused', !!validateWeeklyTaskDraft({ ...valid, metric: 'vibes' }, existing).metric);
   // 「不要使用虛假的固定數值冒充實際運動紀錄」 — a metric with no data source cannot be created at all.
-  ok('an unsupported metric is refused', !!validateWeeklyTaskDraft({ ...valid, metric: 'steps', target: '30000' }, existing).metric);
+  ok('the removed steps metric is refused', !!validateWeeklyTaskDraft({ ...valid, metric: 'steps', target: '30000' }, existing).metric);
+
+  // 「每週運動次數」is a legacy type now: it can be kept on an old task, never newly chosen.
+  ok('the legacy count metric cannot be created', !!validateWeeklyTaskDraft({ ...valid, metric: 'workout_count' }, existing).metric);
+  eq(
+    'an old count task can be edited and keep its metric',
+    validateWeeklyTaskDraft({ ...valid, metric: 'workout_count', target: '10' }, existing, 'a'),
+    {},
+  );
+  const minutesTask = task({ taskId: 'm', name: '時間', metric: 'workout_minutes', target: 60 });
+  ok(
+    'another task cannot be switched to the legacy metric',
+    !!validateWeeklyTaskDraft({ ...valid, metric: 'workout_count' }, [minutesTask], 'm').metric,
+  );
+
+  // The two stepper types only accept values the ± buttons can reach.
+  ok('0 days is refused', !!validateWeeklyTaskDraft({ ...valid, target: '0' }, existing).target);
+  eq('7 days passes', validateWeeklyTaskDraft({ ...valid, target: '7' }, existing), {});
+  ok('8 days is refused', !!validateWeeklyTaskDraft({ ...valid, target: '8' }, existing).target);
+  const minutes = { ...valid, metric: 'workout_minutes' };
+  eq('30 minutes passes', validateWeeklyTaskDraft({ ...minutes, target: '30' }, existing), {});
+  eq('600 minutes passes', validateWeeklyTaskDraft({ ...minutes, target: '600' }, existing), {});
+  ok('15 minutes is refused', !!validateWeeklyTaskDraft({ ...minutes, target: '15' }, existing).target);
+  ok('45 minutes is off the 30-minute grid', !!validateWeeklyTaskDraft({ ...minutes, target: '45' }, existing).target);
+  ok('630 minutes is refused', !!validateWeeklyTaskDraft({ ...minutes, target: '630' }, existing).target);
+  // The types that keep their text input are not held to a grid.
+  eq('reps still take any whole number in range', validateWeeklyTaskDraft({ ...valid, metric: 'workout_reps', target: '205' }, existing), {});
   ok(
     'activity_type_count needs a type',
     !!validateWeeklyTaskDraft({ ...valid, metric: 'activity_type_count' }, existing).activityType,
@@ -388,6 +452,19 @@ console.log('\n-- a corrupt save is normalised, not rendered -------------------
   );
   eq('and it is offered no reward', rewardForTask({ metric: 'calories' as never, target: 500 }), null);
   ok('and the form cannot create one', !!validateWeeklyTaskDraft({ name: 'x', metric: 'calories', target: '500' }).metric);
+
+  // Steps went the same way in 2026-10.
+  const removedSteps = { taskId: 'steps', name: '一萬步', metric: 'steps', target: 30000, createdAt: '', startWeek: '2026-09-14' };
+  ok('the removed steps goal has no spec any more', getMetricSpec('steps') === null);
+  eq(
+    'a saved steps task is dropped, the rest survive',
+    normalizeWeeklyTaskState({ tasks: [task({ taskId: 'a' }), removedSteps, task({ taskId: 'b', name: 'b' })] }).tasks?.map((entry) => entry.taskId),
+    ['a', 'b'],
+  );
+  // The old count goal is NOT dropped: it stays a 次 task that counts sessions.
+  const legacyCount = normalizeWeeklyTaskState({ tasks: [task({ taskId: 'old', metric: 'workout_count', target: 10 })] }).tasks?.[0];
+  eq('a saved count task loads unchanged', [legacyCount?.metric, legacyCount?.target], ['workout_count', 10]);
+  eq('and still shows 次', getMetricSpec('workout_count')?.unit, '次');
 
   const overLong = normalizeWeeklyTaskState({
     tasks: Array.from({ length: MAX_WEEKLY_TASKS + 5 }, (_, i) => task({ taskId: `t${i}`, name: `任務 ${i}` })),
@@ -481,11 +558,34 @@ console.log('\n-- the health data adapter --------------------------------------
 {
   // The adapter's declared support and the metric table must agree, or the form offers a goal
   // nothing can feed.
+  // Legacy types count here: old tasks of that type still need their progress fed.
   const declared = [...WORKOUT_LOG_METRICS].sort();
-  const marked = availableMetrics().map((spec) => spec.id).sort();
+  const marked = METRIC_SPECS.filter((spec) => spec.available).map((spec) => spec.id).sort();
   eq('the adapter feeds exactly the metrics marked available', declared, marked);
-  eq('步數 is the one that is not', unsupportedMetrics().map((spec) => spec.id), ['steps']);
-  ok('and it says why', unsupportedMetrics().every((spec) => !!spec.unavailableReason));
+  eq('no listed metric is waiting on a data source (步數 was removed)', unsupportedMetrics().map((spec) => spec.id), []);
+  ok('and any that is says why', unsupportedMetrics().every((spec) => !!spec.unavailableReason));
+  eq(
+    'the form offers four types, the legacy count goal not among them',
+    availableMetrics().map((spec) => spec.id),
+    ['workout_days', 'workout_minutes', 'workout_reps', 'activity_type_count'],
+  );
+  eq('a new task defaults to 3 days', [getMetricSpec('workout_days')?.defaultTarget, getMetricSpec('workout_days')?.unit], [3, '天']);
+  eq(
+    'days step 1 through 7',
+    [getMetricSpec('workout_days')?.minTarget, getMetricSpec('workout_days')?.maxTarget, getMetricSpec('workout_days')?.step],
+    [1, 7, 1],
+  );
+  eq(
+    'minutes default to 30 and step 30 up to 600',
+    ['defaultTarget', 'minTarget', 'maxTarget', 'step'].map((key) => getMetricSpec('workout_minutes')?.[key as 'step']),
+    [30, 30, 600, 30],
+  );
+  const minutesSpec = getMetricSpec('workout_minutes')!;
+  eq(
+    'an old off-grid target snaps to the nearest step inside the range',
+    [45, 44, 5, 2000, 600, Number.NaN].map((value) => snapStepperTarget(minutesSpec, value)),
+    [60, 30, 30, 600, 600, 30],
+  );
   ok('every metric has a spec', METRIC_SPECS.every((spec) => getMetricSpec(spec.id) === spec));
   ok('an unknown metric has none', getMetricSpec('vibes') === null);
   ok(

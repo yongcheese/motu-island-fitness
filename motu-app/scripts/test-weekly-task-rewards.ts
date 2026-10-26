@@ -125,11 +125,16 @@ eq('每週運動 1 次 → 輕量', rewardForTask(task('t', 'workout_count', 1))
 eq('每週運動 3 次（預設）→ 標準', rewardForTask(task('t', 'workout_count', 3))?.tier.id, 'standard');
 eq('每週運動 5 次 → 標準', rewardForTask(task('t', 'workout_count', 5))?.tier.id, 'standard');
 eq('每週運動 6 次（2 倍）→ 挑戰', rewardForTask(task('t', 'workout_count', 6))?.tier.id, 'challenge');
+eq('每週運動 1 天 → 輕量', rewardForTask(task('t', 'workout_days', 1))?.tier.id, 'light');
+eq('每週運動 3 天（預設）→ 標準', rewardForTask(task('t', 'workout_days', 3))?.tier.id, 'standard');
+eq('每週運動 6 天（2 倍）→ 挑戰', rewardForTask(task('t', 'workout_days', 6))?.tier.id, 'challenge');
+// The minutes default dropped to 30 in 2026-10; the reward bar did not (rewardBaseTarget = 60).
+eq('每週 30 分鐘（新的預設）→ 輕量', rewardForTask(task('t', 'workout_minutes', 30))?.tier.id, 'light');
 eq('每週 59 分鐘 → 輕量', rewardForTask(task('t', 'workout_minutes', 55))?.tier.id, 'light');
 eq('每週 60 分鐘 → 標準', rewardForTask(task('t', 'workout_minutes', 60))?.tier.id, 'standard');
 eq('每週 120 分鐘 → 挑戰', rewardForTask(task('t', 'workout_minutes', 120))?.tier.id, 'challenge');
 eq('指定運動 3 次 → 標準', rewardForTask(task('t', 'activity_type_count', 3, { activityType: '深蹲' }))?.tier.id, 'standard');
-eq('步數（沒有資料來源）→ 沒有獎勵', rewardForTask(task('t', 'steps', 30000)), null);
+eq('步數（2026-10 移除）→ 沒有獎勵', rewardForTask(task('t', 'steps' as never, 30000)), null);
 eq('未知的目標類型 → 沒有獎勵', rewardForTask({ metric: 'bogus' as never, target: 3 }), null);
 eq('target 0 → 沒有獎勵', rewardForTask(task('t', 'workout_count', 0)), null);
 eq('target NaN → 沒有獎勵', rewardForTask(task('t', 'workout_count', Number.NaN)), null);
@@ -152,7 +157,7 @@ eq('locked status carries the same quote as rewardForTask', lockedStatus.kind ==
 eq('進行中（1/3）→ locked', rewardStatusFor(progressOf(t3, [workout(0)]), null).kind, 'locked');
 eq('完成（3/3）→ claimable', rewardStatusFor(progressOf(t3, [workout(0), workout(1), workout(2)]), null).kind, 'claimable');
 eq('超額完成（4/3）→ claimable', rewardStatusFor(progressOf(t3, [0, 1, 2, 3].map((i) => workout(i))), null).kind, 'claimable');
-eq('未知類型的任務 → none', rewardStatusFor(progressOf(task('tx', 'steps', 30000)), null).kind, 'none');
+eq('未知類型的任務 → none', rewardStatusFor(progressOf(task('tx', 'steps' as never, 30000)), null).kind, 'none');
 
 // --- 4. the claim write matches the quote -----------------------------------
 

@@ -572,6 +572,8 @@
 .lv-gate-chk.ok::before { content: '✓'; background: var(--frame-ok); border-color: var(--frame-ok); }
 .lv-gate-s { color: var(--motu-color-text); font-size: 14px; font-weight: 700; line-height: 1.5; }
 .lv-gate-s b { font-weight: 900; }
+/* 2026-10-11：桌面機位指引（使用者要求筆電放桌上也能用），次要資訊、不搶狀態列 */
+.lv-gate-tip { color: var(--motu-color-text-muted); font-size: 13px; font-weight: 700; line-height: 1.5; }
 .lv-gate-bar { height: 6px; border-radius: 3px; background: var(--motu-color-border); overflow: hidden; }
 .lv-gate-bar i { display: block; height: 100%; width: 0; background: var(--frame-ok); border-radius: inherit; }
 /* Slice3 修復 F1：逃生鈕（10 秒後現身）；.lv-gate 為 pointer-events:none，鈕須自行開啟可點 */

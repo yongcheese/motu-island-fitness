@@ -25,7 +25,8 @@
  *
  * 每週任務是玩家**自己設的**。如果每個任務都發一樣多，最划算的做法是建八個「每週運動 1 次」然後
  * 健身一次 —— 那是在獎勵「會開表單」，不是在獎勵運動。所以獎勵等級由目標值對照該目標類型的
- * 「一週合理份量」（{@link WeeklyTaskMetricSpec.defaultTarget}，建立表單的預填值）決定：
+ * 「一週合理份量」（{@link WeeklyTaskMetricSpec.defaultTarget}，建立表單的預填值；有寫
+ * {@link WeeklyTaskMetricSpec.rewardBaseTarget} 的類型用那個）決定：
  *
  *   目標 < 1 倍預設  → 輕量
  *   目標 ≥ 1 倍預設  → 標準
@@ -143,7 +144,7 @@ export function rewardForTask(task: Pick<WeeklyTaskDefinition, 'metric' | 'targe
   const spec = getMetricSpec(task.metric);
   if (!spec || !spec.available) return null;
   if (!Number.isFinite(task.target) || task.target <= 0) return null;
-  const ratio = task.target / Math.max(1, spec.defaultTarget);
+  const ratio = task.target / Math.max(1, spec.rewardBaseTarget ?? spec.defaultTarget);
   let tier: WeeklyTaskRewardTier | null = null;
   for (const candidate of WEEKLY_TASK_REWARD_TIERS) {
     if (ratio >= candidate.minRatio) tier = candidate;

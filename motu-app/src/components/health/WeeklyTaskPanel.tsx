@@ -189,7 +189,7 @@ export function WeeklyTasks({
             bordered
             icon={<Target size={30} strokeWidth={1.5} />}
             title="還沒有每週任務"
-            description="設一個這一週想達成的目標吧 —— 例如「每週運動 3 次」。進度會在你每次健身完自動更新。"
+            description="設一個這一週想達成的目標吧 —— 例如「每週運動 3 天」。進度會在你每次健身完自動更新。"
             action={
               <Button variant="primary" className="h-12 px-6" onClick={openCreate}>
                 <Plus size={16} strokeWidth={3} />
