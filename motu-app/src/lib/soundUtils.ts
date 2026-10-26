@@ -775,6 +775,84 @@ export const playWheelSpin = (
   }
 };
 
+/**
+ * {@link playWheelJackpot} 裡「噹」那一下落在第幾毫秒。
+ *
+ * 給呼叫端對時用：轉盤的全螢幕揭曉（UI/LuckyWheel.tsx）要讓這一下剛好落在獎品著陸的那一幀，
+ * 所以它要知道鈴聲前奏有多長，才能提早這麼多開始播。
+ */
+export const WHEEL_JACKPOT_HIT_MS = 620;
+
+/**
+ * 幸運轉盤 中獎 —— 「叮叮叮叮叮 —— 噹啷～」。
+ *
+ * 跟 {@link playUiReward} 那串三音琶音刻意分開：那是這個遊戲「有好事發生」的通用聲，商店買最便宜
+ * 的東西也是它；轉盤中獎要聽起來像**中獎**，也就是拉霸機那種一串越來越響的鈴聲滾上去，然後一個
+ * 大和弦砸下來。
+ *
+ * 三段：
+ *  * **鈴聲滾奏**（0 → {@link WHEEL_JACKPOT_HIT_MS}）—— 兩個高音交替敲，間隔越來越短、音量越來越大，
+ *    是在「憋」那一下。泛音比用 3（八度加五度），聽起來是鈴不是笛。
+ *  * **噹**（HIT）—— C 大三和弦四個音同時下去，底下墊一顆三角波根音給它重量。
+ *  * **啷～**—— 一串往上爬的琶音和最後一點閃光，讓和弦有個尾巴而不是一刀切掉。
+ *
+ * `grand`（史詩造型）在 HIT 底下多墊一層銅管長音、尾巴多一段快速上行——跟稀有度階梯同一條規則：
+ * 越稀有是「更多音樂」，不是同一首開更大聲（見 playRareReveal 那段註解）。
+ *
+ * 靜音照樣不出聲：全部走 playBlip → sfxContext。
+ */
+export const playWheelJackpot = (volume = 0.4, grand = false) => {
+  if (audio.sfxMuted) return;
+  const hit = WHEEL_JACKPOT_HIT_MS / 1000;
+
+  // 鈴聲滾奏：間隔從 62ms 收到 32ms，在 HIT 前一點停下。
+  const roll: BlipNote[] = [];
+  let t = 0;
+  for (let i = 0; i < 14 && t < hit - 0.03; i++) {
+    const p = i / 13;
+    roll.push({
+      freq: i % 2 === 0 ? 1319 : 1568,
+      delay: t,
+      duration: 0.09,
+      harmonicGain: 0.35,
+      harmonicRatio: 3,
+      gain: 0.22 + 0.38 * p,
+    });
+    t += 0.062 - 0.03 * p;
+  }
+  playBlip(roll, volume * 0.7);
+
+  // 噹：C 大三和弦。
+  playBlip([
+    { freq: 262, delay: hit, duration: 1.2, type: 'triangle', gain: 0.5 },
+    { freq: 523, delay: hit, duration: 1.0, harmonicGain: 0.3, gain: 0.42 },
+    { freq: 659, delay: hit, duration: 1.0, harmonicGain: 0.3, gain: 0.36 },
+    { freq: 784, delay: hit, duration: 1.05, harmonicGain: 0.3, gain: 0.36 },
+    { freq: 1047, delay: hit, duration: 1.1, harmonicGain: 0.35, gain: 0.4 },
+  ], volume);
+
+  // 啷～：往上爬，最後一點閃光。
+  playBlip([
+    { freq: 1047, delay: hit + 0.08, duration: 0.28, harmonicGain: 0.3, gain: 0.45 },
+    { freq: 1319, delay: hit + 0.14, duration: 0.28, harmonicGain: 0.3, gain: 0.45 },
+    { freq: 1568, delay: hit + 0.2, duration: 0.3, harmonicGain: 0.3, gain: 0.45 },
+    { freq: 2093, delay: hit + 0.27, duration: 0.6, harmonicGain: 0.25, gain: 0.5 },
+    { freq: 2637, delay: hit + 0.42, duration: 0.5, gain: 0.25 },
+  ], volume);
+
+  if (grand) {
+    playBlip([
+      { freq: 196, delay: hit, duration: 1.6, type: 'triangle', gain: 0.5 },
+      { freq: 392, delay: hit, duration: 1.5, type: 'triangle', gain: 0.3 },
+    ], volume);
+    const run = [1047, 1175, 1319, 1568, 1760, 2093, 2349, 2637];
+    playBlip(
+      run.map((freq, i) => ({ freq, delay: hit + 0.55 + i * 0.05, duration: 0.3, harmonicGain: 0.3, gain: 0.45 })),
+      volume,
+    );
+  }
+};
+
 /** Stylized, cartoon-soft "woof" for the pet dog - a noise attack plus a pitch-down sweep. */
 export const playPetBark = (volume = 0.4) => {
   const ctx = sfxContext();
