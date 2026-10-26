@@ -50,7 +50,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { LoadingScreen } from './components/UI/LoadingScreen';
 import { db, doc, updateDoc } from './lib/firebase';
 import { installDirectWheelScroll } from './lib/wheelScroll';
-import { playSound, SoundEffect, triggerHaptic, playDoorOpen, playDoorClose, setAmbienceVolume } from './lib/soundUtils';
+import { playDoorOpen, playDoorClose, setAmbienceVolume } from './lib/soundUtils';
 /**
  * See the "GLOBAL Z-INDEX LAYER SYSTEM" comment block at the top of
  * src/index.css for the authoritative Background / Game View / HUD /
@@ -70,7 +70,7 @@ import { playSound, SoundEffect, triggerHaptic, playDoorOpen, playDoorClose, set
 function AppContent() {
   const { 
     user, loading, currentView, isWorkoutActive, isGameLoading, setIsGameLoading,
-    islandAlert, nearbyBuilding, setCurrentView, profile, settings, islandDraft
+    islandAlert, nearbyBuilding, settings, islandDraft
   } = useApp();
 
   /**
@@ -107,21 +107,10 @@ function AppContent() {
     if (nearbyBuilding || isInsideHouse) setInteriorMounted(true);
   }, [nearbyBuilding, isInsideHouse]);
 
-  // Entering is now unconditional: there is exactly one Home, so there is nothing to record
-  // about *which* building was entered. The old `activeBuildingId` write lived here and was
-  // never read back by anything - BuildingInteriorView has always rendered the single shared
-  // profile.interiorData.
-  const handleEnterBuilding = () => {
-    if (!nearbyBuilding || !profile) return;
-    playSound(SoundEffect.CLICK);
-    triggerHaptic('double');
-    setCurrentView(View.BUILDING_INTERIOR);
-  };
-
   // Front-door sound for crossing the house threshold.
   //
   // Driven off the view transition rather than from the places that trigger it, because there
-  // is more than one: handleEnterBuilding above, Avatar.tsx's walk-up-to-the-door handler, and
+  // is more than one: the action key / entry badge (Avatar.tsx's handleAction), and
   // the interior's own exit control all move between HOME and BUILDING_INTERIOR. Watching the
   // resulting state change catches every path, including any added later, and cannot double-fire
   // when two of them run in the same tick.
@@ -362,11 +351,11 @@ function AppContent() {
           portals itself onto the floating-panel tier — see IslandEditorOverlay.tsx. */}
       <IslandEditorOverlay />
 
-      {/* Unified "nearest interactable" prompt (building/hammock/dog), floating above the
-          object's own world position — see InteractionPrompt.tsx. World-tracked, so it stays
-          a full-bleed fixed overlay rather than a grid region; it swaps to a tap icon on
-          touch devices internally. */}
-      <InteractionPrompt onEnterBuilding={handleEnterBuilding} />
+      {/* The one interaction prompt — whatever playerBus.interactionTarget is (the door, a seat,
+          the pet, a resident…), pointing at that target's own Interaction Point. See
+          InteractionPrompt.tsx. World-tracked, so it stays a full-bleed fixed overlay rather than
+          a grid region; it swaps to a tap icon on touch devices internally. */}
+      <InteractionPrompt />
       {/* 居民說的話，浮在互動提示上方。同一套「Canvas 投影、HTML 畫」的做法 —— 見 NpcSpeechBubble.tsx。 */}
       <NpcSpeechBubble />
 

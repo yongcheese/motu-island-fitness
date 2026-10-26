@@ -5,15 +5,16 @@
 
 import type { PlacedItem } from '../types';
 import type { CharacterSkeleton } from '../constants/characterRig';
+import { toWorld } from '../constants/characterRig';
 import type { PostureId } from '../constants/interactionPostures';
 import { getItemById, isStandableItem } from '../constants/items';
 import { getPosture } from '../constants/interactionPostures';
-import { SUSPENDED_MOTIONS, type SuspendedMotionId } from '../constants/outdoorAnimation';
+import type { SuspendedMotionId } from '../constants/outdoorAnimation';
+import { type OccupantFit, fitOccupant, fitRootY } from './occupantFit';
 import {
   ACTION_STAND_CLEARANCE,
   DEFAULT_INTERACTION_REACH,
   FurnitureInteraction,
-  PROMPT_ANCHOR_CLEARANCE,
   getPrimaryInteraction,
   interactionAnchoring,
   interactionApproach,
@@ -23,8 +24,6 @@ import {
   interactionOccupies,
   interactionPosture,
   interactionVerb,
-  poseRootHeight,
-  seatLegClearance,
 } from '../constants/furnitureInteractions';
 import { PLAYER_PHYSICAL_RADIUS } from '../utils/placementRules';
 import {
@@ -56,9 +55,13 @@ import {
  * piece's own box, on the face it is used from, squared up to it. Nothing about that is typed
  * into the catalog beyond which face (see ApproachSide); the distance is measured.
  *
+ * And a fourth, which the prompt needs:
+ *
+ *   4. Where does the interaction HAPPEN?                {@link resolveInteractionPoint}
+ *
  * This module is deliberately the only place that knows how a local anchor becomes a world
  * position. Three/Avatar.tsx drives the body from what it returns and never does the maths
- * itself; Three/InteractionPromptTracker.tsx floats the badge over what it returns and never
+ * itself; Three/InteractionPromptTracker.tsx points the badge at what it returns and never
  * learns what a sofa is.
  */
 
@@ -79,16 +82,16 @@ export interface InteractionSpot {
    */
   anchored: boolean;
   /**
-   * How far the piece's own measured box still reaches AHEAD of this spot, along the direction
-   * the occupant faces.
+   * WHERE THE BODY GOES ON THE PIECE, solved from the rig's body volumes (lib/occupantFit.ts) —
+   * the pivot it is fastened at, how its legs hang, what its hands hold. Null for a posture played
+   * standing at the piece.
    *
-   * The one thing a seated pose cannot work out for itself. A chibi's legs are 0.53 long against
-   * a sofa 1.15 deep, so "hang the legs down until the feet reach the floor" puts both shins
-   * inside the cushion; the legs have to swing out far enough to clear the piece's own front
-   * edge, and how far that is depends on the piece. Measured here (where the footprint is), used
-   * by lib/interactionPosture.ts's leg solver, so no seat angle is ever typed into the catalog.
+   * Solved HERE, once per description, because it is the one place that has the placement, the
+   * catalog row and the skeleton together; the controller then only has to turn it into a pose
+   * each frame (`resolveOccupantPose`). When this is set, {@link x}/{@link z} are the pivot's and
+   * {@link y} is the root's height with the body upright on it.
    */
-  reachAhead: number;
+  fit: OccupantFit | null;
   /**
    * The heading a dismount steps along, and how far the piece reaches along it.
    *
@@ -103,31 +106,14 @@ export interface InteractionSpot {
   exitYaw: number;
   exitReach: number;
   /**
-   * Set when the piece MOVES under its occupant — a hammock, a swing. Null for everything else.
+   * Set when the piece MOVES under its occupant — a hammock, a swing — naming the row of
+   * constants/outdoorAnimation.ts it moves by. Null for everything else.
    *
-   * Resolved here for the same reason `reachAhead` is: this is the one place that has both the
-   * piece's placement (where its pivot ended up in the world, and which way it is turned) and
-   * the body's own resolved root height. The controller then evaluates ONE function
-   * (lib/outdoorMotion.ts's `suspendedAngle`) that the piece's own model evaluates too, and the
-   * two cannot disagree.
+   * The controller evaluates that row with the ONE function the piece's own model evaluates too
+   * (lib/outdoorMotion.ts's `suspendedAngle`) and hands the angle to `resolveOccupantPose`, which
+   * carries the body's pivot through the piece's own swing — so the two cannot disagree.
    */
-  motion: OccupantMotion | null;
-}
-
-/** Everything the character controller needs to ride a moving piece of furniture. */
-export interface OccupantMotion {
-  id: SuspendedMotionId;
-  /**
-   * The pendulum arm the BODY rides: pivot down to the body's own root, world units.
-   *
-   * Not the same as the spec's `length` (which is pivot-to-seat and sets the period): a body
-   * sitting on a swing has its root at its feet, further from the pivot than the seat is, so it
-   * travels further along the same arc. Getting this wrong is exactly how a rider slides off the
-   * seat at the ends of the swing.
-   */
-  radius: number;
-  /** The piece's own yaw, so a sway stated in its local frame becomes a world offset. */
-  pieceYaw: number;
+  motion: { id: SuspendedMotionId } | null;
 }
 
 /** A piece the player is close enough to act on, and everything the act needs. */
@@ -148,8 +134,12 @@ export interface InteractionTarget {
   occupies: boolean;
   /** Where the body goes. Null only when the piece has never been measured. */
   spot: InteractionSpot | null;
-  /** World point the floating prompt hangs above: the top of the piece, plus clearance. */
-  promptAnchor: { x: number; y: number; z: number };
+  /**
+   * THE INTERACTION POINT — where on the piece the interaction happens, in world space: the
+   * cushion a seat is taken on, the middle of the mattress, the face of the wardrobe its doors
+   * are on. The prompt's arrow points here. See {@link resolveInteractionPoint}.
+   */
+  interactionPoint: { x: number; y: number; z: number };
   /** 「坐下」/「躺下」/「泡澡」 — already resolved, so no screen re-derives it. */
   verb: string;
   /** 「起身」 — what the prompt offers once the player is on the piece. */
@@ -173,7 +163,7 @@ const EXIT_MARGIN = 0.25;
  * offering it from slightly too far away.
  */
 const UNMEASURED_REACH = 1.4;
-const UNMEASURED_PROMPT_HEIGHT = 1.3;
+const UNMEASURED_POINT_HEIGHT = 1.0;
 
 /** The box a piece is approached against: what a walking body runs into, or its full extent. */
 function reachBox(fp: Footprint): { cx: number; cz: number; halfW: number; halfD: number } {
@@ -190,9 +180,10 @@ function reachBox(fp: Footprint): { cx: number; cz: number; halfW: number; halfD
  *                   rotation using the same convention as every other box in the placement
  *                   system (three.js rotates about +Y as x' = x·cos + z·sin, z' = -x·sin +
  *                   z·cos), and lifted by the piece's own elevation. Move the sofa, turn it, or
- *                   set it down on a deck, and the seat goes with it. The HEIGHT is not the
- *                   catalog's to choose — see poseRootHeight. The catalog says where the cushion
- *                   is; the rig says how a body rests on a cushion.
+ *                   set it down on a deck, and the seat goes with it. Where the body goes ON
+ *                   that anchor is not the catalog's to choose: the catalog says where the
+ *                   cushion is; the rig's body volumes say how a body rests on a cushion
+ *                   (lib/occupantFit.ts).
  *   AT the piece    {@link resolveStandSpot} — measured, not declared.
  *
  * `from` is where the player is now, and is only consulted by an `approach: 'nearest'` piece
@@ -209,56 +200,40 @@ export function resolveInteractionSpot(
   if (anchoring === 'stand') return resolveStandSpot(placement, interaction, from);
 
   const rotation = placement.rotation || 0;
-  const cos = Math.cos(rotation);
-  const sin = Math.sin(rotation);
-  // Where on the piece the body goes — the catalog's own numbers for a lying or reclining
-  // posture, derived from the seat's front lip for one whose legs hang over it. One function,
-  // in constants/furnitureInteractions.ts, so the anchor and the leg clearance below cannot
-  // come from two different ideas of where the seat is.
-  const { x: lateral, z: forward } = interactionAnchorLocal(interaction, skeleton);
+  const elevation = placement.position[1] || 0;
+  // WHERE THE BODY GOES: the catalog says where the cushion, the lip, the ropes are; the rig's
+  // body volumes say where a body rests on them. See lib/occupantFit.ts.
+  const posture = getPosture(interactionPosture(interaction));
+  const fit = fitOccupant({
+    posture: interactionPosture(interaction),
+    skeleton,
+    origin: { x: placement.position[0], y: elevation, z: placement.position[2] },
+    pieceYaw: rotation,
+    anchor: interactionAnchorLocal(interaction),
+    surfaceY: interaction.surfaceY ?? 0,
+    facing: interaction.facing ?? 0,
+    overEdge: interaction.seatFront !== undefined
+      && (posture.legs === 'reachFloor' || posture.legs === 'dangle'),
+    give: interaction.give,
+    headLift: interaction.headRest !== undefined && interaction.surfaceY !== undefined
+      ? Math.max(0, interaction.headRest - interaction.surfaceY)
+      : 0,
+    grip: interaction.grip ?? null,
+  });
 
   const spot: InteractionSpot = {
-    x: placement.position[0] + lateral * cos + forward * sin,
-    y: (placement.position[1] || 0)
-      + poseRootHeight(anchoring, interaction.surfaceY ?? 0, skeleton, interaction.give),
-    z: placement.position[2] - lateral * sin + forward * cos,
+    x: fit.pivot.x,
+    y: fitRootY(fit),
+    z: fit.pivot.z,
     yaw: rotation + (interaction.facing ?? 0),
     anchored: true,
-    reachAhead: 0,
+    fit,
     exitYaw: 0,
     exitReach: 0,
-    motion: null,
+    motion: interaction.sway ? { id: interaction.sway } : null,
   };
-  /*
-   * WHAT THE LEGS HAVE TO CLEAR, and why it is no longer the bounding box.
-   *
-   * A seat that declares its own front lip hands the leg solver the distance to THAT, which is
-   * a constant (the hip was placed one leg-thickness behind it). Measuring the box instead —
-   * which is all this could do before — measured the armrests, the rocking runners, the
-   * L-sofa's chaise and the camp chair's splayed frame, and produced two different wrong
-   * answers depending on which was bigger: a shin driven down through the cushion, or both legs
-   * pegged out horizontal. See FurnitureInteraction.seatFront.
-   *
-   * A piece with no lip declared keeps the measured answer. That is only reachable for a
-   * posture that does not hang its legs over anything (a bath, a hammock, a bed), where what
-   * the box says is either unused or right.
-   */
-  spot.reachAhead = seatLegClearance(interaction, skeleton)
-    ?? measureReachAhead(placement, spot.x, spot.z, spot.yaw);
-  spot.exitYaw = spot.yaw + (getPosture(interactionPosture(interaction)).exitFacing ?? 0);
+  spot.exitYaw = spot.yaw + (posture.exitFacing ?? 0);
   spot.exitReach = measureReachAhead(placement, spot.x, spot.z, spot.exitYaw);
-
-  // A piece that swings under its rider. `pivotY` is stated in the piece's own frame at the
-  // scale it is drawn (the same convention as `surfaceY`), so lifting it by the placement's own
-  // elevation is all it takes for a hammock slung on a deck to swing about the right line.
-  if (interaction.sway) {
-    const spec = SUSPENDED_MOTIONS[interaction.sway];
-    spot.motion = {
-      id: interaction.sway,
-      radius: (placement.position[1] || 0) + spec.pivotY - spot.y,
-      pieceYaw: rotation,
-    };
-  }
   return spot;
 }
 
@@ -315,7 +290,7 @@ function resolveStandSpot(
       y: 0,
       yaw: Math.atan2(outX, outZ),
       anchored: false,
-      reachAhead: 0,
+      fit: null,
       exitYaw: Math.atan2(outX, outZ),
       exitReach: 0,
       motion: null,
@@ -354,8 +329,8 @@ function resolveStandSpot(
     z: box.cz + dirZ * standOff,
     yaw,
     anchored: false,
-    // Nothing to clear and nowhere to dismount to: the body never left the floor.
-    reachAhead: 0,
+    // Nothing to fit and nowhere to dismount to: the body never left the floor.
+    fit: null,
     exitYaw: yaw,
     exitReach: 0,
     // An acting posture is played standing on the ground; nothing carries the body.
@@ -490,20 +465,7 @@ export function describeInteraction(
   const interaction = getPrimaryInteraction(placement.itemId);
   if (!interaction) return null;
 
-  const fp = getFootprint(placement.itemId);
-  const elevation = placement.position[1] || 0;
-  // Anchored over the piece's own measured top rather than at a fixed height, so the badge
-  // clears a wardrobe and does not float a metre over a footstool.
-  const promptAnchor = fp
-    ? (() => {
-      const box = obbFor(placement, fp);
-      return { x: box.cx, y: elevation + fp.maxY + PROMPT_ANCHOR_CLEARANCE, z: box.cz };
-    })()
-    : {
-      x: placement.position[0],
-      y: elevation + UNMEASURED_PROMPT_HEIGHT,
-      z: placement.position[2],
-    };
+  const spot = resolveInteractionSpot(placement, interaction, skeleton, from);
 
   return {
     instanceId: placement.instanceId,
@@ -513,8 +475,8 @@ export function describeInteraction(
     interaction,
     posture: interactionPosture(interaction),
     occupies: interactionOccupies(interaction),
-    spot: resolveInteractionSpot(placement, interaction, skeleton, from),
-    promptAnchor,
+    spot,
+    interactionPoint: resolveInteractionPoint(placement, interaction, spot, skeleton),
     verb: interactionVerb(interaction),
     exitVerb: interactionExitVerb(interaction),
     icon: interactionIcon(interaction),
@@ -523,25 +485,134 @@ export function describeInteraction(
 }
 
 /**
- * The single nearest piece the player at `(x, z)` may act on, or null when nothing is in reach.
+ * WHERE THE INTERACTION HAPPENS — the point the prompt's arrow lands on.
  *
- * ONE target at a time, which is the rule the prompt already applies to everything else it can
- * point at (Three/InteractionPromptTracker.tsx): the player has one action key, so two things
- * offering themselves at once is a coin toss they cannot see. Ranking by distance to the piece's
- * BOX rather than to its centre is what makes "the nearest one" mean what it looks like — with
- * centre distances a bed you are standing against loses to a lamp across the room.
+ * ## What it replaced
+ *
+ * The piece's measured TOP, over the centre of its box, plus 0.45. That is a fine place for a
+ * name tag and the wrong place for an instruction: 「E 打開」 floated half a metre over a 2 m
+ * wardrobe rather than on its doors, 「E 躺下」 hung over the middle of a bed's headboard end
+ * rather than over the mattress, and a sofa's badge was over the backrest. The badge now says
+ * where to act as well as what to do.
+ *
+ * ## Three answers, chosen by the posture's own anchoring rule
+ *
+ *   `hips`   (sit, bathe, swing)  the pivot the body is fastened at — on the cushion, in the
+ *            tub, on the plank — at the height of the surface it rests on.
+ *   `side`   (lie, rest)          the MIDDLE of where the body will lie. The anchor is at the
+ *            soles (a lying body extends back from its feet), so the point walks back along the
+ *            body's own axis to level with the piece's centre, never further than the body
+ *            reaches. A bed's point lands on the mattress, not at its foot.
+ *   `stand`  (everything acted AT) the face of the piece the body stands at, at the height the
+ *            hands work at — the player's own shoulder, clamped into the piece's measured height
+ *            band. A wardrobe gets its doors, a hob its front edge, a campfire the rim on the
+ *            player's side, and a deck the player is standing ON gets the edge they will look
+ *            out over.
+ *
+ * Everything here is measured (the footprint, the rig) — nothing is typed per item, so a redrawn
+ * model or a remodelled character moves the point with it.
+ */
+export function resolveInteractionPoint(
+  placement: PlacedItem,
+  interaction: FurnitureInteraction,
+  spot: InteractionSpot | null,
+  skeleton: CharacterSkeleton,
+): { x: number; y: number; z: number } {
+  const fp = getFootprint(placement.itemId);
+  const elevation = placement.position[1] || 0;
+  if (!fp || !spot) {
+    return { x: placement.position[0], y: elevation + UNMEASURED_POINT_HEIGHT, z: placement.position[2] };
+  }
+  const rotation = placement.rotation || 0;
+  const box = makeObb(fp, placement.position[0], placement.position[2], rotation);
+  const forwardX = Math.sin(spot.yaw);
+  const forwardZ = Math.cos(spot.yaw);
+
+  if (spot.anchored) {
+    // The catalog's own anchor — the seat's front lip, the spot in the tub, the plank — turned and
+    // placed by the piece's transform (the same convention as every box here). NOT `spot`, which is
+    // where the body's root goes: for a seat that is out in front of the lip, off the cushion.
+    const local = interactionAnchorLocal(interaction);
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    const ax = placement.position[0] + local.x * cos + local.z * sin;
+    const az = placement.position[2] - local.x * sin + local.z * cos;
+    const surfaceY = elevation + (interaction.surfaceY ?? fp.maxY);
+    if (interactionAnchoring(interaction) !== 'side') {
+      return { x: ax, y: surfaceY, z: az };
+    }
+    // Lying: the anchor is at the feet and the head lies BEHIND it, along the occupant's facing.
+    // Walk back along the body toward the piece's centre, never further than the body reaches.
+    const bodyLength = toWorld(skeleton.head.y - skeleton.soleY);
+    const along = Math.min(
+      bodyLength,
+      Math.max(0, -((box.cx - ax) * forwardX + (box.cz - az) * forwardZ)),
+    );
+    return { x: ax - forwardX * along, y: surfaceY, z: az - forwardZ * along };
+  }
+
+  // Standing at the piece: the body faces INTO it, so the face it uses is back along its heading
+  // — unless it is standing on the piece, in which case it faces OUT over the edge it will use.
+  const onPiece = isStandableItem(placement.itemId)
+    && footprintContainsPoint(
+      fp, placement.position[0], placement.position[2], placement.rotation || 0, spot.x, spot.z,
+    );
+  const dirX = onPiece ? forwardX : -forwardX;
+  const dirZ = onPiece ? forwardZ : -forwardZ;
+  // Where a ray from the box's centre along that direction leaves the box — a point ON the face,
+  // whatever angle a `nearest` piece is approached from.
+  const du = Math.abs(dirX * box.ux + dirZ * box.uz);
+  const dv = Math.abs(dirX * box.vx + dirZ * box.vz);
+  const out = Math.min(du > 1e-9 ? box.halfW / du : Infinity, dv > 1e-9 ? box.halfD / dv : Infinity);
+  const handY = toWorld(skeleton.shoulder.y);
+  return {
+    x: box.cx + dirX * out,
+    y: elevation + Math.min(fp.maxY, Math.max(fp.minY, handY)),
+    z: box.cz + dirZ * out,
+  };
+}
+
+/**
+ * One piece in reach, as {@link collectInteractablesInReach} reports it. Reused between frames by
+ * the caller, so the per-frame scan allocates nothing once the pool has grown.
+ */
+export interface ReachHit {
+  placement: PlacedItem;
+  /** Distance from the player to the piece's walk box (0 inside it). */
+  distance: number;
+  /** The piece's own reach. */
+  reach: number;
+  /** The point of the piece's box nearest the player — what targeting measures facing to. */
+  aimX: number;
+  aimZ: number;
+}
+
+/**
+ * EVERY piece the player at `(x, z)` may act on, into `out`; returns how many.
+ *
+ * ## Why every piece, and not the nearest
+ *
+ * This used to return one: the nearest box, and on a tie the first in the save. Between two
+ * pieces — a player at the gap between a bed and its nightstand, or at the corner where the hob
+ * meets the fridge — both boxes are at arm's length and the player's intent is decided by which
+ * way they face, which this function cannot see. Choosing here made that impossible to fix
+ * downstream: the prompt never learned the second piece existed. Choosing is now
+ * lib/interactionTargeting.ts's job, with facing in hand; this reports the field.
+ *
+ * Reach is still measured to the piece's BOX rather than its centre, so a bed you are standing
+ * against is in reach and a lamp across the room is not — and the piece's own
+ * {@link isBehindPiece} rule still drops a seat approached from behind its backrest.
  *
  * `placements` should already be narrowed to the pieces that declare an interaction (the caller
- * memoises that list against the save, since it only changes when furniture is placed or taken
- * up) — this runs every frame and the per-frame part of it is deliberately only the distances.
+ * memoises that list against the save); the per-frame part is distances only.
  */
-export function findNearbyInteractable(
+export function collectInteractablesInReach(
   x: number,
   z: number,
   placements: readonly PlacedItem[],
-): PlacedItem | null {
-  let best: PlacedItem | null = null;
-  let bestDistance = Infinity;
+  out: ReachHit[],
+): number {
+  let count = 0;
 
   for (const placement of placements) {
     const interaction = getPrimaryInteraction(placement.itemId);
@@ -551,6 +622,8 @@ export function findNearbyInteractable(
     const fp = getFootprint(placement.itemId);
 
     let distance: number;
+    let aimX = placement.position[0];
+    let aimZ = placement.position[2];
     if (fp) {
       // Cheap circular reject before the oriented-box test — a furnished house is mostly pieces
       // in another room, and those cost two subtractions and a compare each.
@@ -559,18 +632,55 @@ export function findNearbyInteractable(
       const dz = z - placement.position[2];
       const outer = Math.hypot(box.halfW, box.halfD) + Math.hypot(box.cx, box.cz) + reach;
       if (dx * dx + dz * dz > outer * outer) continue;
-      distance = obbDistanceToPoint(obbFor(placement, fp), x, z);
+      const obb = obbFor(placement, fp);
+      distance = obbDistanceToPoint(obb, x, z);
+      if (distance > reach) continue;
+      // Nearest point of the box: clamp the player into it in the box's own frame.
+      const rx = x - obb.cx;
+      const rz = z - obb.cz;
+      const u = Math.max(-obb.halfW, Math.min(obb.halfW, rx * obb.ux + rz * obb.uz));
+      const v = Math.max(-obb.halfD, Math.min(obb.halfD, rx * obb.vx + rz * obb.vz));
+      aimX = obb.cx + u * obb.ux + v * obb.vx;
+      aimZ = obb.cz + u * obb.uz + v * obb.vz;
     } else {
       distance = Math.hypot(x - placement.position[0], z - placement.position[2]) - UNMEASURED_REACH;
+      if (distance > reach) continue;
     }
 
-    if (distance > reach || distance >= bestDistance) continue;
     if (interactionOccupies(interaction) && isBehindPiece(placement, interaction, x, z)) continue;
-    bestDistance = distance;
-    best = placement;
+
+    const hit = out[count] ?? (out[count] = { placement, distance: 0, reach: 0, aimX: 0, aimZ: 0 });
+    hit.placement = placement;
+    hit.distance = Math.max(0, distance);
+    hit.reach = reach;
+    hit.aimX = aimX;
+    hit.aimZ = aimZ;
+    count++;
   }
 
-  return best;
+  return count;
+}
+
+const NEAREST_SCRATCH: ReachHit[] = [];
+
+/**
+ * The single nearest piece in reach, by box distance, or null. Kept for callers that only need
+ * "is anything usable here" — audits and tests. The game's own targeting does NOT use this: the
+ * nearest box is not necessarily the piece the player means (see
+ * {@link collectInteractablesInReach}).
+ */
+export function findNearbyInteractable(
+  x: number,
+  z: number,
+  placements: readonly PlacedItem[],
+): PlacedItem | null {
+  const count = collectInteractablesInReach(x, z, placements, NEAREST_SCRATCH);
+  let best: ReachHit | null = null;
+  for (let i = 0; i < count; i++) {
+    const hit = NEAREST_SCRATCH[i];
+    if (!best || hit.distance < best.distance) best = hit;
+  }
+  return best?.placement ?? null;
 }
 
 /**
@@ -629,14 +739,9 @@ function isBehindPiece(
 }
 
 /**
- * The same search, with the answer already described.
- *
- * Deliberately NOT what the per-frame caller uses: {@link describeInteraction} builds a handful of
- * small objects, and this runs 60 times a second beside a comment (Three/Avatar.tsx's
- * `nearbyCandidates`) about how per-frame allocation in that loop is the frame stutter. The
- * controller finds the PLACEMENT every frame — which allocates nothing — and re-describes it only
- * when it changes. This wrapper is for callers that ask once: tests, audits, and anything that is
- * not inside a render loop.
+ * The nearest piece, with the answer already described. For callers that ask once — tests and
+ * audits. The game describes each piece in reach once, when it comes into reach (Three/Avatar.tsx),
+ * and lets lib/interactionTargeting.ts choose among them.
  */
 export function findNearbyInteraction(
   x: number,

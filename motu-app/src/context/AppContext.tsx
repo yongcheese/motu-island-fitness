@@ -53,6 +53,7 @@ import type { WeeklyTaskDraft } from '../constants/weeklyTasks';
 import type { UtilityCardId } from '../constants/utilityCards';
 import { SEEN_HEARTBEAT_MS } from '../constants/islandReturn';
 import { migrateProfileToPlayerHome } from './homeMigration';
+import { structuralShare } from '../lib/structuralShare';
 import { reconcileInventoryStock } from '../utils/inventory';
 import { stripRetiredItems } from '../constants/retiredItems';
 import { STARTER_HOUSE_ITEM_ID } from '../constants/houseStyles';
@@ -85,8 +86,6 @@ interface AppContextType {
   setIsGameLoading: (loading: boolean) => void;
   nearbyBuilding: { id: string, name: string } | null;
   setNearbyBuilding: (building: { id: string, name: string } | null) => void;
-  nearbyInteractable: string | null;
-  setNearbyInteractable: (name: string | null) => void;
   joystickData: { x: number, y: number } | null;
   setJoystickData: (data: { x: number, y: number } | null) => void;
   orbitJoystickData: { x: number, y: number } | null;
@@ -333,6 +332,123 @@ const WEATHER_CYCLE_ORDER = [
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+/**
+ * 只訂閱自己讀的那幾個欄位 —— the store behind {@link useAppPick}.
+ *
+ * ## Why this exists (measured, not assumed)
+ *
+ * The value above is a fresh object on every AppProvider render, so `useApp()` re-renders its
+ * caller on ANY change to ANY of its ~100 fields. For the HUD that is tolerable. For the 3D tree it
+ * was the single biggest source of hitches: profiling a weather change put the island's R3F tree
+ * through two full commits (104 + 135 components, ~36 ms of render in dev) — the Avatar (~4 ms a
+ * render), the whole house (~8 ms), the camera, the prompt tracker — none of which read the field
+ * that changed. The same burst ran on every view change (~150 ms of main thread coming back from
+ * the house), every weather auto-cycle (once a minute), every coin and every proximity flag.
+ *
+ * The context cannot simply be memoised or split without touching every one of its consumers. So
+ * the provider ALSO publishes its value to this tiny store, and a component that only reads a few
+ * fields subscribes to exactly those through `useSyncExternalStore`. The store object never
+ * changes, so the context that carries it (and which R3F's context bridge re-provides inside the
+ * Canvas on every parent render) never re-renders anybody.
+ */
+interface AppStore {
+  get: () => AppContextType;
+  subscribe: (listener: () => void) => () => void;
+  publish: (value: AppContextType) => void;
+}
+
+function createAppStore(initial: AppContextType): AppStore {
+  let value = initial;
+  const listeners = new Set<() => void>();
+  return {
+    get: () => value,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    publish: (next) => {
+      if (next === value) return;
+      value = next;
+      listeners.forEach((l) => l());
+    },
+  };
+}
+
+const AppStoreContext = createContext<AppStore | null>(null);
+
+type AppPick<K extends keyof AppContextType> = Pick<AppContextType, K>;
+
+/**
+ * `useApp()`, narrowed to the fields named — the caller re-renders only when one of THOSE changes.
+ *
+ *     const { weather, profile } = useAppPick('weather', 'profile');
+ *
+ * Function-valued fields (every setter and action on the context) are handed out as stable
+ * forwarders that call whatever the provider's CURRENT function is. Several of them are recreated
+ * on every provider render, and if identity counted, picking `claimIslandTreasure` would re-render
+ * on every coin exactly like `useApp()` does; since calling a stale one is the only thing identity
+ * could protect against, forwarding to the latest removes both problems at once.
+ */
+export function useAppPick<K extends keyof AppContextType>(...keys: K[]): AppPick<K> {
+  const store = useContext(AppStoreContext);
+  if (!store) throw new Error('useAppPick must be used within an AppProvider');
+
+  const cacheRef = useRef<{
+    source: AppContextType | null;
+    picked: AppPick<K> | null;
+    forwarders: Partial<Record<K, (...args: unknown[]) => unknown>>;
+  }>({ source: null, picked: null, forwarders: {} });
+
+  const getSnapshot = () => {
+    const value = store.get();
+    const cache = cacheRef.current;
+    if (cache.source === value && cache.picked) return cache.picked;
+
+    let changed = !cache.picked;
+    if (!changed) {
+      for (const key of keys) {
+        const next = value[key];
+        if (typeof next === 'function') continue;
+        if (cache.picked![key] !== next) { changed = true; break; }
+      }
+    }
+    cache.source = value;
+    if (!changed) return cache.picked!;
+
+    const picked = {} as AppPick<K>;
+    for (const key of keys) {
+      const next = value[key];
+      if (typeof next === 'function') {
+        const forwarder = cache.forwarders[key]
+          ?? (cache.forwarders[key] = (...args: unknown[]) =>
+            (store.get()[key] as unknown as (...a: unknown[]) => unknown)(...args));
+        (picked as Record<K, unknown>)[key] = forwarder;
+      } else {
+        (picked as Record<K, unknown>)[key] = next;
+      }
+    }
+    cache.picked = picked;
+    return picked;
+  };
+
+  return React.useSyncExternalStore(store.subscribe, getSnapshot, getSnapshot);
+}
+
+/**
+ * The context's CURRENT value, read on demand — and never a re-render.
+ *
+ * For the fields a component only reads inside `useFrame` or an event handler: subscribing to them
+ * (with `useApp` or `useAppPick`) re-renders the whole component whenever they change, to hand it a
+ * value its render never looks at. The avatar's weather is the case this was written for — it is
+ * read once a frame to decide whether to stretch in the sun, and picking it re-rendered both
+ * avatars and their entire wardrobe on every weather tick.
+ */
+export function useAppReader(): () => AppContextType {
+  const store = useContext(AppStoreContext);
+  if (!store) throw new Error('useAppReader must be used within an AppProvider');
+  return store.get;
+}
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -342,7 +458,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [loading, setLoading] = useState(true);
   const [isGameLoading, setIsGameLoading] = useState(true);
   const [nearbyBuilding, setNearbyBuilding] = useState<{ id: string, name: string } | null>(null);
-  const [nearbyInteractable, setNearbyInteractable] = useState<string | null>(null);
   const joystickData = React.useMemo(() => ({ x: 0, y: 0 }), []);
   const orbitJoystickData = React.useMemo(() => ({ x: 0, y: 0 }), []);
 
@@ -918,13 +1033,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Also clear nearby building and interactables when changing view.
     //
     // The Home's door only exists outdoors, so `nearbyBuilding` is cleared for anything that is
-    // not the island. Interactable FURNITURE exists in both worlds — the house is full of it —
-    // so that one survives into BUILDING_INTERIOR and is cleared everywhere else. Clearing it
-    // there too is what used to make the indoor prompt impossible: the value was wiped on the
-    // same tick the player walked through the front door.
+    // not the island. (What the action key acts on is not React state at all — it is
+    // playerBus.interactionTarget, which each world's tracker clears itself.)
     if (currentView !== View.HOME) {
       setNearbyBuilding(null);
-      if (currentView !== View.BUILDING_INTERIOR) setNearbyInteractable(null);
     }
   }, [currentView]);
 
@@ -959,7 +1071,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // on screen.
         const attachProfileListener = () => {
           unsubProfile = onSnapshot(profileRef, (doc) => {
-            if (doc.exists()) setProfile(doc.data() as UserProfile);
+            // Structurally shared with what is already on screen, so a snapshot only changes the
+            // identity of the fields that actually changed — see lib/structuralShare.ts.
+            if (doc.exists()) setProfile((prev) => structuralShare(prev, doc.data() as UserProfile));
           }, (error) => {
             console.warn("Profile realtime listener failed:", error);
           });
@@ -1262,7 +1376,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // in the database while the screen never moves. It also self-heals — the first snapshot
         // replaces the fallback with the real save.
         unsubProfile = onSnapshot(profileRef, (doc) => {
-          if (doc.exists()) setProfile(doc.data() as UserProfile);
+          // Structurally shared — see attachProfileListener above and lib/structuralShare.ts.
+          if (doc.exists()) setProfile((prev) => structuralShare(prev, doc.data() as UserProfile));
         }, (error) => {
           console.warn("Profile realtime listener failed:", error);
         });
@@ -1410,61 +1525,73 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
+  const contextValue: AppContextType = {
+    user, profile, settings, updateSettings, updateProfile, currentView, setCurrentView,
+    settingsWriteError, retrySettingsWrite,
+    isWorkoutActive, setIsWorkoutActive, loading,
+    isGameLoading, setIsGameLoading,
+    nearbyBuilding, setNearbyBuilding,
+    joystickData, setJoystickData,
+    orbitJoystickData, setOrbitJoystickData,
+    uiScale, setUiScale,
+    cameraMode, setCameraMode,
+    weather, setWeather,
+    isWeatherAuto, setWeatherAutoMode,
+    isWeatherSyncActive, setWeatherSyncMode,
+    weatherSyncLoading, weatherSyncData,
+    grantReward, addCurrency, addGold, addFragments, addXp,
+    setCurrency, setGold, setFragments, setXp,
+    addRaffleTickets, setRaffleTickets,
+    petDog, claimIslandTreasure,
+    expandTerritory, shrinkTerritory,
+    forceShowLoginBonus, claimDailyReward: claimDailyRewardWithPrize,
+    externalActionTrigger, triggerExternalAction,
+    islandAlert, showIslandAlert,
+    purchaseItem, grantAllItems, revokeGrantedItems, applyHouseStyle,
+    grantFragments, unlockWithFragments,
+    spinLuckyWheel,
+    activePlacementItem,
+    islandDraft: islandEditor.islandDraft,
+    isDraftBlocked: islandEditor.isDraftBlocked,
+    draftBlockMessage: islandEditor.draftBlockMessage,
+    setDraftBlock: islandEditor.setDraftBlock,
+    setActivePlacementItem: islandEditor.startPlacement,
+    selectIslandPlacement: islandEditor.selectIslandPlacement,
+    selectHome: islandEditor.selectHome,
+    homeMenuOpen: islandEditor.homeMenuOpen,
+    closeHomeMenu: islandEditor.closeHomeMenu,
+    startHomeTransform: islandEditor.startHomeTransform,
+    setDraftTransform: islandEditor.setDraftTransform,
+    rotateDraft: islandEditor.rotateDraft,
+    cancelDraft: islandEditor.cancelDraft,
+    commitDraft: islandEditor.commitDraft,
+    retrieveDraftTarget: islandEditor.retrieveDraftTarget,
+    removeIslandPlacement,
+    islandReturn, dismissIslandReturn,
+    islandRecovery, previewIslandColour,
+    tidyIslandAt, greetPet, simulateOfflineDays, resetIslandEnvironment,
+    workoutReward, dismissWorkoutReward, simulateWorkoutCompletion, resetWorkoutRewards,
+    feedPet, pendingPetFood, armPetFeeding, cancelPetFeeding, setPetCare,
+    grantUtilityCards, useUtilityCard, resetUtilityCards,
+    buyLimitedOffer, markMerchantGreeted, spinWheel,
+    weeklyTaskView, createWeeklyTask, updateWeeklyTask, deleteWeeklyTask, claimWeeklyTaskReward
+  };
+
+  // One store for the provider's lifetime, seeded with the first value so a picker mounting in
+  // this very render already reads real data. Published from a layout effect — the same point
+  // react-redux notifies from — so pickers catch up before the frame is painted, and only the ones
+  // whose fields actually changed re-render. See AppStore.
+  const [appStore] = useState(() => createAppStore(contextValue));
+  React.useLayoutEffect(() => {
+    appStore.publish(contextValue);
+  });
+
   return (
-    <AppContext.Provider value={{ 
-      user, profile, settings, updateSettings, updateProfile, currentView, setCurrentView,
-      settingsWriteError, retrySettingsWrite,
-      isWorkoutActive, setIsWorkoutActive, loading,
-      isGameLoading, setIsGameLoading,
-      nearbyBuilding, setNearbyBuilding,
-      nearbyInteractable, setNearbyInteractable,
-      joystickData, setJoystickData,
-      orbitJoystickData, setOrbitJoystickData,
-      uiScale, setUiScale,
-      cameraMode, setCameraMode,
-      weather, setWeather,
-      isWeatherAuto, setWeatherAutoMode,
-      isWeatherSyncActive, setWeatherSyncMode,
-      weatherSyncLoading, weatherSyncData,
-      grantReward, addCurrency, addGold, addFragments, addXp,
-      setCurrency, setGold, setFragments, setXp,
-      addRaffleTickets, setRaffleTickets,
-      petDog, claimIslandTreasure,
-      expandTerritory, shrinkTerritory,
-      forceShowLoginBonus, claimDailyReward: claimDailyRewardWithPrize,
-      externalActionTrigger, triggerExternalAction,
-      islandAlert, showIslandAlert,
-      purchaseItem, grantAllItems, revokeGrantedItems, applyHouseStyle,
-      grantFragments, unlockWithFragments,
-      spinLuckyWheel,
-      activePlacementItem,
-      islandDraft: islandEditor.islandDraft,
-      isDraftBlocked: islandEditor.isDraftBlocked,
-      draftBlockMessage: islandEditor.draftBlockMessage,
-      setDraftBlock: islandEditor.setDraftBlock,
-      setActivePlacementItem: islandEditor.startPlacement,
-      selectIslandPlacement: islandEditor.selectIslandPlacement,
-      selectHome: islandEditor.selectHome,
-      homeMenuOpen: islandEditor.homeMenuOpen,
-      closeHomeMenu: islandEditor.closeHomeMenu,
-      startHomeTransform: islandEditor.startHomeTransform,
-      setDraftTransform: islandEditor.setDraftTransform,
-      rotateDraft: islandEditor.rotateDraft,
-      cancelDraft: islandEditor.cancelDraft,
-      commitDraft: islandEditor.commitDraft,
-      retrieveDraftTarget: islandEditor.retrieveDraftTarget,
-      removeIslandPlacement,
-      islandReturn, dismissIslandReturn,
-      islandRecovery, previewIslandColour,
-      tidyIslandAt, greetPet, simulateOfflineDays, resetIslandEnvironment,
-      workoutReward, dismissWorkoutReward, simulateWorkoutCompletion, resetWorkoutRewards,
-      feedPet, pendingPetFood, armPetFeeding, cancelPetFeeding, setPetCare,
-      grantUtilityCards, useUtilityCard, resetUtilityCards,
-      buyLimitedOffer, markMerchantGreeted, spinWheel,
-      weeklyTaskView, createWeeklyTask, updateWeeklyTask, deleteWeeklyTask, claimWeeklyTaskReward
-    }}>
-      {children}
-    </AppContext.Provider>
+    <AppStoreContext.Provider value={appStore}>
+      <AppContext.Provider value={contextValue}>
+        {children}
+      </AppContext.Provider>
+    </AppStoreContext.Provider>
   );
 };
 

@@ -44,7 +44,6 @@ export function FitnessView() {
 
   const [reps, setReps] = useState(0);
   const [seconds, setSeconds] = useState(0);
-  const [calories, setCalories] = useState(0);
   /**
    * What the finished session was worth, for the results screen ONLY.
    *
@@ -79,7 +78,6 @@ export function FitnessView() {
 
   const handleRep = () => {
     setReps(r => r + 1);
-    setCalories(c => c + 0.8);
     playSound(SoundEffect.TICK, 0.2); // Subtle tick for each rep
   };
 
@@ -88,7 +86,6 @@ export function FitnessView() {
     setWorkoutType(type);
     setReps(0);
     setSeconds(0);
-    setCalories(0);
     setFragmentReward(null);
     setPayout(null);
     setIsActive(true);
@@ -328,16 +325,9 @@ export function FitnessView() {
               </div>
             </div>
 
-            <div className="w-full bg-black/60 backdrop-blur-2xl p-8 rounded-[3rem] border border-white/10 shadow-[0_24px_48px_rgba(0,0,0,0.5)] flex items-center justify-around">
-              <div className="text-center">
-                <span className="block text-[10px] text-white/40 uppercase font-black mb-1">次數</span>
-                <span className="text-6xl font-black text-white font-mono tracking-tighter">{reps}</span>
-              </div>
-              <div className="w-px h-16 bg-white/10" />
-              <div className="text-center">
-                <span className="block text-[10px] text-white/40 uppercase font-black mb-1">卡路里</span>
-                <span className="text-6xl font-black text-island-teal-light font-mono tracking-tighter">{calories.toFixed(1)}</span>
-              </div>
+            <div className="bg-black/60 backdrop-blur-2xl px-12 py-8 rounded-[3rem] border border-white/10 shadow-[0_24px_48px_rgba(0,0,0,0.5)] text-center">
+              <span className="block text-[10px] text-white/40 uppercase font-black mb-1">次數</span>
+              <span className="text-6xl font-black text-white font-mono tracking-tighter">{reps}</span>
             </div>
           </div>
         </div>

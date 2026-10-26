@@ -160,11 +160,20 @@ export type ApproachSide = 'front' | 'nearest';
  * drawn. They are never world coordinates: the runtime turns them by the placement's rotation
  * and adds its position, so a sofa rotated to face any wall carries its seat around with it.
  *
- * The body's own height on that anchor is NOT stated here. It is derived from the character rig
- * (constants/characterRig.ts) by {@link poseRootHeight}, so a remodel that changes the
- * character's proportions moves every seated body in the game with it and no catalog row has to
- * be retuned. What the catalog states is a fact about the FURNITURE — where its cushion is —
- * which is measurable, checkable (`npm run audit:interactions`) and cannot go stale in silence.
+ * The body's own place on that anchor is NOT stated here. It is solved from the character rig's
+ * body volumes (constants/characterRig.ts's `BodyVolumes`, lib/occupantFit.ts), so a remodel
+ * that changes the character's proportions moves every seated and lying body in the game with it
+ * and no catalog row has to be retuned. What the catalog states is a fact about the FURNITURE —
+ * where its cushion is, where its seat stops, where its ropes hang — which is measurable,
+ * checkable (`npm run audit:interactions`) and cannot go stale in silence.
+ *
+ * Every field below is therefore one of the three things the brief asks each piece to be able to
+ * say, and nothing else:
+ *
+ *   where the body goes          `surfaceY`, `seatFront` / `forward`, `lateral`, `facing`
+ *   which body                   `kind` / `posture` (sit, lie, bathe, swing, …)
+ *   what the body needs from it  `give`, `headRest`, `grip` — a soft surface, a pillow, ropes
+ *   whether it carries the body  `sway` — a row in constants/outdoorAnimation.ts
  */
 export interface FurnitureInteraction {
   kind: InteractionKind;
@@ -209,10 +218,14 @@ export interface FurnitureInteraction {
    * THE SEAT'S OWN FRONT LIP — the edge the legs hang over, measured along the direction the
    * occupant faces, from the piece's own origin, at the scale the piece is drawn.
    *
+   * It is the ANCHOR for a seat: where the hip goes is solved from it and the rig's body volumes
+   * (lib/occupantFit.ts's `fitOverEdge` — the hip sits where the leg's own surface rests on this
+   * edge). The history below is why a seat states its lip rather than a hip position.
+   *
    * ## Why the anchor for a seat is derived from this rather than typed directly
    *
    * This character has no knee. Its leg is ONE straight segment from the hip to the sole, and
-   * `poseRootHeight` puts that hip exactly ON the surface the catalog names. So a leg hanging
+   * the old anchor put that hip exactly ON the surface the catalog names. So a leg hanging
    * from a hip anywhere behind the seat's front edge is inside the seat — not by a little, and
    * not fixably by choosing a better angle: for any swing at all, the leg is below the top face
    * from the first millimetre, and it stays inside the piece until it has travelled forward as
@@ -229,11 +242,13 @@ export interface FurnitureInteraction {
    * pose in five of the twelve seats in the catalog.
    *
    * So the one number the catalog states is the one thing a bounding box cannot tell us — where
-   * the SEAT stops — and the body's own place on it is derived from the rig by
-   * {@link seatHipInset}, exactly as its HEIGHT is already derived from `surfaceY` by
-   * {@link poseRootHeight}. A remodelled character with a different build sits correctly on
-   * every seat in the game without a catalog row being retyped; a redrawn sofa needs one number
-   * re-measured, and `npm run audit:interactions` says so when it does not match the model.
+   * the SEAT stops — and the body's own place on it is derived from the rig. The first version of
+   * that derivation put the hip one leg-THICKNESS behind the lip, which cleared the leg's axis and
+   * buried the leg itself in the cushion (12.5 cm on 奢華沙發, straight through the plank of
+   * 木製鞦韆); it is now solved from the leg's volume. A remodelled character with a different
+   * build sits correctly on every seat in the game without a catalog row being retyped; a
+   * redrawn sofa needs one number re-measured, and `npm run audit:interactions` says so when it
+   * does not match the model.
    */
   seatFront?: number;
   /**
@@ -247,11 +262,27 @@ export interface FurnitureInteraction {
    */
   facing?: number;
   /**
-   * Lie only: how far the body settles INTO the surface, 0..1. A hammock's fabric sags around
-   * whoever is in it (~0.8); a mattress compresses a little (~0.25); a bench does not give at
-   * all (0). Scales the body's own half-thickness — see {@link poseRootHeight}.
+   * How far the body settles INTO the surface it rests on, 0..1 — a fraction of its own back's
+   * depth. A hammock's fabric sags around whoever is in it; a mattress compresses a little
+   * (~0.25); a bench does not give at all (0). Not read for a seat whose legs hang over its lip:
+   * that body rests on the lip, and a lip does not give.
    */
   give?: number;
+  /**
+   * Lying only: the height of whatever the HEAD rests on — a pillow's top — in the piece's own
+   * frame, when it is higher than `surfaceY`. The head is then held up to rest on it rather than
+   * pushed into it (lib/occupantFit.ts's `lieHeadRise`). Omitted: the head rests level with the
+   * rest of the body.
+   */
+  headRest?: number;
+  /**
+   * Something the occupant HOLDS — a swing's two ropes — as two vertical lines at ±`lateral`
+   * across the occupant and `forward` along their facing, in the piece's own frame at the scale
+   * it is drawn. The arms are aimed at them every frame (lib/occupantFit.ts), so the hands stay
+   * on the ropes as the body leans and the seat swings; a posture's own arm pose is what a piece
+   * without a grip gets.
+   */
+  grip?: { lateral: number; forward?: number };
   /**
    * The piece MOVES under whoever is on it, and which way it moves.
    *
@@ -282,9 +313,6 @@ export interface FurnitureInteraction {
  * stepping away drops you out of it.
  */
 export const DEFAULT_INTERACTION_REACH = 0.9;
-
-/** How high above the piece's own top face the floating prompt badge is anchored. */
-export const PROMPT_ANCHOR_CLEARANCE = 0.45;
 
 /**
  * How far clear of a piece's own box an acting posture stands, on top of the player's radius.
@@ -335,7 +363,7 @@ export function interactionOccupies(interaction: FurnitureInteraction): boolean 
   return getPosture(interactionPosture(interaction)).occupies;
 }
 
-/** How the body's root height comes off the anchor — see PostureAnchoring. */
+/** Which point of the body is fastened to the anchor — see PostureAnchoring. */
 export function interactionAnchoring(interaction: FurnitureInteraction): PostureAnchoring {
   return getPosture(interactionPosture(interaction)).anchoring;
 }
@@ -358,115 +386,31 @@ export function interactionIcon(interaction: FurnitureInteraction): InteractionI
 }
 
 // ---------------------------------------------------------------------------
-// THE BODY ON THE FURNITURE — derived from the rig, never typed into the catalog
+// WHERE ON THE PIECE — the anchor the catalog states; the body's place on it is solved elsewhere
 // ---------------------------------------------------------------------------
 
 /**
- * How far a lying body's head sits ABOVE horizontal, radians — and why the recline is not a flat
- * quarter turn.
+ * THE ANCHOR, in the piece's own local frame: the midpoint of the seat's front lip for a seat
+ * whose legs hang over one, the stated spot for everything else. One function, so that "the
+ * catalog says it" cannot be answered differently in two places.
  *
- * This character is a chibi: the skull is 0.26 across against a 0.135 body, so a body laid
- * perfectly flat rests its torso on the mattress and buries a third of its head in it. The
- * amount of lift that fixes that is not a taste call — it is exactly the difference between the
- * two radii, seen from the head joint — so it is computed rather than tuned, and a model with a
- * smaller head automatically lies flatter.
+ * Where the BODY goes relative to this — how far in front of the lip the hip ends up, how high
+ * above the mattress the soles are held — is not the catalog's to say and not answered here: it
+ * is solved from the rig's body volumes by lib/occupantFit.ts, which is what lets a remodelled
+ * character sit on every seat in the game with no row retyped.
  *
- * The hammock's hand-tuned pitch (-PI/2.1, 85.7 deg) was this same idea applied by eye to one
- * piece of furniture. On the legacy skeleton this returns 79.7 deg, which raises that hammock's
- * head by ~10cm and is the whole visible difference.
+ * The projection is written out in full rather than assuming `facing: 0`: the frame the lip is
+ * stated in is the OCCUPANT'S, so a seat turned to face along the piece's local X resolves
+ * without this function changing.
  */
-export function lieHeadRise(skeleton: CharacterSkeleton): number {
-  // Scale-free: every term is LOCAL, so `toWorld` would cancel out of the ratio.
-  const excess = skeleton.head.crownRise - skeleton.torso.halfWidth;
-  return Math.asin(Math.max(0, Math.min(0.5, excess / skeleton.head.y)));
-}
-
-/** The body's pitch while lying — negative tips the chest backwards. See {@link lieHeadRise}. */
-export function liePitch(skeleton: CharacterSkeleton): number {
-  return -(Math.PI / 2 - lieHeadRise(skeleton));
-}
-
-/**
- * Where the character's ROOT ORIGIN — its ground contact point, see constants/characterRig.ts —
- * has to be for the body to rest properly on a surface at `surfaceY`.
- *
- * Two different geometries, one function, because both are statements about the RIG rather than
- * about any particular piece or posture:
- *
- *   `hips`  The body's weight is on its HIP JOINT — sitting on a cushion, and sitting on the
- *           floor of a bathtub. Putting the hip on the surface puts the root exactly one
- *           hip-height below it, which is why a model with longer legs sits correctly on the
- *           same sofa without a single catalog row changing.
- *   `side`  The body is turned on its side about its own feet, so all of it ends up at the
- *           root's height and what rests on the surface is the body's SIDE. The root therefore
- *           rises by half the body's thickness, less however much the surface gives under it.
- *   `stand` No anchor at all: an acting posture is played on the floor the player is standing
- *           on, so the surface height is not consulted.
- */
-export function poseRootHeight(
-  anchoring: PostureAnchoring,
-  surfaceY: number,
-  skeleton: CharacterSkeleton,
-  give = 0,
-): number {
-  if (anchoring === 'stand') return 0;
-  if (anchoring === 'hips') return surfaceY - toWorld(skeleton.hip.y);
-  return surfaceY + toWorld(skeleton.torso.halfWidth) * (1 - clamp01(give));
-}
-
-/**
- * How far a lying body reaches from its anchor, world units — the length that has to fit on the
- * mattress, and what `npm run audit:interactions` checks every lie point against. A shade less
- * than the character's height, because {@link lieHeadRise} holds the head a few degrees up.
- */
-export function lieBodyReach(skeleton: CharacterSkeleton): number {
-  const height = toWorld(skeleton.head.y + skeleton.head.crownRise - skeleton.soleY);
-  return height * Math.cos(lieHeadRise(skeleton));
-}
-
-/**
- * HOW FAR BEHIND A SEAT'S FRONT LIP THE HIP JOINT GOES, world units — the whole of the
- * alignment rule for a seated body, and a rig measurement rather than a preference.
- *
- * The leg is a capsule about the hip's own axis. `hip.x` is the rig's statement of how far that
- * axis sits from the body's centreline, and on every skeleton in this project it is within a
- * couple of centimetres of the leg's own radius (legacy: hip.x 0.065 against LEG_RADIUS 0.055,
- * both LOCAL). So putting the hip ONE of these back from the lip is putting the leg's near
- * surface ON the lip: the leg grazes the seat's front face instead of crossing it, and every
- * millimetre of it below the lip is in open air.
- *
- * Any larger and the leg starts inside the piece — the bug this exists to end. Any smaller and
- * the body is perched on the very edge with nothing under its weight. The audit checks the
- * consequence rather than the number ({@link seatLegClearance} is what it hands the leg solver),
- * so a future rig where the two measurements diverge fails loudly instead of quietly clipping.
- */
-export function seatHipInset(skeleton: CharacterSkeleton): number {
-  return toWorld(skeleton.hip.x);
-}
-
-/**
- * WHERE ON THE PIECE THE BODY GOES, in the piece's own local frame — one function, so that
- * "the catalog says it" and "the rig says it" cannot be answered differently in two places.
- *
- * A seat whose legs hang over an edge states {@link FurnitureInteraction.seatFront} and has its
- * anchor derived; everything else states `forward` and keeps it. `lateral` is the same in both:
- * the position ACROSS the piece.
- *
- * The projection is written out in full rather than assuming `facing: 0` — the frame the anchor
- * is stated in is the OCCUPANT'S, so a seat turned to face along the piece's local X (nothing in
- * the catalog does today; a corner unit would) resolves without this function changing.
- */
-export function interactionAnchorLocal(
-  interaction: FurnitureInteraction,
-  skeleton: CharacterSkeleton,
-): { x: number; z: number } {
+export function interactionAnchorLocal(interaction: FurnitureInteraction): { x: number; z: number } {
   const lateral = interaction.lateral ?? 0;
   if (interaction.seatFront === undefined) {
     return { x: lateral, z: interaction.forward ?? 0 };
   }
   const facing = interaction.facing ?? 0;
-  const along = interaction.seatFront - seatHipInset(skeleton);
-  // facing 0 gives (x, z) = (lateral, along), which is what every existing row means.
+  const along = interaction.seatFront;
+  // facing 0 gives (x, z) = (lateral, seatFront).
   return {
     x: Math.sin(facing) * along + Math.cos(facing) * lateral,
     z: Math.cos(facing) * along - Math.sin(facing) * lateral,
@@ -474,33 +418,10 @@ export function interactionAnchorLocal(
 }
 
 /**
- * What the leg solver has to clear — the distance from the anchor to the lip the legs hang
- * over, or null for an interaction that never declared one.
- *
- * By construction this is exactly {@link seatHipInset}: the anchor was derived by stepping back
- * from the lip by it. It is a function rather than a constant at the call site so that the
- * relationship stays visible — the leg is cleared against the SEAT, and the seat is where the
- * catalog says it is, never where the bounding box happens to end.
- */
-export function seatLegClearance(
-  interaction: FurnitureInteraction,
-  skeleton: CharacterSkeleton,
-): number | null {
-  return interaction.seatFront === undefined ? null : seatHipInset(skeleton);
-}
-
-/**
- * How far a body sitting on an anchor reaches AHEAD of it, world units — hip joint to sole,
- * with the legs straight out.
- *
- * The bathtub check: a body whose legs extend forward has to have somewhere to put them, and
- * `npm run audit:interactions` uses this to confirm the feet land inside the tub rather than
- * through its far end.
+ * How far a body sitting on an anchor reaches AHEAD of it, world units — hip joint to sole, with
+ * the legs straight out. The bathtub check: `npm run audit:interactions` uses it to confirm the
+ * feet land inside the tub rather than through its far end.
  */
 export function seatedLegReach(skeleton: CharacterSkeleton): number {
   return toWorld(skeleton.hip.y - skeleton.soleY);
-}
-
-function clamp01(v: number): number {
-  return v < 0 ? 0 : v > 1 ? 1 : v;
 }

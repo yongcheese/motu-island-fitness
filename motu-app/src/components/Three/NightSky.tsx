@@ -6,7 +6,7 @@
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { useApp } from '../../context/AppContext';
+import { useAppPick } from '../../context/AppContext';
 import { WeatherType } from '../../types';
 
 /**
@@ -537,7 +537,7 @@ function Meteor({ nightRef, initialDelay }: { nightRef: React.MutableRefObject<n
 }
 
 export function NightSky() {
-  const { weather } = useApp();
+  const { weather } = useAppPick('weather');
 
   // Shared 0..1 darkness ramp. A ref rather than state so the moon, the stars
   // and both meteors read the same value without re-rendering any of them.

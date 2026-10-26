@@ -71,6 +71,7 @@
 // patter, not a swell, and reads as its own thing.
 
 import { getSynthAudioContext } from './soundUtils';
+import { sharedSingleton } from './sharedRegistry';
 
 export type AmbientMoodId =
   | 'island-dawn'
@@ -1278,8 +1279,19 @@ interface AmbientState {
   lastTickTime: number;
 }
 
-let state: AmbientState | null = null;
-let generationCounter = 0;
+/**
+ * The running mood, and the counter that tells a stale scheduler it has been replaced.
+ *
+ * Shared through sharedSingleton for the same reason as soundUtils' mute state: under the dev
+ * server a hot update can leave two instances of this module alive, and with a bare `let` the
+ * newer one cannot see — and so can never stop — a mood the older one started. That is a BGM the
+ * mute cannot reach, playing under a second one. One copy per page means `stopAmbientMusic()`
+ * stops whatever is playing, whichever instance started it.
+ */
+const engine = sharedSingleton('ambientMusic.engine.v1', () => ({
+  state: null as AmbientState | null,
+  generation: 0,
+}));
 
 /** How often the scheduler wakes, and how far ahead of the clock it writes. */
 const LOOKAHEAD_MS = 25;
@@ -1466,7 +1478,7 @@ function scheduleBeat(s: AmbientState, beat: number, time: number) {
 }
 
 function tick(gen: number) {
-  const s = state;
+  const s = engine.state;
   if (!s || s.generation !== gen) return;
   const ctx = getSynthAudioContext();
   if (!ctx) return;
@@ -1539,9 +1551,9 @@ export const startAmbientMusic = (moodId: AmbientMoodId, volume = 0.5) => {
   const ctx = getSynthAudioContext();
   if (!ctx) return;
 
-  if (state && state.moodId === moodId) {
-    state.masterGain.gain.cancelScheduledValues(ctx.currentTime);
-    state.masterGain.gain.linearRampToValueAtTime(volume, ctx.currentTime + 0.3);
+  if (engine.state && engine.state.moodId === moodId) {
+    engine.state.masterGain.gain.cancelScheduledValues(ctx.currentTime);
+    engine.state.masterGain.gain.linearRampToValueAtTime(volume, ctx.currentTime + 0.3);
     return;
   }
 
@@ -1549,7 +1561,7 @@ export const startAmbientMusic = (moodId: AmbientMoodId, volume = 0.5) => {
 
   const preset = MOODS[moodId];
   if (!preset) return;
-  const gen = ++generationCounter;
+  const gen = ++engine.generation;
   const now = ctx.currentTime;
 
   try {
@@ -1657,7 +1669,7 @@ export const startAmbientMusic = (moodId: AmbientMoodId, volume = 0.5) => {
     if (preset.rain > 0) textures.push(startRainTexture(ctx, mixBus, preset.rain, now));
     if (preset.crackle) textures.push(startCrackleTexture(ctx, mixBus, preset.crackle, now));
 
-    state = {
+    engine.state = {
       moodId,
       preset,
       generation: gen,
@@ -1682,10 +1694,10 @@ export const startAmbientMusic = (moodId: AmbientMoodId, volume = 0.5) => {
     };
 
     tick(gen);
-    state.timer = setInterval(() => tick(gen), LOOKAHEAD_MS);
+    engine.state.timer = setInterval(() => tick(gen), LOOKAHEAD_MS);
   } catch (e) {
     // Web Audio unavailable/blocked - fail silently like the rest of the audio layer
-    state = null;
+    engine.state = null;
   }
 };
 
@@ -1698,9 +1710,9 @@ export const startAmbientMusic = (moodId: AmbientMoodId, volume = 0.5) => {
 
 /** Fades out and tears down whatever mood is playing. Safe to call when nothing is. */
 export const stopAmbientMusic = () => {
-  if (!state) return;
-  const current = state;
-  state = null;
+  if (!engine.state) return;
+  const current = engine.state;
+  engine.state = null;
 
   if (current.timer) clearInterval(current.timer);
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useSyncExternalStore } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAppPick } from '../context/AppContext';
 import { buildSpendUpdate } from '../context/useEconomyActions';
 import { getBalance } from '../constants/currency';
 import { View, CameraMode, PlacedItem, HouseInteriorData, RoomStyle } from '../types';
@@ -1876,7 +1876,13 @@ function InteriorItemRow({
   );
 }
 // --- Main Component ---
-export function BuildingInteriorView({ active = true }: {
+/**
+ * Memoised because App re-renders on every AppContext change and this is its child: without it, the
+ * DORMANT interior rebuilt its whole Canvas tree (171 components, ~30 ms of render in dev) on every
+ * weather tick and coin while the player was outside and could not see any of it. Its one prop is
+ * a boolean, and everything else it reads it subscribes to itself.
+ */
+export const BuildingInteriorView = React.memo(function BuildingInteriorView({ active = true }: {
   /**
    * Whether the player is actually inside the house right now.
    *
@@ -1893,7 +1899,7 @@ export function BuildingInteriorView({ active = true }: {
    */
   active?: boolean;
 } = {}) {
-  const { profile, setCurrentView, setCameraMode, uiScale, addGold, showIslandAlert } = useApp();
+  const { profile, setCurrentView, setCameraMode, uiScale, addGold, showIslandAlert } = useAppPick('profile', 'setCurrentView', 'setCameraMode', 'uiScale', 'addGold', 'showIslandAlert');
   const isAdminMode = useAdminMode();
   const [isBuildMode, setIsBuildMode] = useState(false);
   const [showFurniturePanel, setShowFurniturePanel] = useState(false);
@@ -3430,4 +3436,4 @@ export function BuildingInteriorView({ active = true }: {
       </div>
     </div>
   );
-}
+});

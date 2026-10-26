@@ -47,9 +47,15 @@ export function IslandTidy() {
   }, []);
 
   useEffect(() => {
-    const onTidy = async () => {
+    const onTidy = async (event: Event) => {
       if (busyRef.current) return;
-      const target = playerBus.tidyTarget;
+      // The patch the prompt was pointing at, carried by the press itself (the selected target's
+      // action — see lib/interactionTargeting.ts). Copied now: the tracker rewrites its record
+      // every frame, and this handler awaits a save.
+      const detail = (event as CustomEvent<{ x?: number; z?: number }>).detail;
+      const target = detail?.x !== undefined && detail?.z !== undefined
+        ? { x: detail.x, z: detail.z }
+        : playerBus.tidyTarget;
       if (!target) return;
       busyRef.current = true;
       try {
