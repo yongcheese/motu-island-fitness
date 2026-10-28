@@ -137,7 +137,13 @@ export function createDetector(spec, opts = {}) {
   if (spec.checksLockout && alt) {
     console.warn('[engine] checksLockout 目前不支援交替動作，將導致誤報。需改為 per-track 狀態。');
   }
-  let lastCountTime = -1e9, lastSide = null, visStreak = 0;
+  // 冷卻計時依「側別」分開記（非交替動作只有一條 track 'C'，行為與舊版完全相同）。
+  // ⚠️ 2026-10-29 修正：舊版左右共用一個計時。冷卻要擋的是**同一條訊號**在最低點附近抖動
+  //    造成的重複結算，但交替動作左腳結束、右腳緊接著結束是兩下真的動作 ——
+  //    真人快速高抬腿（約每秒 3 下）左右結束間隔僅約 0.27 秒，右腳那下被當抖動整個丟掉，
+  //    下一下左腳又被判「未左右交替」，形成連鎖誤判（真人影片實測）。
+  const lastCountAt = {};
+  let lastSide = null, visStreak = 0;
   // 交替動作的第一下沒有前例可比，只能先放行（否則每組都會冤枉第一下）。
   // 但「一直抬同一隻腳」的作弊也是從這一下開始的，所以先記著它是「未經交替證實」的，
   // 等下一下揭曉：真的換邊 → 證實有效；又是同一邊 → 回溯撤銷（見 classify）。
@@ -255,7 +261,19 @@ export function createDetector(spec, opts = {}) {
       reps: { valid: 0, invalid: 0 },
     };
   }
-  const smooth = (track, raw) => {
+  // 平滑視窗有兩種：預設「最近 cfg.smooth 幀」；動作若指定 smoothMs，改成「最近 smoothMs 毫秒」。
+  // 為何要有時間版（2026-10-29，高抬腿實機「完全辨識不了」）：固定幀數的視窗，實際涵蓋的時間
+  // 隨幀率變動 —— 30fps 時 5 幀≈167ms，掉到 15fps（光線暗時網路攝影機常見）就變成 333ms。
+  // 高抬腿一下只有約 0.3–0.4 秒，333ms 的平均會把峰值抹平到門檻以下。
+  // 真人影片實測（MediaPipe 實跑，正面機位）：同一段 31 下，30fps 有效 28、15fps 只剩 1。
+  // 只對有指定 smoothMs 的動作生效；深蹲等其他動作的行為完全不變。
+  const smoothMs = Number.isFinite(spec.smoothMs) ? spec.smoothMs : null;
+  const smooth = (track, raw, tMs) => {
+    if (smoothMs !== null) {
+      track.buf.push({ t: tMs, v: raw });
+      while (track.buf.length > 1 && tMs - track.buf[0].t > smoothMs) track.buf.shift();
+      return track.buf.reduce((a, b) => a + b.v, 0) / track.buf.length;
+    }
     track.buf.push(raw); if (track.buf.length > cfg.smooth) track.buf.shift();
     return track.buf.reduce((a, b) => a + b, 0) / track.buf.length;
   };
@@ -264,7 +282,7 @@ export function createDetector(spec, opts = {}) {
 
   // 處理一條 track 一幀；回傳 close 事件或 null
   function feed(track, raw, gatePass, frameFaults, tMs) {
-    const sig = smooth(track, raw);
+    const sig = smooth(track, raw, tMs);
     const ev = track.tk.step(sig);
     if (ev.justStarted) {
       // 先清掉上一輪的提醒（已說過一輪），再判定本輪 —— 順序不可顛倒，
@@ -315,7 +333,7 @@ export function createDetector(spec, opts = {}) {
 
   function classify(side, ev, tMs) {
     // 冷卻：在冷卻窗內的關閉事件視為底部抖動，忽略
-    if (tMs - lastCountTime < cfg.cooldownMs) return;
+    if (tMs - (lastCountAt[side] ?? -1e9) < cfg.cooldownMs) return;
     // advisory 在此統計：不論該次最終有效或無效都要記錄，因為它描述的是姿勢品質，
     // 不是計次結果。放在冷卻檢查之後，避免底部抖動造成的重複關閉事件被重複計入。
     for (const f of ev.faults) if (isAdvisory(f)) advisoryCounts[f] = (advisoryCounts[f] || 0) + 1;
@@ -348,7 +366,7 @@ export function createDetector(spec, opts = {}) {
     if (!ev.reachedTarget) {
       invalidReps++; attempts++; bump('half_rep');
       for (const f of ev.faults) bump(f);
-      lastCountTime = tMs;
+      lastCountAt[side] = tMs;
       // 沒做到底時，若這一下同時累積了 block 級錯誤，要回報那個錯誤而不是「半程」——
       // 因為那個錯誤正是「做不到底」的原因。典型：用彎腰代替下蹲的人做不到深度，
       // 若跟他說「再往下蹲」，他只會彎得更厲害；該說的是「背打直、用臀部往後坐」。
@@ -360,7 +378,7 @@ export function createDetector(spec, opts = {}) {
     // 沒看到就不該算過 —— 否則「剛好在做錯的瞬間掉幀」會把無效的一下升級成有效的。
     // 凍結機制保住的是「不要被誤記成半程」，不是「免驗放行」。
     const valid = !ev.blocking && alternationOK && !ev.unseen;
-    attempts++; lastCountTime = tMs;
+    attempts++; lastCountAt[side] = tMs;
     // 回溯撤銷：這一下與上一下同側，而上一下正是「未經交替證實」的第一下 → 連它一起作廢。
     // 不這樣做的話，「一直抬同一隻腳」永遠會有第一下漏過去，「阻擋所有作弊動作」就不成立。
     let revoked = false;
@@ -536,7 +554,7 @@ export function createDetector(spec, opts = {}) {
   }
 
   function reset() {
-    validReps = invalidReps = attempts = 0; lastCountTime = -1e9; lastSide = null; visStreak = 0; scaleEma = null;
+    validReps = invalidReps = attempts = 0; for (const k in lastCountAt) delete lastCountAt[k]; lastSide = null; visStreak = 0; scaleEma = null;
     unconfirmedFirstAlt = false; prevAttemptSide = null; standTorso = null; standSpan = null; standThigh = null; standHipY = null; standKneeY = null; standThighRaw = null;
     framingWin = []; lostSinceMs = null;
     for (const k in faultCounts) delete faultCounts[k];

@@ -1,5 +1,5 @@
 // Tab2 訓練（核心）：分類 → 清單 → 簡介 → 即時偵測 → 結算。
-import { EXERCISES, PLANNED, GROUPS } from '../../core/exercises/index.js';
+import { EXERCISES, PLANNED, GROUPS, LOCKED } from '../../core/exercises/index.js';
 import { coinsFor, ratePct } from '../../core/rewards.js';
 import { safetyPanelHtml, exerciseGuideHtml, bindSafetyPanel } from './safety.js';
 import { GATE_PROGRESS as SQUAT_GATE_PROGRESS } from '../../core/exercises/squat.js';
@@ -156,7 +156,7 @@ function renderMenu(activeGroup = 'all') {
   const groups = ['all', ...Object.keys(GROUPS)];
   const groupName = (g) => g === 'all' ? '全部' : GROUPS[g];
   const all = [
-    ...Object.values(EXERCISES).map(e => ({ ...e, ready: true })),
+    ...Object.values(EXERCISES).map(e => ({ ...e, ready: !LOCKED.has(e.id) })),
     ...PLANNED.map(e => ({ ...e, ready: false })),
   ];
   const list = activeGroup === 'all' ? all : all.filter(e => e.group === activeGroup);
@@ -172,14 +172,14 @@ function renderMenu(activeGroup = 'all') {
       <div class="wk-filters">
         <div class="wk-search">
           <span class="wk-search-ic">${icon('search')}</span>
-          <input id="wk-q" class="wk-input" aria-label="搜尋動作" placeholder="搜尋動作（深蹲、開合跳…）" />
+          <input id="wk-q" class="wk-input" aria-label="搜尋動作" placeholder="搜尋動作（深蹲、高抬腿…）" />
         </div>
         <div class="wk-groups">
           ${groups.map(g => `<button class="wk-chip ${g === activeGroup ? 'on' : ''}" data-g="${g}">${groupName(g)}</button>`).join('')}
         </div>
       </div>
       <div class="wk-grid stagger" id="wk-list"></div>
-      ${exerciseGuideHtml(Object.values(EXERCISES).map(guideOf))}
+      ${exerciseGuideHtml(Object.values(EXERCISES).filter(e => !LOCKED.has(e.id)).map(guideOf))}
     </div>`;
 
   bindSafetyPanel(root, root.querySelector('#wk-guide-open'), 'wk-guide');
@@ -190,7 +190,7 @@ function renderMenu(activeGroup = 'all') {
       `<p class="sub" style="grid-column:1/-1">找不到符合的動作</p>`;
     listEl.querySelectorAll('[data-id]').forEach(c => {
       c.onclick = () => {
-        const ex = EXERCISES[c.dataset.id];
+        const ex = LOCKED.has(c.dataset.id) ? null : EXERCISES[c.dataset.id];
         if (ex) renderIntro(ex); else CTX.toast('此動作開發中，敬請期待');
       };
     });
@@ -219,7 +219,7 @@ function renderMenu(activeGroup = 'all') {
   // 推薦卡：hook 只用 data-rec-id（與型錄卡 [data-id]/.wk2 完全隔離）；innerHTML 後綁定＋null-guard
   const recEl = root.querySelector('[data-rec-id]');
   if (recEl) {
-    const goRec = () => { const ex = EXERCISES[recEl.dataset.recId]; if (ex) renderIntro(ex); };
+    const goRec = () => { const ex = LOCKED.has(recEl.dataset.recId) ? null : EXERCISES[recEl.dataset.recId]; if (ex) renderIntro(ex); };
     recEl.onclick = goRec;
     recEl.onkeydown = (ev) => {
       if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); goRec(); }

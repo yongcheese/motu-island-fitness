@@ -54,6 +54,10 @@ export const highknees = {
   id: 'highknees', name: '高抬腿', group: 'cardio',
   met: 8.0, baseCoinPerRep: 5, intensity: 1.1,
   mode: 'alternating',
+  // 平滑視窗改用時間（100ms）而非引擎預設的 5 幀 —— 5 幀在 15fps 時等於 333ms，
+  // 會把一下只有 0.3–0.4 秒的抬腿峰值抹平到門檻以下（engine.js smooth 的註解有實測數據）。
+  // 2026-10-29 以 MediaPipe 實跑真人正面影片標定：70／100／140ms 結果相近，取中間值 100ms。
+  smoothMs: 100,
   requiredLandmarks: [LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE, LM.LEFT_ANKLE, LM.RIGHT_ANKLE],
   // 入鏡判定不含腳踝：核心訊號是大腿投影縮短率（只需髖+膝）；腳踝僅用於支撐腳打直檢查
   gateLandmarks: [LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE],
