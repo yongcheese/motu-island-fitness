@@ -50,6 +50,29 @@ export const TORSO_UPRIGHT_RATIO = 0.80;
 export const THIGH_LIFT_TARGET = 0.50;
 export const THIGH_LIFT_ENTER = 0.13;   // θ≈30°，開始算一次嘗試
 
+// —— 深度條（只管顯示，不影響計次）——
+// 2026-10-29 實機回報：「才抬一點點、整隻腳都還沒抬起來，深度條就整個拉滿」。
+// 成因：深度條原本直接顯示計次用的 progress，而 progress 只在 30°→60° 這一小段從 0 走到 1
+// （上面 norm 的映射端點），玩偶實測：30° 以下 0%、40° 24%、50° 54%、60° 86%、65° 起就滿格，
+// 所以使用者一抬就衝到頂。
+// 改成依「大腿與鉛直線的夾角」線性顯示：θ = arccos(1 − 縮短率)。
+//   GAUGE_START_DEG 以下為 0：站著時的骨架抖動（縮短率約 0.03 → 14°）不會讓深度條跳動；
+//   GAUGE_FULL_DEG 滿格（75°）：大腿接近水平才滿。不設 90°：量到的角度會偏小 —— 玩偶抬 85° 只量到約 77°
+//   （抬腿時膝略內收），真人完整抬腿實測約 66–88°，設 90° 會讓標準動作永遠填不滿。
+// 計次門檻（55°）不變；白色達標線改畫在同一把尺上的 55° 位置（GAUGE_TARGET），
+// 深度條過線變綠的那一刻仍然就是會計次的那一刻（顏色由 progress 判斷，兩者單調對應同一門檻）。
+export const GAUGE_START_DEG = 15;
+export const GAUGE_FULL_DEG = 75;
+const THRESHOLDS = { attemptEnter: 0.30, targetEnter: 0.80, readyReturn: 0.25 };
+/** 縮短率 → 深度條 0..1（依大腿夾角線性）。 */
+export function liftGauge(fore) {
+  const f = Math.min(1, Math.max(0, fore || 0));
+  const deg = Math.acos(1 - f) * 180 / Math.PI;
+  return Math.min(1, Math.max(0, (deg - GAUGE_START_DEG) / (GAUGE_FULL_DEG - GAUGE_START_DEG)));
+}
+/** 計次門檻（targetEnter）換算到深度條上的位置。 */
+export const GAUGE_TARGET = liftGauge(THIGH_LIFT_ENTER + THRESHOLDS.targetEnter * (THIGH_LIFT_TARGET - THIGH_LIFT_ENTER));
+
 export const highknees = {
   id: 'highknees', name: '高抬腿', group: 'cardio',
   met: 8.0, baseCoinPerRep: 5, intensity: 1.1,
@@ -65,7 +88,8 @@ export const highknees = {
   // 逐幀的頭部把關就會讓整組計不到次（實測 0.12 → valid 0/4、112 幀中斷）。
   // 在取景關卡先要求上緣留白，就不會發生。
   needsHeadroom: true,
-  thresholds: { attemptEnter: 0.30, targetEnter: 0.80, readyReturn: 0.25 },
+  thresholds: THRESHOLDS,
+  gaugeTarget: GAUGE_TARGET,   // 深度條上的達標線位置（見 liftGauge）
   // 訓練中不強制看到頭：本動作的判定只用到髖與膝（見 gateLandmarks），
   // 而原地抬膝時頭部常會短暫衝出畫面上緣 —— 逐幀要求看到頭會讓整組計不到次。
   // 開始前的取景關卡仍硬性要求頭部（workout.js 寫死 requireHead:true），
@@ -131,6 +155,7 @@ export const highknees = {
       torso: gatePass ? 'green' : 'red',
       leftLeg: lc(progressL), rightLeg: lc(progressR), leftArm: 'green', rightArm: 'green',
     };
-    return { progressL, progressR, side, gatePass, faults, segments };
+    const gauge = liftGauge(Math.max(s.thighForeL ?? 0, s.thighForeR ?? 0));
+    return { progressL, progressR, side, gatePass, faults, segments, gauge };
   },
 };

@@ -890,6 +890,7 @@ function liveShell(ex) {
  *     否則畫面會再度對使用者說謊。 */
 export function gaugeTargetOf(ex) {
   if (ex?.id === 'squat') return SQUAT_GATE_PROGRESS;
+  if (Number.isFinite(ex?.gaugeTarget)) return ex.gaugeTarget;   // 深度條換了刻度的動作（高抬腿），達標線跟著換
   return ex?.thresholds?.targetEnter ?? 1;
 }
 
@@ -1242,7 +1243,7 @@ function handleResult(res, now, lm) {
     // 追蹤狀態膠囊與動作週期步驟條已拿掉（使用者 09-29 要求：左上只留動作名與結束鈕）；
     // 看不到人的原因由下方教練提示框講（res.cue）。
     // 3) 深度量表：訊號即時填充 + 四段色（藍準備 → 黃進行中 → 綠達標 → 紅錯誤）
-    const gpct = Math.round(Math.max(0, Math.min(1, res.signal)) * 100);
+    const gpct = Math.round(Math.max(0, Math.min(1, res.gauge ?? res.signal)) * 100);   // 高抬腿依大腿角度顯示（見 highknees.js liftGauge）
     hud.gfill.style.height = gpct + '%';
     hud.gfill.classList.toggle('empty', gpct === 0);   // Slice 9：0% 時描邊會縮成一顆深藍點，交給 CSS 拿掉
     hud.gfill.dataset.c = gaugeColor(res, live.ex);

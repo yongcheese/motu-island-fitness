@@ -256,7 +256,7 @@ export function createDetector(spec, opts = {}) {
   function idleResult() {
     const seg = {}; for (const k of SEG_KEYS) seg[k] = 'green';
     return {
-      phase: 'IDLE', color: 'green', segments: seg, visible: false, signal: 0,
+      phase: 'IDLE', color: 'green', segments: seg, visible: false, signal: 0, gauge: 0,
       repCountedThisFrame: false, repValidThisFrame: false, faults: [], cue: null,
       reps: { valid: 0, invalid: 0 },
     };
@@ -450,7 +450,7 @@ export function createDetector(spec, opts = {}) {
       }
       const seg = {}; for (const k of SEG_KEYS) seg[k] = 'red';
       lastResult = {
-        phase: 'IDLE', color: 'red', segments: seg, visible: false, signal: 0,
+        phase: 'IDLE', color: 'red', segments: seg, visible: false, signal: 0, gauge: 0,
         repCountedThisFrame: false, repValidThisFrame: false, faults: ['not_visible'],
         cue: { key: report.issue || 'not_visible', text: report.text || '請站到鏡頭中、保持全身入鏡', priority: 'high' },
         framing: report,
@@ -527,6 +527,9 @@ export function createDetector(spec, opts = {}) {
 
     lastResult = {
       phase, color, segments, visible: true, signal,
+      // 深度條顯示值：動作可自訂（例：高抬腿依大腿角度線性顯示），未自訂時就是 signal。
+      // 只給畫面用 —— 相位、計次、顏色一律看 signal。
+      gauge: ev.gauge ?? signal,
       repCountedThisFrame: !!_flag?.counted,
       repValidThisFrame: !!_flag?.valid,
       repReason: _flag?.reason ?? null,   // 這一下被判無效的真正原因（給 UI 顯示，見 classify）
