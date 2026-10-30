@@ -55,20 +55,23 @@ export const THIGH_LIFT_ENTER = 0.13;   // θ≈30°，開始算一次嘗試
 // 成因：深度條原本直接顯示計次用的 progress，而 progress 只在 30°→60° 這一小段從 0 走到 1
 // （上面 norm 的映射端點），玩偶實測：30° 以下 0%、40° 24%、50° 54%、60° 86%、65° 起就滿格，
 // 所以使用者一抬就衝到頂。
-// 改成依「大腿與鉛直線的夾角」線性顯示：θ = arccos(1 − 縮短率)。
+// 改成依「大腿與鉛直線的夾角」顯示：θ = arccos(1 − 縮短率)。
 //   GAUGE_START_DEG 以下為 0：站著時的骨架抖動（縮短率約 0.03 → 14°）不會讓深度條跳動；
-//   GAUGE_FULL_DEG 滿格（75°）：大腿接近水平才滿。不設 90°：量到的角度會偏小 —— 玩偶抬 85° 只量到約 77°
-//   （抬腿時膝略內收），真人完整抬腿實測約 66–88°，設 90° 會讓標準動作永遠填不滿。
+//   GAUGE_FULL_DEG（90°）才滿格：大腿真的抬到水平才滿。
+//   GAUGE_CURVE 1.5：前段慢、後段快 —— 2026-10-30 使用者實測線性版（15°→75°）「還是太快到頂」，
+//   改成曲線後玩偶：30° 8%、45° 23%、60° 41%、85° 63%；真人影片：膝抬一半的踏步 17%，
+//   完整高抬腿每下約 65–95%，只有接近水平才滿。
 // 計次門檻（55°）不變；白色達標線改畫在同一把尺上的 55° 位置（GAUGE_TARGET），
 // 深度條過線變綠的那一刻仍然就是會計次的那一刻（顏色由 progress 判斷，兩者單調對應同一門檻）。
 export const GAUGE_START_DEG = 15;
-export const GAUGE_FULL_DEG = 75;
+export const GAUGE_FULL_DEG = 90;
+export const GAUGE_CURVE = 1.5;
 const THRESHOLDS = { attemptEnter: 0.30, targetEnter: 0.80, readyReturn: 0.25 };
-/** 縮短率 → 深度條 0..1（依大腿夾角線性）。 */
+/** 縮短率 → 深度條 0..1（依大腿夾角，前慢後快的曲線）。 */
 export function liftGauge(fore) {
   const f = Math.min(1, Math.max(0, fore || 0));
   const deg = Math.acos(1 - f) * 180 / Math.PI;
-  return Math.min(1, Math.max(0, (deg - GAUGE_START_DEG) / (GAUGE_FULL_DEG - GAUGE_START_DEG)));
+  return Math.min(1, Math.max(0, (deg - GAUGE_START_DEG) / (GAUGE_FULL_DEG - GAUGE_START_DEG))) ** GAUGE_CURVE;
 }
 /** 計次門檻（targetEnter）換算到深度條上的位置。 */
 export const GAUGE_TARGET = liftGauge(THIGH_LIFT_ENTER + THRESHOLDS.targetEnter * (THIGH_LIFT_TARGET - THIGH_LIFT_ENTER));

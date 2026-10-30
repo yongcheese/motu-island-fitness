@@ -73,12 +73,15 @@ test('高抬腿：深度條過線的那一刻＝訊號達到計次門檻（不�
   }
 });
 
-test('高抬腿：抬一點點不會拉滿，抬越高越滿（玩偶實測）', () => {
+test('高抬腿：抬一點點不會拉滿，抬越高越滿，大腿水平才滿格（玩偶實測）', () => {
+  // 2026-10-30 使用者實測線性版「還是太快到頂」→ 改成 15°→90° 的前慢後快曲線，以下期望值隨之收緊
   assert(hkGaugeAt(0).gauge === 0, '站著應為 0');
-  assert(hkGaugeAt(20).gauge < 0.15, `抬 20° 應很低，實得 ${hkGaugeAt(20).gauge.toFixed(2)}`);
-  assert(hkGaugeAt(30).gauge < 0.35, `抬 30° 不應超過三分之一，實得 ${hkGaugeAt(30).gauge.toFixed(2)}`);
-  assert(hkGaugeAt(60).gauge < 0.9, `抬 60° 還不該滿格，實得 ${hkGaugeAt(60).gauge.toFixed(2)}`);
-  assert(hkGaugeAt(85).gauge >= 0.85, `抬到接近水平應接近滿格，實得 ${hkGaugeAt(85).gauge.toFixed(2)}`);
+  assert(hkGaugeAt(20).gauge < 0.05, `抬 20° 幾乎不動，實得 ${hkGaugeAt(20).gauge.toFixed(2)}`);
+  assert(hkGaugeAt(30).gauge < 0.15, `抬 30° 應很低，實得 ${hkGaugeAt(30).gauge.toFixed(2)}`);
+  assert(hkGaugeAt(45).gauge < 0.35, `抬一半（45°）不該超過三分之一，實得 ${hkGaugeAt(45).gauge.toFixed(2)}`);
+  assert(hkGaugeAt(60).gauge < 0.5, `抬 60° 還不到一半，實得 ${hkGaugeAt(60).gauge.toFixed(2)}`);
+  assert(hkGaugeAt(85).gauge > hkGaugeAt(60).gauge + 0.15, '抬到接近水平要明顯比 60° 高');
+  approx(liftGauge(1), 1, 1e-12, '大腿真的水平（投影縮到 0）才滿格');
   let prev = -1;
   for (let deg = 0; deg <= 85; deg += 5) { const g = hkGaugeAt(deg).gauge; assert(g >= prev - 1e-9, `${deg}° 深度條不該比低角度還少`); prev = g; }
 });
