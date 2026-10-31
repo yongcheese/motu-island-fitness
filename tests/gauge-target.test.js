@@ -79,7 +79,7 @@ test('高抬腿：抬一點點不會拉滿，抬越高越滿，大腿水平才�
   assert(hkGaugeAt(20).gauge < 0.05, `抬 20° 幾乎不動，實得 ${hkGaugeAt(20).gauge.toFixed(2)}`);
   assert(hkGaugeAt(30).gauge < 0.15, `抬 30° 應很低，實得 ${hkGaugeAt(30).gauge.toFixed(2)}`);
   assert(hkGaugeAt(45).gauge < 0.35, `抬一半（45°）不該超過三分之一，實得 ${hkGaugeAt(45).gauge.toFixed(2)}`);
-  assert(hkGaugeAt(60).gauge < 0.5, `抬 60° 還不到一半，實得 ${hkGaugeAt(60).gauge.toFixed(2)}`);
+  assert(hkGaugeAt(60).gauge < 0.55, `抬 60° 約一半，實得 ${hkGaugeAt(60).gauge.toFixed(2)}`);
   assert(hkGaugeAt(85).gauge > hkGaugeAt(60).gauge + 0.15, '抬到接近水平要明顯比 60° 高');
   approx(liftGauge(1), 1, 1e-12, '大腿真的水平（投影縮到 0）才滿格');
   let prev = -1;

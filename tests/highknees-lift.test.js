@@ -65,12 +65,11 @@ test('highknees: 站立基準未建立前不得計次（fail-closed）', () => {
 });
 
 test('highknees: 門檻常數對應的幾何意義正確（1 − cosθ）', () => {
-  // TARGET 0.50 ⇔ 大腿與鉛直夾角 60°；ENTER 0.13 ⇔ 約 30°
-  const thetaOf = (fore) => Math.acos(1 - fore) * 180 / Math.PI;
-  assert(Math.abs(thetaOf(THIGH_LIFT_TARGET) - 60) < 1,
-    `TARGET ${THIGH_LIFT_TARGET} 應對應約 60°，實得 ${thetaOf(THIGH_LIFT_TARGET).toFixed(1)}°`);
-  assert(Math.abs(thetaOf(THIGH_LIFT_ENTER) - 30) < 2,
-    `ENTER ${THIGH_LIFT_ENTER} 應對應約 30°，實得 ${thetaOf(THIGH_LIFT_ENTER).toFixed(1)}°`);
+  // 2026-10-31 計次標準改為接近水平：計次門檻縮短率 0.65 ⇔ 量測約 70°（腰高鏡頭下約真實 75°）
+  const thetaOf = (f) => Math.acos(1 - f) * 180 / Math.PI;
+  const countFore = THIGH_LIFT_ENTER + 0.80 * (THIGH_LIFT_TARGET - THIGH_LIFT_ENTER);
+  assert(Math.abs(countFore - 0.65) < 1e-9, `計次門檻縮短率應為 0.65，實得 ${countFore}`);
+  assert(Math.abs(thetaOf(countFore) - 69.5) < 1, `計次門檻應對應量測約 70°，實得 ${thetaOf(countFore).toFixed(1)}°`);
   assert(THIGH_LIFT_ENTER < THIGH_LIFT_TARGET, '起算門檻必須低於達標門檻');
 });
 

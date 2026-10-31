@@ -3,10 +3,13 @@ import { test, eq, assert } from './harness.js';
 import { readFileSync } from 'node:fs';
 import { EXERCISES } from '../app/core/exercises/index.js';
 
-test('深蹲有「放低裝置」的擺放提示，其他動作沒有', () => {
+test('深蹲要放低、高抬腿要放腰高，其他動作沒有擺放提示', () => {
   const tip = EXERCISES.squat.meta.placementTip || '';
   assert(tip.includes('地上') && tip.includes('膝蓋到腰'), `深蹲提示應提到放地上、膝蓋到腰的高度，實得「${tip}」`);
-  for (const id of Object.keys(EXERCISES)) if (id !== 'squat') eq(EXERCISES[id].meta.placementTip, undefined, id);
+  // 2026-10-31：高抬腿鏡頭放低時深度條約 77° 就到頂（透視），要放腰高才能「水平才滿」
+  const hk = EXERCISES.highknees.meta.placementTip || '';
+  assert(hk.includes('腰的高度'), `高抬腿提示應提到腰的高度，實得「${hk}」`);
+  for (const id of Object.keys(EXERCISES)) if (id !== 'squat' && id !== 'highknees') eq(EXERCISES[id].meta.placementTip, undefined, id);
 });
 
 test('開始前畫面與語音都會用到擺放提示', () => {

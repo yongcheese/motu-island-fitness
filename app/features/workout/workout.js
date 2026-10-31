@@ -433,7 +433,7 @@ function judgeText(id) {
   return {
     squat: '髖部需低於膝蓋高度、起身回穩；排除只彎腰、半蹲。',
     jumpingjack: '雙手過肩且雙腳張開超過肩寬；排除只揮手或只張腳。',
-    highknees: '大腿抬到接近水平（與鉛直約 55°）、左右交替；排除坐著抬腿、不交替。',
+    highknees: '大腿抬到接近水平（約 75°，鏡頭放腰的高度）、左右交替；排除坐著抬腿、不交替。',
     pushup: '手肘下壓達標、身體保持一直線；排除半程、塌腰。',
   }[id] || '';
 }
@@ -605,7 +605,7 @@ async function preStart(statusEl, run) {
       <p>${ex.meta.voiceIntro || ex.meta.desc}</p>
       <div class="lv-ps-tip">${ex.meta.placementTip || '請站到鏡頭中、全身入鏡，準備開始'}</div>
     </div>`;
-  // placementTip：動作對機位有要求時（目前只有深蹲要放低）接在說明後面一起念，不另開一句，免得被語音優先序蓋掉
+  // placementTip：動作對機位有要求時（深蹲要放低、高抬腿要放腰高）接在說明後面一起念，不另開一句，免得被語音優先序蓋掉
   if (run.voice && ex.meta.voiceIntro) CTX.coach.say(ex.meta.voiceIntro + (ex.meta.placementTip ? `${ex.meta.placementTip}。` : ''), 'mid');
   await sleep(ex.meta.placementTip ? 4600 : 2600);   // 讓使用者讀說明、就定位；有擺放提示時多留 2 秒搬裝置
   if (live !== run) return false;

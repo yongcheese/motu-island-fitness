@@ -14,9 +14,10 @@ import { LM } from '../app/core/landmarks.js';
 
 const RIGHT_LEG = [LM.RIGHT_KNEE, LM.RIGHT_ANKLE, LM.RIGHT_HEEL, LM.RIGHT_FOOT_INDEX];
 
-/** 連續原地高抬腿：spm＝每分鐘總下數（左右合計），peak＝抬腿幅度（1＝85°）。
+/** 連續原地高抬腿：spm＝每分鐘總下數（左右合計），peak＝抬腿幅度（1＝90°）。
  *  singleLeg 時只有左腳在抬（右腳一直站著）。前 2 秒站立，讓引擎建立站立基準。 */
-function runContinuous({ spm, fps, peak = 0.82, secs = 12, singleLeg = false }) {
+// peak 0.95＝玩偶抬到約 86°（1＝90°）：2026-10-31 計次標準改為接近水平（約 75°），測試動作要符合新標準
+function runContinuous({ spm, fps, peak = 0.95, secs = 12, singleLeg = false }) {
   const det = createDetector(EXERCISES.highknees);
   const dt = 1000 / fps;
   const standFrames = fps * 2;

@@ -156,10 +156,13 @@ function poseHighKnees(d, side, variant) {
   const hipY0 = (sk[LM.LEFT_HIP].y + sk[LM.RIGHT_HIP].y) / 2;
   const THIGH = 0.18;                         // 大腿的三維長度（畫面單位）
   const SHANK = 0.18;                         // 小腿
-  const THETA_MAX = 85 * Math.PI / 180;       // 全抬時大腿與鉛直的夾角
+  // 2026-10-31：85° → 90°，計次標準改成「接近水平」後，玩偶要能真的抬到水平（見 highknees.js THIGH_LIFT_TARGET）
+  const THETA_MAX = 90 * Math.PI / 180;       // 全抬時大腿與鉛直的夾角
   const th = THETA_MAX * d;
   const kneeY = hipY0 + THIGH * Math.cos(th);
-  sk[knee] = P(hipX + inw * 0.06 * d, kneeY);
+  // 膝略向中線：0.06 → 0.02（2026-10-31）。舊值讓水平大腿在正面仍留 0.06 的橫向投影，
+  // 量起來只有約 70°，玩偶永遠做不到「接近水平」的新標準。
+  sk[knee] = P(hipX + inw * 0.02 * d, kneeY);
   // 小腿自膝垂下，抬腿時略為收起（膝彎），同樣以剛體長度乘上夾角餘弦
   const shankAng = (35 * Math.PI / 180) * d;
   const ax = sk[knee].x - inw * 0.02 * d;
