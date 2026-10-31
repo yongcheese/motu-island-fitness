@@ -134,7 +134,8 @@ export const highknees = {
     tempo: 'fast',              // 節奏快 → 抑制閒聊型語音，改以字卡提示（Bug2(c)）
     voiceIntro: '開始高抬腿。站直，原地左右輪流抬腿，大腿抬到接近與地面平行，上半身保持挺直。手怎麼擺都可以，不會影響判定。',
     // 2026-10-31：高抬腿要腰高機位（見 THIGH_LIFT_TARGET 的模擬）；與深蹲相反，深蹲要放低
-    placementTip: '高抬腿請把裝置放在桌上或椅子上並放穩，鏡頭大約在腰的高度，再往後退到全身入鏡' },
+    placementTip: '高抬腿請把裝置放在桌上或椅子上並放穩，鏡頭大約在腰的高度，再往後退到全身入鏡',
+    placementVoice: '請先將裝置放在桌上或椅子上並放穩，鏡頭大約在腰的高度，再往後退到全身入鏡' },
   evaluate(f, s) {
     const hipC = midpoint(f[LM.LEFT_HIP], f[LM.RIGHT_HIP]);
     // 抬膝高度：改用「大腿投影縮短率」，理由與實測數據見上方 THIGH_LIFT_TARGET 註解。

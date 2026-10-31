@@ -141,7 +141,7 @@ function beep(freq = 640, dur = 0.12, vol = 0.2) {
 export default {
   id: 'workout', label: '訓練', icon: 'dumbbell',   // 分頁列實際讀 main.js 的 TABS，這裡只是 Lucide 名稱註記
   mount(el, ctx) { CTX = ctx; root = el; renderMenu(); },
-  unmount() { stopLive(); cancelAnimationFrame(demoRaf); disposeIntroAv(); stopCardAnims(); disposeCardAv();
+  unmount() { silence(); stopLive(); cancelAnimationFrame(demoRaf); disposeIntroAv(); stopCardAnims(); disposeCardAv();
     // 獎勵儀式的 timer 與掛在 body 上的金幣、彩帶都要清 —— 它們不會隨 #view.innerHTML 一起消失，
     // 切頁後會變成畫面上擦不掉的殘影。rwClear 一併處理（Slice 13）。
     rwClear();
@@ -151,6 +151,7 @@ export default {
 
 /* ---------------- 選單 ---------------- */
 function renderMenu(activeGroup = 'all') {
+  silence();   // 從結算頁回到清單：還在念的 AI 總評要停（2026-10-31 實測回報）
   CTX.setChrome(true);
   cancelAnimationFrame(demoRaf);
   disposeIntroAv();
@@ -368,6 +369,7 @@ function exIcon(id, size) {
 
 /* ---------------- 簡介 ---------------- */
 function renderIntro(ex) {
+  silence();   // 結算頁按「再一次」：同上
   CTX.setChrome(true);
   stopCardAnims();
   const s = CTX.store.getState();
@@ -609,7 +611,13 @@ async function preStart(statusEl, run) {
   // 擺放提示改在取景開始時、等這段說明念完才念（見 waitForFraming）。
   // 2026-10-31 實測：以前接在說明後面一起念，但這段很長，4.6 秒後取景以最高優先念「請站入鏡頭範圍」
   // 把它打斷 —— 擺放提示排在最後，永遠沒念到。
-  if (run.voice && ex.meta.voiceIntro) CTX.coach.say(ex.meta.voiceIntro, 'mid');
+  // 2026-10-31 實測回報：「取景第一句就要說請先將裝置放在安全地面上，不然我完全不知道」
+  // → 有擺放語音的動作，第一句先講擺放，動作說明等它念完再講。
+  const placeVoice = ex.meta.placementVoice;
+  if (run.voice && placeVoice) {
+    CTX.coach.say(placeVoice, 'high');
+    if (ex.meta.voiceIntro) sayWhenIdle(ex.meta.voiceIntro, () => live === run, 30000);
+  } else if (run.voice && ex.meta.voiceIntro) CTX.coach.say(ex.meta.voiceIntro, 'mid');
   await sleep(ex.meta.placementTip ? 4600 : 2600);   // 讓使用者讀說明、就定位；有擺放提示時多留 2 秒搬裝置
   if (live !== run) return false;
   // Slice3 R3 取景關卡（僅 camera 路徑；demo 合成幀永遠可見故跳過——已申報）
@@ -688,16 +696,13 @@ function waitForFraming(run) {
     gate.hidden = false;
     if (live?.hud?.next) { live.hud.next.hidden = true; live.hud.next.textContent = ''; }   // 關卡期間不顯示動作指引，避免疊字
     run.skipGate = false;
-    // 取景開始：有擺放提示的動作（深蹲放低、高抬腿放腰高）念擺放提示 —— 等動作說明念完再念，不打斷；
-    // 沒有的動作照舊念「請站入鏡頭範圍」。一直沒就位時每 25 秒再提醒一次怎麼擺（擺放提示本身約念 12 秒）。
-    const placeTip = run.ex.meta?.placementTip;
-    const gating = () => live === run && !gate.hidden;
+    // 有擺放語音的動作（深蹲放低、高抬腿放腰高）：開始前第一句已講擺放；取景期間一直沒就位時，
+    // 距上次念出 25 秒再提醒一次怎麼擺（擺放提示本身約念 12 秒）。沒有的動作照舊念「請站入鏡頭範圍」。
+    const placeTip = run.ex.meta?.placementVoice || run.ex.meta?.placementTip;
     // 必須在 sayWhenIdle 之前宣告：當下沒在講話時 onSaid 會立刻同步執行
-    let lastTipAt = Date.now() + 20000, camHintSaid = false;   // 第一次念出前不重複；念出時由 onSaid 重設
-    if (run.voice) {
-      if (placeTip) sayWhenIdle(placeTip, gating, 20000, () => { lastTipAt = Date.now(); });
-      else CTX.coach.say('請站入鏡頭範圍，保持全身入鏡', 'high');
-    }
+    // 擺放語音已在開始前第一句講過；取景期間只在一直沒就位時，距上次 25 秒再提醒
+    let lastTipAt = Date.now(), camHintSaid = false;
+    if (run.voice && !placeTip) CTX.coach.say('請站入鏡頭範圍，保持全身入鏡', 'high');
     let readyMs = 0, gateMs = 0, last = performance.now();
     // Slice 12：取景期間深度量表沒有意義，還會在小螢幕蓋到狀態卡 → 關卡期間隱藏
     const wrap = root?.querySelector('#lv-wrap');
@@ -1055,10 +1060,14 @@ function coachFaults(summary, ex) {
     .map(([k, n]) => [faultName(k), n, rejectHint(k, ex)]);
 }
 // 語音模組在講話時會丟掉新的普通句子 → 等前一句講完再講（最多等 waitMs），條件不成立（已離開這一刻）就放棄
+// 離開畫面時停止語音：已經在念的立刻停、還在排隊（sayWhenIdle）的全部作廢。
+// 2026-10-31 實測回報：切到主畫面後 AI 總評還在念 —— 訓練結束後 live 已清空，stopLive 不會再停語音。
+let speechGen = 0;
+function silence() { speechGen++; try { CTX?.coach?.stop(); } catch { } }
 function sayWhenIdle(text, stillValid, waitMs = 8000, onSaid = null) {
-  const t0 = Date.now();
+  const t0 = Date.now(), gen = speechGen;
   const tryNow = () => {
-    if (!stillValid()) return;
+    if (gen !== speechGen || !stillValid()) return;
     if (CTX.coach.say(text, 'mid')) { onSaid?.(); return; }
     if (Date.now() - t0 < waitMs) setTimeout(tryNow, 300);
   };
@@ -1690,7 +1699,7 @@ function renderResult(ex, summary, session, setReps = []) {
       ${empty ? '' : `<button class="wk-sum-link" id="wk-rw-done" type="button">回到動作清單</button>`}
     </div>`;
   root.querySelector('#wk-again').onclick = () => { rwClear(); renderIntro(ex); };
-  const go = root.querySelector('#wk-rw-go'); if (go) go.onclick = () => { rwClear(); CTX.navigate('island'); };
+  const go = root.querySelector('#wk-rw-go'); if (go) go.onclick = () => { rwClear(); silence(); CTX.navigate('island'); };
   root.querySelector('#wk-rw-done').onclick = () => { rwClear(); renderMenu(); };
   requestSummaryCoach(ex, summary, session);
 
