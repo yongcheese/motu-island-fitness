@@ -21,7 +21,8 @@ test('開始前畫面顯示擺放提示；語音改在取景時、等說明念�
   assert(!/coach\.say\([^)]*placementTip/.test(pre), '開始前的語音不該再夾帶擺放提示（會被取景打斷）');
   const gate = src.slice(src.indexOf('const placeTip = run.ex.meta?.placementTip'), src.indexOf('async function runCountdown'));
   assert(/sayWhenIdle\(placeTip, gating/.test(gate), '取景開始要等前一句念完再念擺放提示');
-  assert(/Date\.now\(\) - lastTipAt > 15000/.test(gate), '一直沒就位要每 15 秒再提醒');
+  assert(gate.includes('Date.now() - lastTipAt > 25000'), '一直沒就位要定時再提醒（距上次念出 25 秒）');
+  assert(gate.indexOf('let lastTipAt') < gate.indexOf('sayWhenIdle(placeTip'), 'lastTipAt 要在 sayWhenIdle 之前宣告（onSaid 可能同步執行）');
   assert(/camHighFor\(run\)/.test(gate), '深蹲鏡頭偏高要念出來');
 });
 

@@ -10,6 +10,14 @@ const PREFERRED = [
 ];
 const FEMALE_HINT = ['mei', 'ling', 'ting', 'jia', 'sin', 'han', 'female', '女', 'yu', 'shu'];
 
+/** 一句話「最晚應該念完」的時間（毫秒）。
+ *  2026-10-31 實測：卡死 watchdog 原本一律 8 秒就 cancel，但擺放提示 58 字、正常念約 12 秒，
+ *  每次都被當成卡死而切斷（動作說明太長時也會）。改依字數估：語速 0.92 時中文約每字 0.25 秒，
+ *  取每字 0.3 秒再加 3 秒餘裕，且至少 8 秒（短句維持原本的卡死判定）。 */
+export function expectedSpeechMs(text) {
+  return Math.max(8000, String(text || '').length * 300 + 3000);
+}
+
 export function createCoach({ enabled = true, lang = 'zh-TW' } = {}) {
   const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
   let on = enabled && supported;
@@ -17,6 +25,8 @@ export function createCoach({ enabled = true, lang = 'zh-TW' } = {}) {
   const lastSpokenAt = new Map();
   const COOLDOWN = { high: 2500, mid: 4200, low: 6500 };
   let lastAnyAt = 0;
+  // 這一句最晚應在何時念完（超過才當成卡死）。見 nudge。
+  let stuckAfter = 0;
   let chosen = null;
 
   function scoreVoice(v) {
@@ -66,17 +76,18 @@ export function createCoach({ enabled = true, lang = 'zh-TW' } = {}) {
     u.onend = u.onerror = () => { currentPriority = 0; };
     window.speechSynthesis.speak(u);
     lastSpokenAt.set(text, tNow); lastAnyAt = tNow;
+    stuckAfter = tNow + expectedSpeechMs(text);
     return true;
   }
 
   // Slice3 實機修復 F2：語音卡死 watchdog（純新增，不改 say）。每幀由訓練迴圈呼叫。
   // (a) Chrome 長跑 speechSynthesis 偶爾卡在 paused → resume 自癒（移出 say，避免被 cooldown 擋掉的 say 有喚醒副作用）
-  // (b) speaking 超過 8 秒未收到 end/error（卡死）→ cancel 重置，讓後續語音能發聲
+  // (b) speaking 超過「這句應念完的時間」仍未結束（卡死）→ cancel 重置，讓後續語音能發聲（時間依字數估，見 expectedSpeechMs）
   function nudge(tNow = Date.now()) {
     if (!supported || !on) return false;
     const ss = window.speechSynthesis;
     if (ss.paused) { try { ss.resume(); } catch { } }
-    if (ss.speaking && tNow - lastAnyAt > 8000) {
+    if (ss.speaking && tNow > stuckAfter) {
       try { ss.cancel(); } catch { }
       currentPriority = 0;
       return true;

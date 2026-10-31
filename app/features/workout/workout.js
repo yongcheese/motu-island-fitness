@@ -689,14 +689,15 @@ function waitForFraming(run) {
     if (live?.hud?.next) { live.hud.next.hidden = true; live.hud.next.textContent = ''; }   // 關卡期間不顯示動作指引，避免疊字
     run.skipGate = false;
     // 取景開始：有擺放提示的動作（深蹲放低、高抬腿放腰高）念擺放提示 —— 等動作說明念完再念，不打斷；
-    // 沒有的動作照舊念「請站入鏡頭範圍」。一直沒就位時每 15 秒再提醒一次怎麼擺。
+    // 沒有的動作照舊念「請站入鏡頭範圍」。一直沒就位時每 25 秒再提醒一次怎麼擺（擺放提示本身約念 12 秒）。
     const placeTip = run.ex.meta?.placementTip;
     const gating = () => live === run && !gate.hidden;
+    // 必須在 sayWhenIdle 之前宣告：當下沒在講話時 onSaid 會立刻同步執行
+    let lastTipAt = Date.now() + 20000, camHintSaid = false;   // 第一次念出前不重複；念出時由 onSaid 重設
     if (run.voice) {
-      if (placeTip) sayWhenIdle(placeTip, gating, 20000);
+      if (placeTip) sayWhenIdle(placeTip, gating, 20000, () => { lastTipAt = Date.now(); });
       else CTX.coach.say('請站入鏡頭範圍，保持全身入鏡', 'high');
     }
-    let lastTipAt = Date.now(), camHintSaid = false;
     let readyMs = 0, gateMs = 0, last = performance.now();
     // Slice 12：取景期間深度量表沒有意義，還會在小螢幕蓋到狀態卡 → 關卡期間隱藏
     const wrap = root?.querySelector('#lv-wrap');
@@ -753,8 +754,8 @@ function waitForFraming(run) {
             if (miss.length) CTX.coach.say(`看不到你的${miss[0]}，請調整位置`, 'mid');
             else if (!report.ok && report.text) CTX.coach.say(report.text, 'mid');
           }
-          // 一直沒就位：每 15 秒再提醒一次擺放方式（使用者可能還沒把裝置放對）
-          if (run.voice && placeTip && !allOk && Date.now() - lastTipAt > 15000) {
+          // 一直沒就位：距上次念出 25 秒再提醒一次擺放方式（使用者可能還沒把裝置放對）
+          if (run.voice && placeTip && !allOk && Date.now() - lastTipAt > 25000) {
             if (CTX.coach.say(placeTip, 'mid')) lastTipAt = Date.now();
           }
           // 深蹲鏡頭偏高：畫面上的提示也念出來（每次取景只念一次）
@@ -1054,11 +1055,11 @@ function coachFaults(summary, ex) {
     .map(([k, n]) => [faultName(k), n, rejectHint(k, ex)]);
 }
 // 語音模組在講話時會丟掉新的普通句子 → 等前一句講完再講（最多等 waitMs），條件不成立（已離開這一刻）就放棄
-function sayWhenIdle(text, stillValid, waitMs = 8000) {
+function sayWhenIdle(text, stillValid, waitMs = 8000, onSaid = null) {
   const t0 = Date.now();
   const tryNow = () => {
     if (!stillValid()) return;
-    if (CTX.coach.say(text, 'mid')) return;
+    if (CTX.coach.say(text, 'mid')) { onSaid?.(); return; }
     if (Date.now() - t0 < waitMs) setTimeout(tryNow, 300);
   };
   tryNow();
