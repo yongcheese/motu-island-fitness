@@ -239,6 +239,14 @@ service cloud.firestore {
           && (!("tasks" in data.weeklyTasks) || (
             data.weeklyTasks.tasks is list && data.weeklyTasks.tasks.size() <= 32
           ))
+          // 完成獎勵的領取帳 (src/constants/weeklyTaskRewards.ts): the current week only, at most
+          // WEEKLY_TASK_REWARD_CLAIMS_PER_WEEK (3) entries. Capped at 32 for the reason above.
+          && (!("rewardClaims" in data.weeklyTasks) || (
+            data.weeklyTasks.rewardClaims is map
+            && data.weeklyTasks.rewardClaims.week is string
+            && data.weeklyTasks.rewardClaims.claims is map
+            && data.weeklyTasks.rewardClaims.claims.size() <= 32
+          ))
         ));
     }
 
@@ -405,11 +413,14 @@ service cloud.firestore {
         // re-skinning it touches 'home' alone.
         keys.hasOnly(['home', 'inventory', 'lastUpdated']) ||
         // 每週任務 — building, editing, deleting a goal, and recording that a week's target was
-        // met. All four touch the one key, and none of them may move anything else: a task is a
-        // goal the player set for themselves, and it has never been a thing that pays out.
-        // Keeping it in its own clause rather than folding it into the fallback whitelist is
-        // what makes that true by construction (see context/useWeeklyTasks.ts).
-        keys.hasOnly(['weeklyTasks', 'lastUpdated'])
+        // met. All four touch the one key and nothing else.
+        keys.hasOnly(['weeklyTasks', 'lastUpdated']) ||
+        // 每週任務的完成獎勵 (src/constants/weeklyTaskRewards.ts, context/useWeeklyTasks.ts). The
+        // claim record (weeklyTasks.rewardClaims) and what it paid — 碎片 in the wallet, XP, a
+        // 功能卡, an own-once item — land in ONE write, so a claim can never be recorded unpaid
+        // or paid unrecorded. No balanceGold: the task source may not pay 金幣
+        // (SOURCE_CURRENCY_POLICY in src/constants/rewards.ts), and this clause says so too.
+        keys.hasOnly(['weeklyTasks', 'wallet', 'currentXp', 'utilityCards', 'inventory', 'lastUpdated'])
       );
     }
 

@@ -12,6 +12,9 @@
 | `src/context/useWeeklyTasks.ts` | 服務：建立／編輯／刪除的寫入，並把定義與活動紀錄湊成進度。 |
 | `src/components/health/` | 畫面：`HealthView` 殼 ＋ 三個分頁 ＋ 任務卡 ＋ 表單。 |
 | `scripts/test-weekly-tasks.ts` | 規格。`npm run test:weekly-tasks`。 |
+| `src/constants/weeklyTaskRewards.ts` | 完成獎勵的規則：獎勵表、報價、領取帳、每週上限、狀態。 |
+| `src/components/health/TaskRewardStrip.tsx` | 任務卡上的「完成獎勵」那一條、獎勵圖示、首頁摘要的小徽章。 |
+| `scripts/test-weekly-task-rewards.ts` | 獎勵的規格。`npm run test:weekly-task-rewards`。 |
 
 ## 名字改了哪些、沒改哪些
 
@@ -82,18 +85,21 @@ API 合約裡。留一個跟畫面上四個字對不起來的內部名字，只�
 
 | 類型 | 單位 | 狀態 | 資料來自 |
 |---|---|---|---|
-| 每週運動次數 | 次 | ✅ | 一筆 `workout_logs` = 1 |
+| 每週運動天數（`workout_days`） | 天 | ✅ | 有 `workout_logs` 的不同日曆日數，同一天多筆只算 1 天 |
 | 每週運動時間 | 分鐘 | ✅ | `duration` |
 | 每週累積動作次數 | 下 | ✅ | `counts` |
-| 每週消耗卡路里 | 大卡 | ✅ | `calories`（推估，非實測） |
 | 每週完成指定運動 | 次 | ✅ | `type` 字串比對 |
-| **每週累積步數** | 步 | ❌ **尚未支援** | 沒有計步資料來源 |
+| 每週運動次數（`workout_count`） | 次 | 🗄 舊類型 | 一筆 `workout_logs` = 1 |
 
-步數留在 `METRIC_SPECS` 裡而不是刪掉，並且**在建立任務的表單上**被灰掉、寫明原因。這是規格「清楚標示目前可用
-與尚未支援的目標類型」的做法：把它藏起來只會讓玩家一直問遊戲能不能算步數。接上計步資料的那一
-天，改動是那一列的 `available: true` 加上 `lib/healthData.ts` 裡的一個轉接器。
+天數與時間的目標值用 ± 按鈕調整、不能打字：天數 1–7（每格 1，預設 3），時間 30–600 分鐘（每格
+30，預設 30）。這兩種的 `stepper: true`，驗證也會擋掉不在格子上的值。
 
-`measureActivity()` 對 `steps` 回傳 0 —— 不是一個看起來合理的假數字。
+2026-10 把「每週運動次數」換成「每週運動天數」。`workout_count` 沒有原地改意思，而是標成
+`legacy`：表單不再列出、不能新建，舊任務照原本的意思（次數）繼續顯示與計算，編輯時也能保留。
+原地改會讓「每週 10 次」這種舊任務悄悄變成永遠達不到的「每週 10 天」。
+
+同一次移除了「每週累積步數」（`steps`，從來沒有資料來源）。舊存檔裡的步數任務跟 2026-10 移除的
+卡路里一樣，讀檔時直接略過。
 
 ## 資料來源的抽象層
 
@@ -131,7 +137,75 @@ migration。
 firebase deploy --only firestore:rules
 ```
 
+## 完成獎勵
+
+2026-09-28 加上。每張任務卡在進度條下面多一條「完成獎勵」：還沒完成時顯示「完成後可領取」＋會拿到
+什麼，完成後變成「領取獎勵」按鈕，領完顯示「✓ 已領取」＋實際入帳的東西。
+
+### 資料流
+
+```
+任務定義 ──→ computeWeeklyTaskProgress ──→ completed?
+   │                                          │
+   └─→ rewardForTask（唯一的報價）──→ rewardStatusFor(進度, 領取帳) ──→ 卡片
+                    │                                             │
+                    └──────── buildTaskRewardClaim ←── 按「領取獎勵」
+                                     │
+                        一次 updateDoc：領取帳 ＋ 碎片 ＋ XP ＋ 功能卡（＋商品）
+```
+
+- **顯示 = 發放。** 卡片上那排獎勵與寫入的內容都是 `rewardForTask()` 的回傳值；領完之後卡片改讀
+  領取紀錄裡**結算後實際入帳**的數字。`scripts/test-weekly-task-rewards.ts` 直接呼叫
+  `buildTaskRewardClaim()`，逐欄比對它要寫的東西與報價。
+- **「可以領」是算出來的。** 沒有任何 `claimable` 旗標存在存檔裡：完成與否來自進度（本來就是算的），
+  領過與否來自領取帳。兩者不可能不同步。
+- **一次寫入。** 領取帳與入帳在同一個 `updateDoc`，所以沒有「記了領過但沒入帳」或反過來。沒有
+  樂觀更新：寫入成功才改畫面。連點由 in-flight 的 ref 擋。
+
+### 獎勵表
+
+獎勵等級由「目標值 ÷ 該目標類型的預設目標」決定 —— 任務是玩家自己設的，一樣多的獎勵會讓「建八個
+每週運動 1 次」變成最划算的玩法。
+
+| 等級 | 條件 | 獎勵 |
+|---|---|---|
+| 輕量 | < 1 倍預設 | 5 碎片、20 XP |
+| 標準 | ≥ 1 倍 | 15 碎片、50 XP |
+| 挑戰 | ≥ 2 倍 | 30 碎片、100 XP、雙倍金幣券 ×1 |
+
+改數字或加一種獎勵（例如某一級送一件造型）只改 `WEEKLY_TASK_REWARD_TIERS`。UI 畫得出所有
+`Reward`（貨幣、XP、功能卡、商品縮圖），`isPayableTaskReward()` 會擋掉領取流程付不出來的東西，
+測試會對整張表跑一次。
+
+**沒有金幣**：任務的來源是 `quest`，而 `SOURCE_CURRENCY_POLICY` 只讓它發碎片。這是經濟系統的規則
+（見 `docs/economy.md`），不是這個功能的選擇。
+
+### 每週上限與領取帳
+
+`profile.weeklyTasks.rewardClaims = { week, claims: { [taskId]: { claimedAt, tier, rewards, taskName } } }`，
+只留當週。每週最多領 `WEEKLY_TASK_REWARD_CLAIMS_PER_WEEK = 3` 次。
+
+帳**不跟著任務走**：刪掉一個領過的任務，帳上那一筆還在，所以「領完、刪掉、用同樣目標重建、再領」
+會停在上限。跨週不需要寫入 —— 帳是別週的就當作空的，下一次領取整本換掉。獎勵要在當週領，跨週後
+上一週沒領的就過期了（任務頁底下有寫）。
+
+`weeklyTasks.tasks` 與 `weeklyTasks.rewardClaims` 各自是一條 dotted path。以前 `writeTasks` 整個
+`weeklyTasks` 一起覆寫；多了領取帳之後，那樣做會讓每次編輯任務（以及自動記錄達標）清掉這一週的
+帳 —— 等於讓獎勵可以重領。
+
+### rules
+
+新增 `rewardClaims` 的形狀檢查與一條領取用的白名單子句（`weeklyTasks`、`wallet`、`currentXp`、
+`utilityCards`、`inventory`，沒有 `balanceGold`）。領取寫入本來就落在既有的 superset 白名單裡，
+所以**沒部署也能用**（2026-09-28 對目前線上的 rules 實測過）；部署之後多的是形狀檢查。
+
 ## 測了什麼、沒測什麼
+
+`npm run test:weekly-task-rewards` —— 113 項檢查：獎勵表的每一項都付得出來而且沒有金幣、等級邊界、
+沒有資料來源的類型沒有獎勵、未開始／進行中／完成／超額的狀態、**領取寫入與報價逐欄一致**、重複
+領取被拒、重新整理（JSON 來回）後狀態不變、領完再改目標不會重新開放、每週上限、刪除重建仍受上限、
+跨週重置、功能卡背包滿時紀錄只寫實際入帳的、各種獎勵類型的發放計畫、壞掉的領取帳（壞掉的一筆
+**仍算領過**，不會重發）。
 
 `npm run test:weekly-tasks` —— 114 項檢查，涵蓋：週的邊界（跨月、跨年、閏日）、時區（台北時間
 星期日 23:30 與星期一 00:30 必須落在不同週）、半開區間、五種目標類型的計算、超額完成（原始值不

@@ -34,6 +34,7 @@ import {
   markWeekCompleted,
   measureActivity,
   normalizeWeeklyTaskState,
+  snapStepperTarget,
   sortProgress,
   summariseWeek,
   unsupportedMetrics,
@@ -44,7 +45,9 @@ import {
   type WeeklyTaskDefinition,
 } from '../src/constants/weeklyTasks';
 import { civilDateAt } from '../src/constants/civilTime';
+import { rewardForTask } from '../src/constants/weeklyTaskRewards';
 import { activityFromWorkoutLog, WORKOUT_LOG_METRICS } from '../src/lib/healthData';
+import type { WorkoutLog } from '../src/types';
 
 let failures = 0;
 let checks = 0;
@@ -97,7 +100,6 @@ function activity(at: string, overrides: Partial<HealthActivity> = {}): HealthAc
     type: '開合跳',
     durationSeconds: 600,
     reps: 40,
-    calories: 112,
     ...overrides,
   };
 }
@@ -179,12 +181,11 @@ console.log('\n-- progress comes from the records, and only from them ----------
 {
   const now = taipei('2026-09-23T12:00:00');
   const activities = [
-    activity('2026-09-21T09:00:00', { durationSeconds: 600, reps: 40, calories: 100, type: '深蹲' }),
-    activity('2026-09-22T09:00:00', { durationSeconds: 900, reps: 60, calories: 150, type: '開合跳' }),
+    activity('2026-09-21T09:00:00', { durationSeconds: 600, reps: 40, type: '深蹲' }),
+    activity('2026-09-22T09:00:00', { durationSeconds: 900, reps: 60, type: '開合跳' }),
   ];
   eq('workout_minutes sums the durations', computeWeeklyTaskProgress(task({ metric: 'workout_minutes', target: 60 }), activities, now).current, 25);
   eq('workout_reps sums the reps', computeWeeklyTaskProgress(task({ metric: 'workout_reps', target: 200 }), activities, now).current, 100);
-  eq('calories sums the calories', computeWeeklyTaskProgress(task({ metric: 'calories', target: 500 }), activities, now).current, 250);
   eq(
     'activity_type_count counts only the named type',
     computeWeeklyTaskProgress(task({ metric: 'activity_type_count', activityType: '深蹲', target: 3 }), activities, now).current,
@@ -195,6 +196,42 @@ console.log('\n-- progress comes from the records, and only from them ----------
     computeWeeklyTaskProgress(task({ metric: 'activity_type_count', activityType: '游泳', target: 3 }), activities, now).current,
     0,
   );
+}
+
+{
+  // 「每週運動天數」counts distinct days, so two workouts on one day are one day.
+  const now = taipei('2026-09-25T20:00:00'); // Friday
+  const days = (activities: HealthActivity[]) =>
+    computeWeeklyTaskProgress(task({ metric: 'workout_days', target: 3 }), activities, now).current;
+  const sameDayTwice = [
+    activity('2026-09-22T09:00:00', { activityId: 'morning' }),
+    activity('2026-09-22T19:00:00', { activityId: 'evening' }),
+  ];
+  eq('two workouts on the same day are one day', days(sameDayTwice), 1);
+  eq('the legacy count task still counts both', computeWeeklyTaskProgress(task(), sameDayTwice, now).current, 2);
+  eq(
+    'three different days are three days',
+    days([...sameDayTwice, activity('2026-09-21T09:00:00'), activity('2026-09-25T07:00:00')]),
+    3,
+  );
+  // Days are game-timezone days: 23:30 and 00:30 Taipei share a UTC date but are two days here.
+  eq(
+    'days split at Taipei midnight, not UTC midnight',
+    days([activity('2026-09-22T23:30:00'), activity('2026-09-23T00:30:00')]),
+    2,
+  );
+  eq(
+    'last Sunday and next Monday do not count',
+    days([activity('2026-09-20T23:59:00'), activity('2026-09-28T00:00:00'), activity('2026-09-24T12:00:00')]),
+    1,
+  );
+  const fullWeek = computeWeeklyTaskProgress(
+    task({ metric: 'workout_days', target: 7 }),
+    Array.from({ length: 14 }, (_, i) => activity(`2026-09-2${1 + (i % 7)}T0${i % 10}:00:00`, { activityId: `d${i}` })),
+    taipei('2026-09-27T22:00:00'),
+  );
+  eq('seven days twice over is still seven days', fullWeek.current, 7);
+  eq('and that completes a 7-day goal', fullWeek.completed, true);
 }
 
 {
@@ -211,9 +248,10 @@ console.log('\n-- progress comes from the records, and only from them ----------
 }
 
 {
-  // 步數 has no data source, so a steps task measures zero — not a plausible-looking invented number.
-  const stepsTask = task({ metric: 'steps', target: 30000 });
-  eq('a steps activity contributes nothing', measureActivity(activity('2026-09-22T09:00:00'), stepsTask), 0);
+  // 步數 was removed in 2026-10 (it never had a data source). A stray steps task measures zero —
+  // not a plausible-looking invented number.
+  const stepsTask = task({ metric: 'steps' as never, target: 30000 });
+  eq('a removed steps metric contributes nothing', measureActivity(activity('2026-09-22T09:00:00'), stepsTask), 0);
 }
 
 console.log('\n-- remaining days are computed, never hardcoded ----------------------');
@@ -285,7 +323,7 @@ console.log('\n-- validation: the invalid inputs the brief names ---------------
 
 {
   const existing = [task({ taskId: 'a', name: '每週運動' })];
-  const valid = { name: '每週深蹲', metric: 'workout_count', target: '3' };
+  const valid = { name: '每週深蹲', metric: 'workout_days', target: '3' };
 
   eq('a valid draft passes', validateWeeklyTaskDraft(valid, existing), {});
   ok('an empty name is refused', !!validateWeeklyTaskDraft({ ...valid, name: '' }, existing).name);
@@ -307,7 +345,33 @@ console.log('\n-- validation: the invalid inputs the brief names ---------------
 
   ok('an unknown metric is refused', !!validateWeeklyTaskDraft({ ...valid, metric: 'vibes' }, existing).metric);
   // 「不要使用虛假的固定數值冒充實際運動紀錄」 — a metric with no data source cannot be created at all.
-  ok('an unsupported metric is refused', !!validateWeeklyTaskDraft({ ...valid, metric: 'steps', target: '30000' }, existing).metric);
+  ok('the removed steps metric is refused', !!validateWeeklyTaskDraft({ ...valid, metric: 'steps', target: '30000' }, existing).metric);
+
+  // 「每週運動次數」is a legacy type now: it can be kept on an old task, never newly chosen.
+  ok('the legacy count metric cannot be created', !!validateWeeklyTaskDraft({ ...valid, metric: 'workout_count' }, existing).metric);
+  eq(
+    'an old count task can be edited and keep its metric',
+    validateWeeklyTaskDraft({ ...valid, metric: 'workout_count', target: '10' }, existing, 'a'),
+    {},
+  );
+  const minutesTask = task({ taskId: 'm', name: '時間', metric: 'workout_minutes', target: 60 });
+  ok(
+    'another task cannot be switched to the legacy metric',
+    !!validateWeeklyTaskDraft({ ...valid, metric: 'workout_count' }, [minutesTask], 'm').metric,
+  );
+
+  // The two stepper types only accept values the ± buttons can reach.
+  ok('0 days is refused', !!validateWeeklyTaskDraft({ ...valid, target: '0' }, existing).target);
+  eq('7 days passes', validateWeeklyTaskDraft({ ...valid, target: '7' }, existing), {});
+  ok('8 days is refused', !!validateWeeklyTaskDraft({ ...valid, target: '8' }, existing).target);
+  const minutes = { ...valid, metric: 'workout_minutes' };
+  eq('30 minutes passes', validateWeeklyTaskDraft({ ...minutes, target: '30' }, existing), {});
+  eq('600 minutes passes', validateWeeklyTaskDraft({ ...minutes, target: '600' }, existing), {});
+  ok('15 minutes is refused', !!validateWeeklyTaskDraft({ ...minutes, target: '15' }, existing).target);
+  ok('45 minutes is off the 30-minute grid', !!validateWeeklyTaskDraft({ ...minutes, target: '45' }, existing).target);
+  ok('630 minutes is refused', !!validateWeeklyTaskDraft({ ...minutes, target: '630' }, existing).target);
+  // The types that keep their text input are not held to a grid.
+  eq('reps still take any whole number in range', validateWeeklyTaskDraft({ ...valid, metric: 'workout_reps', target: '205' }, existing), {});
   ok(
     'activity_type_count needs a type',
     !!validateWeeklyTaskDraft({ ...valid, metric: 'activity_type_count' }, existing).activityType,
@@ -377,6 +441,31 @@ console.log('\n-- a corrupt save is normalised, not rendered -------------------
   });
   eq('only the sound one survives', dirty.tasks?.map((entry) => entry.taskId), ['good']);
 
+  // The calorie goal was removed in 2026-10. A save that still has one must load: that task is
+  // skipped (not converted into some other goal), and the player's other tasks are untouched.
+  const removedMetric = { taskId: 'kcal', name: '燃燒 500', metric: 'calories', target: 500, createdAt: '', startWeek: '2026-09-14' };
+  ok('the removed calorie goal has no spec any more', getMetricSpec('calories') === null);
+  eq(
+    'a saved calorie task is dropped, the rest survive',
+    normalizeWeeklyTaskState({ tasks: [task({ taskId: 'a' }), removedMetric, task({ taskId: 'b', name: 'b' })] }).tasks?.map((entry) => entry.taskId),
+    ['a', 'b'],
+  );
+  eq('and it is offered no reward', rewardForTask({ metric: 'calories' as never, target: 500 }), null);
+  ok('and the form cannot create one', !!validateWeeklyTaskDraft({ name: 'x', metric: 'calories', target: '500' }).metric);
+
+  // Steps went the same way in 2026-10.
+  const removedSteps = { taskId: 'steps', name: '一萬步', metric: 'steps', target: 30000, createdAt: '', startWeek: '2026-09-14' };
+  ok('the removed steps goal has no spec any more', getMetricSpec('steps') === null);
+  eq(
+    'a saved steps task is dropped, the rest survive',
+    normalizeWeeklyTaskState({ tasks: [task({ taskId: 'a' }), removedSteps, task({ taskId: 'b', name: 'b' })] }).tasks?.map((entry) => entry.taskId),
+    ['a', 'b'],
+  );
+  // The old count goal is NOT dropped: it stays a 次 task that counts sessions.
+  const legacyCount = normalizeWeeklyTaskState({ tasks: [task({ taskId: 'old', metric: 'workout_count', target: 10 })] }).tasks?.[0];
+  eq('a saved count task loads unchanged', [legacyCount?.metric, legacyCount?.target], ['workout_count', 10]);
+  eq('and still shows 次', getMetricSpec('workout_count')?.unit, '次');
+
   const overLong = normalizeWeeklyTaskState({
     tasks: Array.from({ length: MAX_WEEKLY_TASKS + 5 }, (_, i) => task({ taskId: `t${i}`, name: `任務 ${i}` })),
   });
@@ -388,9 +477,9 @@ console.log('\n-- the week summary and the list order --------------------------
 {
   const now = taipei('2026-09-24T12:00:00');
   const activities = [
-    activity('2026-09-21T09:00:00', { durationSeconds: 600, reps: 40, calories: 100 }),
-    activity('2026-09-23T09:00:00', { durationSeconds: 300, reps: 20, calories: 50 }),
-    activity('2026-09-19T09:00:00', { durationSeconds: 999, reps: 999, calories: 999 }), // last week
+    activity('2026-09-21T09:00:00', { durationSeconds: 600, reps: 40 }),
+    activity('2026-09-23T09:00:00', { durationSeconds: 300, reps: 20 }),
+    activity('2026-09-19T09:00:00', { durationSeconds: 999, reps: 999 }), // last week
   ];
   const entries = [
     computeWeeklyTaskProgress(task({ taskId: 'a', target: 2 }), activities, now),
@@ -400,7 +489,6 @@ console.log('\n-- the week summary and the list order --------------------------
   eq('only this week is summed', summary.workouts, 2);
   eq('minutes', summary.minutes, 15);
   eq('reps', summary.reps, 60);
-  eq('calories', summary.calories, 150);
   eq('completed tasks', summary.tasksCompleted, 1);
   eq('active tasks', summary.tasksActive, 2);
 
@@ -432,7 +520,6 @@ console.log('\n-- the health data adapter --------------------------------------
     type: '深蹲',
     duration: 300,
     counts: 25,
-    calories: 44,
     goldEarned: 10,
     timestamp: '2026-09-22T09:00:00.000Z',
   });
@@ -442,11 +529,25 @@ console.log('\n-- the health data adapter --------------------------------------
     type: '深蹲',
     durationSeconds: 300,
     reps: 25,
-    calories: 44,
   });
 
+  // Logs written before the calorie estimate was removed still carry a `calories` field. It must
+  // be read past, not carried into the activity and not trip anything.
+  const legacy = activityFromWorkoutLog({
+    logId: 'log-1',
+    userId: 'u',
+    type: '深蹲',
+    duration: 300,
+    counts: 25,
+    calories: 44,
+    goldEarned: 10,
+    timestamp: '2026-09-22T09:00:00.000Z',
+  } as Partial<WorkoutLog>);
+  eq('a legacy log with the removed field translates to the same activity', legacy, full);
+  ok('and the removed field is not carried through', legacy !== null && !('calories' in legacy));
+
   const sparse = activityFromWorkoutLog({ timestamp: '2026-09-22T09:00:00.000Z' });
-  eq('missing numbers become zero, not NaN', [sparse?.durationSeconds, sparse?.reps, sparse?.calories], [0, 0, 0]);
+  eq('missing numbers become zero, not NaN', [sparse?.durationSeconds, sparse?.reps], [0, 0]);
   ok('and it still has a type', !!sparse?.type);
 
   eq('a log with no timestamp is dropped', activityFromWorkoutLog({ logId: 'x' }), null);
@@ -457,11 +558,34 @@ console.log('\n-- the health data adapter --------------------------------------
 {
   // The adapter's declared support and the metric table must agree, or the form offers a goal
   // nothing can feed.
+  // Legacy types count here: old tasks of that type still need their progress fed.
   const declared = [...WORKOUT_LOG_METRICS].sort();
-  const marked = availableMetrics().map((spec) => spec.id).sort();
+  const marked = METRIC_SPECS.filter((spec) => spec.available).map((spec) => spec.id).sort();
   eq('the adapter feeds exactly the metrics marked available', declared, marked);
-  eq('步數 is the one that is not', unsupportedMetrics().map((spec) => spec.id), ['steps']);
-  ok('and it says why', unsupportedMetrics().every((spec) => !!spec.unavailableReason));
+  eq('no listed metric is waiting on a data source (步數 was removed)', unsupportedMetrics().map((spec) => spec.id), []);
+  ok('and any that is says why', unsupportedMetrics().every((spec) => !!spec.unavailableReason));
+  eq(
+    'the form offers four types, the legacy count goal not among them',
+    availableMetrics().map((spec) => spec.id),
+    ['workout_days', 'workout_minutes', 'workout_reps', 'activity_type_count'],
+  );
+  eq('a new task defaults to 3 days', [getMetricSpec('workout_days')?.defaultTarget, getMetricSpec('workout_days')?.unit], [3, '天']);
+  eq(
+    'days step 1 through 7',
+    [getMetricSpec('workout_days')?.minTarget, getMetricSpec('workout_days')?.maxTarget, getMetricSpec('workout_days')?.step],
+    [1, 7, 1],
+  );
+  eq(
+    'minutes default to 30 and step 30 up to 600',
+    ['defaultTarget', 'minTarget', 'maxTarget', 'step'].map((key) => getMetricSpec('workout_minutes')?.[key as 'step']),
+    [30, 30, 600, 30],
+  );
+  const minutesSpec = getMetricSpec('workout_minutes')!;
+  eq(
+    'an old off-grid target snaps to the nearest step inside the range',
+    [45, 44, 5, 2000, 600, Number.NaN].map((value) => snapStepperTarget(minutesSpec, value)),
+    [60, 30, 30, 600, 600, 30],
+  );
   ok('every metric has a spec', METRIC_SPECS.every((spec) => getMetricSpec(spec.id) === spec));
   ok('an unknown metric has none', getMetricSpec('vibes') === null);
   ok(
