@@ -4,6 +4,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { registerDailyLoginApi } from "./src/server/dailyLoginApi";
+import { registerCoachFeedbackApi } from "./src/server/coachFeedbackApi";
 
 dotenv.config();
 
@@ -213,6 +214,8 @@ app.get("/api/youtube/search", async (req, res) => {
 // before the Vite/static middleware so its routes are matched as API rather than swallowed by the
 // SPA fallback. See src/server/dailyLoginApi.ts for why it is server-side at all.
 registerDailyLoginApi(app);
+// 健身組：AI 教練評語（組間休息、訓練結算），與商店助手共用同一把 Gemini 金鑰
+registerCoachFeedbackApi(app, { getClient: getGeminiClient });
 
 // Vite middleware logic
 async function setupVite() {
