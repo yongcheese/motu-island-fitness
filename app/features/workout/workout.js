@@ -16,6 +16,7 @@ import { framingReport, createStabilityTracker, landmarkOk, HEAD_LANDMARKS, came
 import { sampleVideoLuma, lightingReport } from '../../core/lighting.js';   // 光線品質：量出來並告知，不放寬判定門檻
 import { ALL_FRAME, displaySegments, gaugeColor, phaseCueText } from '../../ui/display-colors.js';   // 顏色語意（純函式，可單測）
 import { icon } from '../../ui/icons.js';   // 合體 Slice 3：Lucide 線條圖示，取代 emoji
+import { buildCoachPayload, fetchCoachLine } from '../../core/coachLine.js';   // AI 教練評語（組間休息、結算；Gemini 失敗退回預設句）
 
 let CTX = null;
 let root = null;
@@ -826,6 +827,7 @@ function restHtml({ setIdx, totalSets, restSec, nextReps }) {
           <div class="lv-rest-ring"><b>${restSec}</b><span>秒</span></div>
           <div class="lv-rest-next">下一組：第 ${setIdx + 1} 組 · ${nextReps} 下</div>
           <div class="lv-rest-s">深呼吸，放鬆一下</div>
+          <div class="lv-rest-ai" id="lv-rest-ai" aria-live="polite">${icon('sparkles', { size: 16 })}<span>AI 教練整理這組表現中…</span></div>
           <button class="btn secondary lv-rest-skip" type="button">跳過休息</button>
         </div>
       </div>`;
@@ -1011,6 +1013,59 @@ function enterRest(run) {
   emitPhase('rest', set, run.ex);
   beep(720, 0.16);
   if (run.voice) CTX.coach.say(`第 ${set.idx} 組完成，休息 ${set.restSec} 秒`, 'mid');
+  requestRestCoach(run);
+}
+
+/* ---------------- AI 教練評語（組間休息、結算）----------------
+   每一下的即時糾正維持預先寫好的口令（要 0.1 秒內講出來）；休息與結算不趕時間，
+   由後端 Gemini 依這次的成績即時生成一兩句話，失敗或逾時就用預設句子（見 core/coachLine.js）。 */
+// 目前累積的錯誤（沒算到的原因＋可以更好的提醒），轉成顯示名稱、次數多的在前
+function coachFaults(summary) {
+  const all = { ...(summary.faultCounts || {}), ...(summary.advisoryCounts || {}) };
+  return Object.entries(all).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).map(([k, n]) => [faultName(k), n]);
+}
+// 語音模組在講話時會丟掉新的普通句子 → 等前一句講完再講（最多等 waitMs），條件不成立（已離開這一刻）就放棄
+function sayWhenIdle(text, stillValid, waitMs = 8000) {
+  const t0 = Date.now();
+  const tryNow = () => {
+    if (!stillValid()) return;
+    if (CTX.coach.say(text, 'mid')) return;
+    if (Date.now() - t0 < waitMs) setTimeout(tryNow, 300);
+  };
+  tryNow();
+}
+function showCoachLine(el, line) {
+  if (!el) return;
+  el.dataset.src = line.source;                 // gemini／preset：畫面樣式一樣，留給測試與除錯辨識
+  const span = el.querySelector('span'); if (span) span.textContent = line.text;
+}
+function requestRestCoach(run) {
+  const set = run.set, idx = set.idx;
+  const sum = run.detector.summary();
+  const payload = buildCoachPayload('rest', run.ex, {
+    setIdx: idx, totalSets: set.total, setValid: set.setEndValid - set.baseValid, setTarget: set.target,
+    totalValid: sum.validReps, totalInvalid: sum.invalidReps, faults: coachFaults(sum),
+  });
+  const still = () => live === run && run.set.phase === 'REST' && run.set.idx === idx;
+  fetchCoachLine(payload).then((line) => {
+    if (!still()) return;
+    showCoachLine(root.querySelector('#lv-rest-ai'), line);
+    if (run.voice) sayWhenIdle(line.text, still);
+  });
+}
+function requestSummaryCoach(ex, summary, session) {
+  const el = root.querySelector('#wk-sum-ai');
+  if (!el) return;
+  const payload = buildCoachPayload('summary', ex, {
+    totalValid: summary.validReps, totalInvalid: summary.invalidReps, durationSec: session.durationSec,
+    faults: coachFaults(summary),
+  });
+  const still = () => el.isConnected;
+  fetchCoachLine(payload).then((line) => {
+    if (!still()) return;
+    showCoachLine(el, line);
+    if (CTX.store.getState().prefs.voice) sayWhenIdle(line.text, still);
+  });
 }
 // REST → WORK：baseValid 固定用 snapshot
 function enterWork(run) {
@@ -1580,6 +1635,11 @@ function renderResult(ex, summary, session, setReps = []) {
         </div>
       </section>`}
 
+      <section class="card wk-sum-ai" id="wk-sum-ai" aria-label="AI 教練總評" aria-live="polite">
+        <div class="wk-sum-sec-t">${icon('sparkles', { size: 16 })} AI 教練總評</div>
+        <p class="wk-sum-ai-t"><span>正在整理這次的表現…</span></p>
+      </section>
+
       <section class="card wk-sum-notes" aria-label="下次怎麼更好">
         ${faults.length ? `
         <div class="wk-sum-sec-t">${icon('triangle-alert', { size: 16 })} 沒算到的原因</div>
@@ -1602,6 +1662,7 @@ function renderResult(ex, summary, session, setReps = []) {
   root.querySelector('#wk-again').onclick = () => { rwClear(); renderIntro(ex); };
   const go = root.querySelector('#wk-rw-go'); if (go) go.onclick = () => { rwClear(); CTX.navigate('island'); };
   root.querySelector('#wk-rw-done').onclick = () => { rwClear(); renderMenu(); };
+  requestSummaryCoach(ex, summary, session);
 
   // ── 演出：彩帶 → 金幣滾動 → 飛向島嶼目標 → 進度推進 ──
   // 純表現層：store 早在 finishLive 就 commit 完了，演出只是把「已經發生的事」畫出來。
