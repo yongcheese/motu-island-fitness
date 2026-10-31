@@ -97,13 +97,12 @@ export const highknees = {
   requiredLandmarks: [LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE, LM.LEFT_ANKLE, LM.RIGHT_ANKLE],
   // 入鏡判定不含腳踝：核心訊號是大腿投影縮短率（只需髖+膝）；腳踝僅用於支撐腳打直檢查
   gateLandmarks: [LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE],
-  // 高抬腿是原地彈跳的有氧動作，跟開合跳同類：騰空超過畫面高 0.12 時頭會衝出上緣，
-  // 逐幀的頭部把關就會讓整組計不到次（實測 0.12 → valid 0/4、112 幀中斷）。
-  // 在取景關卡先要求上緣留白，就不會發生。
-  needsHeadroom: true,
-  // 2026-10-31 使用者回報：高抬腿不會跳，舊文字「這個動作會跳起來」是開合跳的說法。
-  // 留白仍保留：抬膝時身體會往上提、頭頂離上緣太近會出框。
-  headroomText: '抬膝時身體會往上提 —— 請再後退一點，讓頭頂上方留出約一個頭的空間',
+  // 2026-10-31 拿掉上緣留白（needsHeadroom）。使用者實測「已經全身入鏡，卻一直不讓我開始」：
+  // 留白要求頭頂離上緣 18% 畫面高（依開合跳騰空高度訂），鏡頭放腰高時得站很遠才過得了。
+  // 當初要留白的理由是「頭衝出上緣 → 逐幀頭部把關讓整組計不到次」，但下方 requireHead:false
+  // 已讓訓練中不看頭（判定只用髖與膝），那個理由不再成立；高抬腿也不會跳（使用者確認）。
+  // 測試鎖住：頭頂貼上緣、抬膝時頭短暫出框，仍照常計次（framing.test.js）。
+  needsHeadroom: false,
   // 2026-10-31 使用者回報：「一直提醒我要跟地面平行，但我平行時深度條已經滿了」——
   // 是抬升途中的 deeper 口令逐下觸發；改成只在沒抬到的那一下提醒（見 engine.js）。
   liveDeeperCue: false,

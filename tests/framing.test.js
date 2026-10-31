@@ -586,11 +586,25 @@ test('framing: 只缺單一部位仍是 missing（不該一有缺件就說側身
   eq(framingReport(sk, { gateLandmarks: SQUAT_GATE }).issue, 'missing');
 });
 
-// 高抬腿跟開合跳同類：原地彈跳，取景太緊時頭會衝出上緣。
-test('高抬腿: 需要上緣留白（與開合跳同類）', () => {
-  eq(EXERCISES.highknees.needsHeadroom, true);
+// 2026-10-31：高抬腿不會跳，且訓練中不看頭（requireHead:false）→ 不要求上緣留白（實測全身入鏡卻過不了關卡）。
+test('高抬腿: 不要求上緣留白；頭頂貼著上緣、抬膝時頭短暫出框，仍照常計次', () => {
+  eq(EXERCISES.highknees.needsHeadroom, false);
+  eq(EXERCISES.jumpingjack.needsHeadroom, true, '開合跳會跳，仍要留白');
   const tight = _internal.transform(baseSkeleton(), { scale: 1.0 });
-  eq(framingReport(tight, { gateLandmarks: EXERCISES.highknees.gateLandmarks, needsHeadroom: true }).issue, 'no_headroom');
+  eq(framingReport(tight, { gateLandmarks: EXERCISES.highknees.gateLandmarks, needsHeadroom: EXERCISES.highknees.needsHeadroom }).issue, null,
+    '站得近、頭頂貼上緣也要能通過取景');
+  const clip = (sk) => sk.map(p => (p && !inFrame(p) ? { ...p, visibility: 0.03 } : p));
+  const seq = makeSequence('highknees', { reps: 4, variant: 'clean' });
+  const det = createDetector(EXERCISES.highknees);
+  let t = 0, lost = 0;
+  seq.frames.forEach((f0, i) => {
+    const rise = 0.06 * Math.sin(Math.PI * seq.meta[i].d);   // 抬膝時身體往上提，頭衝出上緣
+    const f = clip(_internal.transform(f0, { scale: 1.0 }).map(p => ({ ...p, y: p.y - rise })));
+    if (det.update(f, t).visible === false && i >= 6) lost++;
+    t += seq.dtMs;
+  });
+  eq(lost, 0, '頭出框時判定不該中斷');
+  eq(det.summary().validReps, 4, '頭出框時應正常計次');
 });
 
 test('彈跳類動作: 從通過關卡的取景起算，騰空 0.15 畫面高仍零中斷', () => {

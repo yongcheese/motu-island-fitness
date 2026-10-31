@@ -42,12 +42,12 @@ test('深蹲：抬升途中的「再往下蹲」提示維持原樣（只關高�
   assert(keys.includes('deeper'), '半蹲時深蹲仍要即時提醒往下');
 });
 
-test('取景留白：高抬腿不說「跳」，開合跳照舊', () => {
+test('取景留白：高抬腿不檢查留白（不會出現「會跳起來」），開合跳照舊', () => {
   const tight = demoPose('highknees', 0, 'L').map(p => ({ ...p, y: p.y - 0.06 }));
-  const hk = framingReport(tight, { gateLandmarks: [], needsHeadroom: true, headroomText: EXERCISES.highknees.headroomText });
-  eq(hk.issue, 'no_headroom'); assert(!hk.text.includes('跳') && hk.text.includes('頭頂'), hk.text);
-  const jj = framingReport(tight, { gateLandmarks: [], needsHeadroom: true, headroomText: EXERCISES.jumpingjack.headroomText });
-  assert(jj.text.includes('跳'), jj.text);
+  const hk = framingReport(tight, { gateLandmarks: [], needsHeadroom: EXERCISES.highknees.needsHeadroom });
+  assert(hk.issue !== 'no_headroom' && !String(hk.text).includes('跳'), `高抬腿不該被留白擋下：${hk.issue} ${hk.text}`);
+  const jj = framingReport(tight, { gateLandmarks: [], needsHeadroom: EXERCISES.jumpingjack.needsHeadroom });
+  eq(jj.issue, 'no_headroom'); assert(jj.text.includes('跳'), jj.text);
 });
 
 test('擺放提示：深蹲要放地上且提醒放穩、別放在會被踢到的地方', () => {
