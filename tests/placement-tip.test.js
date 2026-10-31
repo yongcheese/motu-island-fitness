@@ -48,3 +48,9 @@ test('取景卡顯示各動作自己的擺放提示（深蹲放低，不再是�
   const src = readFileSync(new URL('../app/features/workout/workout.js', import.meta.url), 'utf8');
   assert(/gateHtml\(ex\)/.test(src) && /lv-gate-tip">\$\{escHtml\(gateTipOf\(ex\)\)\}/.test(src), '取景卡要用 gateTipOf(ex)');
 });
+
+test('整合版：關掉健身頁時把語音教練整個停用（之後延遲的呼叫也講不出來）', () => {
+  const src = readFileSync(new URL('../motu-app/src/components/fitness/FitnessHost.tsx', import.meta.url), 'utf8');
+  const cleanup = src.slice(src.indexOf('workout.unmount();'), src.indexOf('coachRef.current = null;'));
+  assert(cleanup.includes('coachRef.current?.setEnabled(false)') && cleanup.includes('coachRef.current?.stop()'), '卸載時要停用並停止語音教練');
+});
