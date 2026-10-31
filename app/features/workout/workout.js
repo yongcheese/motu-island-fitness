@@ -671,7 +671,7 @@ function waitForFraming(run) {
       gateLandmarks: run.ex.gateLandmarks || run.ex.requiredLandmarks || [],
       gatePairs: run.ex.gatePairs || [],
       requireHead: true,
-      needsHeadroom: !!run.ex.needsHeadroom,
+      needsHeadroom: !!run.ex.needsHeadroom, headroomText: run.ex.headroomText || null,
     };
     // 依 spec 動態填充檢查燈（R1 靜態三列僅預設殼）
     const checksWrap = gate.querySelector('.lv-gate-checks');

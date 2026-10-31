@@ -101,6 +101,12 @@ export const highknees = {
   // 逐幀的頭部把關就會讓整組計不到次（實測 0.12 → valid 0/4、112 幀中斷）。
   // 在取景關卡先要求上緣留白，就不會發生。
   needsHeadroom: true,
+  // 2026-10-31 使用者回報：高抬腿不會跳，舊文字「這個動作會跳起來」是開合跳的說法。
+  // 留白仍保留：抬膝時身體會往上提、頭頂離上緣太近會出框。
+  headroomText: '抬膝時身體會往上提 —— 請再後退一點，讓頭頂上方留出約一個頭的空間',
+  // 2026-10-31 使用者回報：「一直提醒我要跟地面平行，但我平行時深度條已經滿了」——
+  // 是抬升途中的 deeper 口令逐下觸發；改成只在沒抬到的那一下提醒（見 engine.js）。
+  liveDeeperCue: false,
   thresholds: THRESHOLDS,
   gaugeTarget: GAUGE_TARGET,   // 深度條上的達標線位置（見 liftGauge）
   // 訓練中不強制看到頭：本動作的判定只用到髖與膝（見 gateLandmarks），
@@ -129,7 +135,7 @@ export const highknees = {
     tempo: 'fast',              // 節奏快 → 抑制閒聊型語音，改以字卡提示（Bug2(c)）
     voiceIntro: '開始高抬腿。站直，原地左右輪流抬腿，大腿抬到接近與地面平行，上半身保持挺直。手怎麼擺都可以，不會影響判定。',
     // 2026-10-31：高抬腿要腰高機位（見 THIGH_LIFT_TARGET 的模擬）；與深蹲相反，深蹲要放低
-    placementTip: '高抬腿請把裝置放在桌上或椅子上，鏡頭大約在腰的高度，再往後退到全身入鏡' },
+    placementTip: '高抬腿請把裝置放在桌上或椅子上並放穩，鏡頭大約在腰的高度，再往後退到全身入鏡' },
   evaluate(f, s) {
     const hipC = midpoint(f[LM.LEFT_HIP], f[LM.RIGHT_HIP]);
     // 抬膝高度：改用「大腿投影縮短率」，理由與實測數據見上方 THIGH_LIFT_TARGET 註解。

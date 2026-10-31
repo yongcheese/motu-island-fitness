@@ -521,7 +521,9 @@ export function createDetector(spec, opts = {}) {
       if (spec.cues[f]) cue = { key: f, ...spec.cues[f] };
     } else if (pendingCue) {
       cue = pendingCue;      // 上一次動作的節奏／伸展提醒，在這一次進行中補說
-    } else if (phase === 'CONCENTRIC' && spec.cues?.deeper && color === 'yellow') {
+    } else if (phase === 'CONCENTRIC' && spec.cues?.deeper && color === 'yellow' && spec.liveDeeperCue !== false) {
+      // liveDeeperCue:false（高抬腿）：快速動作每一下往上的途中都會短暫是黃色，逐下念「再抬高」等於一直嘮叨，
+      // 使用者明明抬到了也在被提醒。改成只在那一下真的沒達標時，由結算（rejectHint）提醒。
       cue = { key: 'deeper', ...spec.cues.deeper };
     }
 
