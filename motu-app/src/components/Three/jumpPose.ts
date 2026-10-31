@@ -110,11 +110,19 @@ export const JUMP_LAND_DURATION = 0.24;
 /** How fast the impact itself lands, inside {@link JUMP_LAND_DURATION}. The rest is recovery. */
 const LAND_IMPACT_DURATION = 0.06;
 
-/** How long the airborne poses take to arrive once their phase begins. */
+/** How long after the extension the body takes to settle from the take-off into the flight pose. */
 const RISE_BLEND = 0.12;
-const FALL_BLEND = 0.15;
 /** A free fall (walked off a ledge) has no take-off to come out of, so it fades in instead. */
 const FREE_FALL_BLEND = 0.18;
+/**
+ * 著地準備 — how long before touchdown the legs start reaching for the ground.
+ *
+ * Measured against the arc's own time-to-ground, not a timer, so it is the same tenth of a second
+ * whatever height the hop was taken from. Long enough to read as the body SEEING the ground
+ * coming (without it the feet are still tucked on the frame they hit), short enough that it does
+ * not eat into the apex hang.
+ */
+const LAND_REACH_TIME = 0.1;
 
 /**
  * WHAT MAKES A FALL A FALL — 「從高處落下」, which had no state at all before this.
@@ -240,13 +248,20 @@ export interface JumpState {
   entryPose: BodyPose;
   entryWeight: number;
   /**
-   * The pose and weight this state last emitted, so {@link JumpState.entryPose} has something
+   * The squash/stretch the current phase started from. Same reason as `entryPose`, used by the
+   * landing: the body arrives STRETCHED by its fall speed, and cutting straight to the absorb's
+   * squash would be a one-frame pop of the whole root scale on the frame the feet hit.
+   */
+  entryStretch: number;
+  /**
+   * The pose, weight and stretch this state last emitted, so the `entry*` fields have something
    * to record. Kept per state rather than in a module-level scratch because more than one
    * avatar can be mounted at a time (the island and the dressing room), and one of them
    * jumping must not be able to give the other its pose.
    */
   lastPose: BodyPose;
   lastWeight: number;
+  lastStretch: number;
 }
 
 export function createJumpState(): JumpState {
@@ -259,8 +274,10 @@ export function createJumpState(): JumpState {
     buffer: 0,
     entryPose: emptyPose(),
     entryWeight: 0,
+    entryStretch: 0,
     lastPose: emptyPose(),
     lastWeight: 0,
+    lastStretch: 0,
   };
 }
 
@@ -406,6 +423,7 @@ function enter(state: JumpState, phase: JumpPhase) {
 function beginCrouch(state: JumpState) {
   copyPoseInto(state.entryPose, state.lastPose);
   state.entryWeight = state.lastWeight;
+  state.entryStretch = state.lastStretch;
   enter(state, 'crouch');
   state.ballistic = false;
 }
@@ -424,6 +442,13 @@ function integrate(state: JumpState, dt: number) {
 }
 
 function land(state: JumpState) {
+  // The absorb starts from whatever the body was doing on the frame the feet came down — the
+  // pre-landing reach of a hop, or a free fall that may not have finished fading in — rather than
+  // from a fixed key pose at full strength. A short drop off a low step lands at the weight it
+  // had reached; a hop lands out of the reach it was in. Neither snaps.
+  copyPoseInto(state.entryPose, state.lastPose);
+  state.entryWeight = state.lastWeight;
+  state.entryStretch = state.lastStretch;
   enter(state, 'land');
   state.ballistic = false;
   state.offsetY = 0;
@@ -500,6 +525,23 @@ const FALL_POSE: BodyPose = {
   rightLeg: { x: -0.08 },
 };
 
+/**
+ * 著地準備 — the last {@link LAND_REACH_TIME} before touchdown. The legs come together and reach
+ * down for the ground they are about to hit, the arms lift forward to balance the catch.
+ *
+ * Without it the fall pose is held right up to contact and the absorb has to do all of the
+ * landing in its 60 ms impact: the feet were still tucked on the frame they hit. Knees stay a
+ * little bent (-0.12, not 0) because a leg that lands locked straight is a leg that jars.
+ */
+const REACH_POSE: BodyPose = {
+  head: { x: 0.08 },
+  torso: { x: 0.10 },
+  leftArm: { x: -0.45, z: -0.52 },
+  rightArm: { x: -0.42, z: 0.50 },
+  leftLeg: { x: -0.12 },
+  rightLeg: { x: -0.12 },
+};
+
 /** 落地 — knees forward under a dropped root, chest over them, hands coming down in front. */
 const LAND_POSE: BodyPose = {
   head: { x: 0.10 },
@@ -518,8 +560,9 @@ const JUMP_JOINTS: readonly RigJointName[] = ['head', 'torso', 'leftArm', 'right
  * within the same frame. The alternative is one object plus six more per frame for the whole
  * length of every jump, which is a lot of garbage for a number that lives four microseconds.
  */
-const scratch: BodyPose = {};
-for (const joint of JUMP_JOINTS) scratch[joint] = { x: 0, z: 0 };
+const scratch: BodyPose = emptyPose();
+/** The flight pose on its own, before the take-off settles into it. Same no-garbage reasoning. */
+const flight: BodyPose = emptyPose();
 
 export interface JumpFrame {
   /** The joints, by name. Blended between the key poses — never one of them verbatim. */
@@ -555,10 +598,63 @@ const frame: JumpFrame = { pose: scratch, weight: 0, rootOffset: 0, stretch: 0 }
  */
 export function jumpFrame(state: JumpState, legLength: number): JumpFrame {
   const result = computeJumpFrame(state, legLength);
-  // Remembered for the next 準備, which has to know what it interrupted - see entryPose.
+  // Remembered for the next 準備 or 落地, which has to know what it interrupted - see entryPose.
   copyPoseInto(state.lastPose, result.pose);
   state.lastWeight = result.weight;
+  state.lastStretch = result.stretch;
   return result;
+}
+
+/**
+ * THE FLIGHT POSE — a function of the arc, not of a clock.
+ *
+ * The first version blended 上升 in over a fixed 0.12 s after take-off and 下降 in over a fixed
+ * 0.15 s after the apex, then HELD each one. So the pose only knew which half of the arc it was
+ * in: the body looked the same 0.05 s after the apex as it did a hair before the ground, however
+ * fast it was by then coming down. Here every frame asks the arc itself:
+ *
+ *   u = vy / take-off speed, from +1 (just left the ground) through 0 (the apex) to -1 (landing
+ *   speed). 上升 and 下降 are its two ends and the apex is honestly halfway between them — the
+ *   brief hang every hop has, rather than a switch.
+ *
+ *   The last {@link LAND_REACH_TIME} before contact, read off the arc's exact time-to-ground,
+ *   blends in 著地準備 (REACH_POSE). It is the only way to reach for a ground you can see
+ *   coming, and it is why the pose now lands WITH the body instead of a frame after it.
+ *
+ * `vy` also gives the time since take-off exactly — (v₀ − vy)/g on a ballistic arc — so the
+ * take-off can settle into this without a second stopwatch to disagree with the first.
+ */
+function flightPose(state: JumpState): BodyPose {
+  const u = clamp(state.vy / JUMP_TAKEOFF_SPEED, -1, 1);
+  blendInto(flight, FALL_POSE, RISE_POSE, smoothstep((u + 1) / 2));
+  if (state.vy < 0) {
+    const reach = smoothstep(clamp01(1 - timeToGround(state) / LAND_REACH_TIME));
+    if (reach > 0) blendInto(flight, flight, REACH_POSE, reach);
+  }
+  return flight;
+}
+
+/**
+ * Squash/stretch in flight: stretched along the motion, by how fast the motion is.
+ *
+ * Fully stretched leaving the ground, rounding off to a slight stretch over the apex, and drawn
+ * out again as the fall picks up speed — less than on the way up, because by then the legs are
+ * reaching and the body is gathering for the catch.
+ */
+function flightStretch(state: JumpState): number {
+  const u = clamp(state.vy / JUMP_TAKEOFF_SPEED, -1, 1);
+  return u >= 0 ? 0.25 + 0.75 * u : 0.25 + 0.35 * -u;
+}
+
+/** Seconds until the arc meets the support: the positive root of h + vy·t − g·t²/2 = 0. */
+function timeToGround(state: JumpState): number {
+  const h = Math.max(0, state.offsetY);
+  return (state.vy + Math.sqrt(state.vy * state.vy + 2 * JUMP_GRAVITY * h)) / JUMP_GRAVITY;
+}
+
+/** Seconds since take-off — exact on a ballistic arc, because vy falls at exactly g. */
+function timeAloft(state: JumpState): number {
+  return (JUMP_TAKEOFF_SPEED - state.vy) / JUMP_GRAVITY;
 }
 
 function computeJumpFrame(state: JumpState, legLength: number): JumpFrame {
@@ -582,13 +678,12 @@ function computeJumpFrame(state: JumpState, legLength: number): JumpFrame {
       // rest of the way downstream), so the hips may only come down by as much as THAT much bend
       // allows — see poseDip.
       frame.rootOffset = -poseDip(legLength, frame.weight);
-      frame.stretch = lerp(-state.entryWeight, -1, eased);
+      frame.stretch = lerp(state.entryStretch, -1, eased);
       return frame;
     }
 
     case 'takeoff': {
-      const p = clamp01(state.t / JUMP_TAKEOFF_DURATION);
-      const opening = smoothstep(p);
+      const opening = smoothstep(clamp01(state.t / JUMP_TAKEOFF_DURATION));
       blendPose(CROUCH_POSE, TAKEOFF_POSE, opening);
       frame.weight = 1;
       // The arc, plus the last of the crouch coming out from under it. Snapping the dip to zero
@@ -597,53 +692,62 @@ function computeJumpFrame(state: JumpState, legLength: number): JumpFrame {
       // is what pushes the body up in the first place, so unwinding it across the push is what
       // is actually happening.
       frame.rootOffset = state.offsetY - crouchDip(legLength, (CROUCH_POSE.leftLeg?.x ?? 0) * (1 - opening));
-      frame.stretch = lerp(-1, 1, p);
+      // Out of the gather's squash into the flight's stretch — which by the end of the push is
+      // already relaxing, because the climb is already slowing.
+      frame.stretch = lerp(-1, flightStretch(state), opening);
       return frame;
     }
 
-    case 'rise': {
-      const p = clamp01(state.t / RISE_BLEND);
-      blendPose(TAKEOFF_POSE, RISE_POSE, smoothstep(p));
+    case 'rise':
+    case 'fall': {
+      if (!state.ballistic) {
+        // 從高處落下 — a fall this machine did not launch. There is no arc to read a pose off,
+        // so it is the plain fall pose, faded in from whatever the character was doing when
+        // the ground ran out.
+        blendPose(FALL_POSE, FALL_POSE, 1);
+        frame.weight = smoothstep(clamp01(state.t / FREE_FALL_BLEND));
+        frame.rootOffset = state.offsetY;
+        frame.stretch = 0.25 * frame.weight;
+        return frame;
+      }
+      // The take-off settling into the flight, then the flight itself — one expression for both
+      // halves of the arc, so the apex is a point on a curve and not a join between two.
+      const settle = smoothstep(clamp01((timeAloft(state) - JUMP_TAKEOFF_DURATION) / RISE_BLEND));
+      blendPose(TAKEOFF_POSE, flightPose(state), settle);
       frame.weight = 1;
       frame.rootOffset = state.offsetY;
-      // The stretch relaxes as the climb slows — it is the body still carrying the push-off,
-      // and by the apex there is nothing left to carry.
-      frame.stretch = lerp(1, 0.25, p);
-      return frame;
-    }
-
-    case 'fall': {
-      const p = clamp01(state.t / FALL_BLEND);
-      blendPose(state.ballistic ? RISE_POSE : FALL_POSE, FALL_POSE, smoothstep(p));
-      // A ballistic fall arrives already in the airborne pose; a free fall off a ledge has to
-      // fade in from whatever the character was doing when the ground ran out.
-      frame.weight = state.ballistic ? 1 : smoothstep(clamp01(state.t / FREE_FALL_BLEND));
-      frame.rootOffset = state.offsetY;
-      frame.stretch = lerp(0.25, 0, p) * frame.weight;
+      frame.stretch = flightStretch(state);
       return frame;
     }
 
     case 'land': {
-      const impact = clamp01(state.t / LAND_IMPACT_DURATION);
-      blendPose(FALL_POSE, LAND_POSE, smoothstep(impact));
+      const impact = smoothstep(clamp01(state.t / LAND_IMPACT_DURATION));
+      // Out of the pose, weight and stretch the body touched down in (see `land`), into the absorb.
+      blendPose(state.entryPose, LAND_POSE, impact);
       // Full strength through the impact, then handing the body back over the rest of the
       // phase — 「快速恢復正常姿勢」, and the reason a landing never cuts to idle.
       const recovery = clamp01((state.t - LAND_IMPACT_DURATION) / (JUMP_LAND_DURATION - LAND_IMPACT_DURATION));
-      const w = 1 - smoothstep(recovery);
+      const release = 1 - smoothstep(recovery);
+      const w = lerp(state.entryWeight, 1, impact) * release;
       frame.weight = w;
       // Same geometry as the crouch, driven by the same weight that is bending the knees, so
       // the absorb sinks the hips and straightens back up without the soles ever leaving the
       // ground they just hit.
       frame.rootOffset = -poseDip(legLength, w);
-      frame.stretch = -w;
+      frame.stretch = lerp(state.entryStretch, -1, impact) * release;
       return frame;
     }
   }
 }
 
 function blendPose(a: BodyPose, b: BodyPose, t: number) {
+  blendInto(scratch, a, b, t);
+}
+
+/** `dest` = a→b at t, joint by joint. `dest` may be `a` itself. */
+function blendInto(dest: BodyPose, a: BodyPose, b: BodyPose, t: number) {
   for (const joint of JUMP_JOINTS) {
-    const target = scratch[joint]!;
+    const target = dest[joint]!;
     const from = a[joint];
     const to = b[joint];
     target.x = lerp(from?.x ?? 0, to?.x ?? 0, t);
@@ -652,6 +756,7 @@ function blendPose(a: BodyPose, b: BodyPose, t: number) {
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
+const clamp01 = (v: number) => clamp(v, 0, 1);
 /** Ease in and out. Zero derivative at both ends, which is what keeps phase joins invisible. */
 const smoothstep = (t: number) => t * t * (3 - 2 * t);

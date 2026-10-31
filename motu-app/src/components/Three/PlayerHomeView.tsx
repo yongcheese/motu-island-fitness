@@ -4,7 +4,7 @@
  */
 
 import * as THREE from 'three';
-import { useApp } from '../../context/AppContext';
+import { useAppPick } from '../../context/AppContext';
 import { usePlayerHome } from '../../hooks/usePlayerHome';
 import { HouseModel } from './HouseModel';
 import { View } from '../../types';
@@ -27,7 +27,7 @@ import { useSightlineOccluder } from '../../constants/layers';
  * It still hides itself while actually being MOVED, because the ghost is drawing it then.
  */
 export function PlayerHomeView() {
-  const { profile, currentView, islandDraft, selectHome } = useApp();
+  const { profile, currentView, islandDraft, selectHome } = useAppPick('profile', 'currentView', 'islandDraft', 'selectHome');
   const home = usePlayerHome(profile);
   // A sightline occluder only — the Home genuinely hides an interaction badge, and it is NOT a
   // raycast camera blocker.

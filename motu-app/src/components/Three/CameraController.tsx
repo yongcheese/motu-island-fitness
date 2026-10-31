@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { useApp } from '../../context/AppContext';
+import { useAppPick } from '../../context/AppContext';
 import { View, CameraMode } from '../../types';
 import { parseUnlockedRooms, ROOM_GRID_SIZE, ROOM_HALF_SIZE } from '../../constants/rooms';
 import {
@@ -351,7 +351,9 @@ export function CameraController({
   isBuildMode = false,
   isInteriorInstance = false
 }: CameraControllerProps) {
-  const { camera, scene, gl } = useThree();
+  const camera = useThree((s) => s.camera);
+  const scene = useThree((s) => s.scene);
+  const gl = useThree((s) => s.gl);
   const controlsRef = useRef<any>(null);
   /**
    * Wheel deltas that have arrived but not been applied yet, and the frame that will apply them.
@@ -369,7 +371,7 @@ export function CameraController({
   const {
     joystickData, orbitJoystickData, uiScale, setUiScale, currentView, cameraMode, profile,
     setJoystickData, setOrbitJoystickData
-  } = useApp();
+  } = useAppPick('joystickData', 'orbitJoystickData', 'uiScale', 'setUiScale', 'currentView', 'cameraMode', 'profile', 'setJoystickData', 'setOrbitJoystickData');
   /**
    * The active character's joint heights - the ONLY thing this file knows about the model,
    * and it knows it as numbers rather than as a mesh. Section 十 of the character model
@@ -432,7 +434,7 @@ export function CameraController({
    * The Home as a box the outdoor camera must stay out of — see solveBoxContainmentLimit.
    *
    * Built from the same footprint the PLAYER is stopped by (getHomeSolidHalfExtents) and the same
-   * roofline the prompt badge floats above (getHouseVisualHeight), so the volume the camera treats
+   * roofline the model is drawn to (getHouseVisualHeight), so the volume the camera treats
    * as solid is the one the rest of the game already agrees on: switching House Style updates the
    * collider in the same step as the model, and no number here has to be kept in sync by hand.
    *

@@ -281,7 +281,10 @@ function BathtubModel({ scale, item, instanceId }: FurnitureModelProps) {
       */}
       <group position={[0, (FLOOR_TOP + 0.62) / 2, 0]} ref={anim.ref('water')}>
         <group ref={anim.ref('surface')}>
-          <mesh>
+          {/* `noCollide`: water is what the bather sits IN, not matter they collide with — the
+              same flag every drawn effect carries, so neither the collider nor
+              `npm run audit:interactions` reads a body in the bath as a body through the tub. */}
+          <mesh userData={{ noCollide: true }}>
             <boxGeometry args={[2.0 - WALL * 2, 0.62 - FLOOR_TOP, 1.2 - WALL * 2]} />
             <meshStandardMaterial color="#38bdf8" transparent opacity={0.55} roughness={0.01} />
           </mesh>
@@ -2272,20 +2275,47 @@ function HammockModel({ scale, instanceId }: FurnitureModelProps) {
 
 /* ------------------------------------------------------------------ 木製鞦韆 */
 
-/** 橫樑中心，也就是繩子的吊點。世界單位 2.174 = SUSPENDED_MOTIONS.swing.pivotY。 */
-const SWING_BEAM_Y = 1.65;
+/**
+ * 橫樑中心，也就是繩子的吊點。世界單位 2.635 = SUSPENDED_MOTIONS.swing.pivotY。
+ *
+ * 從 1.65 加高到 2.0 的理由是量出來的：坐在鞦韆上的角色，頭骨（半徑 0.54 世界單位）中心離橫樑
+ * 軸心只有 0.41，而頭骨半徑加上橫樑半徑（0.12）就要 0.66 —— 也就是**頭頂穿進橫樑 10 公分**。
+ * 這個 Q 版角色的頭比身體大，坐著的頭頂高度（2.3）已經高過原本橫樑的底面（2.06）。修法不是
+ * 把角色壓低（那會把腿壓進座板），是讓鞦韆架符合坐在上面那個身體的尺寸。
+ * `npm run audit:interactions` 會把角色的頭放在擺動的每個角度上檢查這件事。
+ */
+const SWING_BEAM_Y = 2.0;
 /**
  * 座板中心的高度。
  *
  * 座面（板頂）落在局部 0.5313，也就是世界 0.700 —— 就是目錄裡 `deco-swing` 的 `surfaceY`。
- * 這個數字**被抬高了 14 公分**（原本座板中心在 0.35、座面世界高度 0.461），理由是可以量的：
- * 角色的髖關節在根點上方 0.533 世界單位，所以座面 0.461 會把角色的根點推到 -0.07 —— 腳穿到
- * 地面底下去。座面 0.700 讓根點落在 0.167，雙腿自然垂下、腳尖離地約 15 公分，這正是坐在鞦韆上
- * 該有的樣子。`npm run audit:interactions` 檢查的就是這條關係。
+ * 高度夠讓坐上去的角色雙腳離地；角色坐在哪裡、腿怎麼垂，是從角色的身體體積解出來的
+ * （lib/occupantFit.ts）：髖部放在「腿的表面剛好靠在座板前緣」的位置，這是沒有膝蓋的腿
+ * 唯一不會穿過座板的坐法。
  */
 const SWING_SEAT_Y = 0.4938;
 /** 繩長 —— 由上面兩個數字決定，不是另外填的。 */
 const SWING_ROPE_LEN = SWING_BEAM_Y - SWING_SEAT_Y;
+/**
+ * 座板兩片板條的中心（局部 z）。座板總深 0.245 局部 = 0.32 世界，前緣在局部 0.1225、世界 0.161
+ * —— 就是目錄裡的 `seatFront`。
+ *
+ * 原本是三片、深 0.49 世界：比真實的鞦韆座（約 20 公分）深一倍多。角色的髖部必須坐在座板前緣
+ * （見上），座板越深，身體就離兩條繩子越遠，手得往後伸才握得到繩。改成兩片，前緣離繩子近了
+ * 8 公分，手是在身體兩側握著繩子。
+ */
+const SWING_SLATS_Z = [-0.0655, 0.0655] as const;
+/**
+ * A 字腳架的斜柱。頂端落在橫樑兩側、底端往外張開，斜度維持原本的 0.18 rad，只是跟著橫樑加長。
+ * 柱長與中心是由「頂端到 y≈2.06、z≈±0.29」與斜度解出來的，繫樑長度則剛好插到兩根柱子的軸心。
+ */
+const SWING_LEG_LEN = 2.10;
+const SWING_LEG_Y = 1.03;
+const SWING_LEG_Z = 0.478;
+const SWING_LEG_TILT = 0.18;
+/** 繫樑的高度，以及在那個高度上斜柱軸心的 z —— 繫樑兩端插進柱子裡，不會懸空。 */
+const SWING_TIE_Y = 0.55;
+const SWING_TIE_HALF = SWING_LEG_Z + (SWING_LEG_Y - SWING_TIE_Y) * Math.tan(SWING_LEG_TILT);
 
 function SwingModel({ scale, instanceId }: FurnitureModelProps) {
   const rootRef = useRef<THREE.Group>(null);
@@ -2324,18 +2354,18 @@ function SwingModel({ scale, instanceId }: FurnitureModelProps) {
           四根斜柱就只是四根各自站著的棍子，這是改版前這件東西缺的「次級結構」。 */}
       {[-1.05, 1.05].map((x) => (
         <group key={x}>
-          <mesh position={[x, 0.85, -0.45]} rotation={[0.18, 0, 0]} castShadow>
-            <cylinderGeometry args={[0.07, 0.08, 1.75, 8]} />
+          <mesh position={[x, SWING_LEG_Y, -SWING_LEG_Z]} rotation={[SWING_LEG_TILT, 0, 0]} castShadow>
+            <cylinderGeometry args={[0.07, 0.08, SWING_LEG_LEN, 8]} />
             <meshStandardMaterial color={OUT_WOOD} roughness={0.9} />
           </mesh>
-          <mesh position={[x, 0.85, 0.45]} rotation={[-0.18, 0, 0]} castShadow>
-            <cylinderGeometry args={[0.07, 0.08, 1.75, 8]} />
+          <mesh position={[x, SWING_LEG_Y, SWING_LEG_Z]} rotation={[-SWING_LEG_TILT, 0, 0]} castShadow>
+            <cylinderGeometry args={[0.07, 0.08, SWING_LEG_LEN, 8]} />
             <meshStandardMaterial color={OUT_WOOD} roughness={0.9} />
           </mesh>
-          {/* 繫樑。放在腳架下半部，兩端插進斜柱裡（長度 0.78 < 兩腳間距 0.9 + 柱徑），
-              所以不會有兩個面剛好切齊。 */}
-          <mesh position={[x, 0.55, 0]} castShadow>
-            <boxGeometry args={[0.075, 0.075, 0.78]} />
+          {/* 繫樑。放在腳架下半部，兩端插到斜柱的軸心 —— 真的插進柱子裡，而不是停在柱子前面
+              四公分的半空中（改版前 0.78 長的繫樑構不到 ±0.50 的柱子）。 */}
+          <mesh position={[x, SWING_TIE_Y, 0]} castShadow>
+            <boxGeometry args={[0.075, 0.075, SWING_TIE_HALF * 2]} />
             <meshStandardMaterial color={OUT_WOOD_DARK} roughness={0.9} />
           </mesh>
         </group>
@@ -2367,17 +2397,17 @@ function SwingModel({ scale, instanceId }: FurnitureModelProps) {
             <meshStandardMaterial color={OUT_DRY} roughness={1} />
           </mesh>
         ))}
-        {/* 座板做成三片，深淺交錯。一整塊板是改版前的樣子；三片板才有「釘起來的」讀感。 */}
-        {[-0.13, 0, 0.13].map((z, i) => (
+        {/* 座板做成兩片，深淺交錯 —— 板與板之間留一條縫，才有「釘起來的」讀感。見 SWING_SLATS_Z。 */}
+        {SWING_SLATS_Z.map((z, i) => (
           <mesh key={`slat-${i}`} position={[0, -SWING_ROPE_LEN, z]} castShadow receiveShadow>
             <boxGeometry args={[1.1, 0.075, 0.115]} />
             <meshStandardMaterial color={i === 1 ? OUT_WOOD_LIGHT : '#e0ac71'} roughness={0.85} />
           </mesh>
         ))}
-        {/* 座板底下的兩根托條，把三片板連起來。 */}
+        {/* 座板底下的兩根托條，把兩片板連起來。 */}
         {[-0.38, 0.38].map((x) => (
           <mesh key={`cleat-${x}`} position={[x, -SWING_ROPE_LEN - 0.052, 0]} castShadow>
-            <boxGeometry args={[0.09, 0.05, 0.36]} />
+            <boxGeometry args={[0.09, 0.05, 0.24]} />
             <meshStandardMaterial color={OUT_WOOD_DARK} roughness={0.9} />
           </mesh>
         ))}
@@ -2928,21 +2958,37 @@ function BirdhouseModel({ scale, item, instanceId }: FurnitureModelProps) {
   );
 }
 
+/**
+ * Where the well's water stands, in the model's own frame.
+ *
+ * Below the top of the upper stone course (0.55) on purpose, so the inside of the shaft shows as a
+ * band of wet stone above the water and the well reads as a hole in the ground rather than a
+ * painted lid. The coin lands here and the ripples spread from here — they are the same height.
+ */
+const WELL_WATER_Y = 0.47;
+
 function WishingWellModel({ scale, item, instanceId }: FurnitureModelProps) {
   const bucketSwayRef = useRef<THREE.Group>(null);
+  const waterMatRef = useRef<THREE.MeshStandardMaterial>(null);
   /*
    * 許願 is a row in constants/objectAnimations.ts: the windlass turns, the bucket dips, a coin
    * arcs in from the player's side, and the water answers. What stays here is the well's own life
    * — the bucket swinging a little on its rope — on the shared culled loop, writing `bucketSway`,
    * which is the group ABOVE the `bucket` part so the swing and the dip never share a transform.
    *
-   * (The old rig also pulsed a `waterRef` material every frame. Nothing in the JSX ever attached
-   * that ref, so that code had never run; it is gone rather than carried over.)
+   * THE WATER. The remodel that split the shaft into two stone courses dropped the water disc the
+   * old model had, and closed the shaft with the upper course's own flat stone cap — while the
+   * comment on the rim still said it was a ring 「so it would not cover the water」, and the 許願
+   * timeline still threw the coin to y 0.5 and spread its ripples at y 0.585. So a wish dropped the
+   * coin INTO solid stone (it vanished 5 cm under the lid) and rippled a grey disc. The shaft is
+   * open again and the water is back at WELL_WATER_Y, which both of those now aim at. Its faint
+   * shimmer rides this same culled loop, so a well off-screen costs nothing.
    */
   const anim = useObjectAnimation(instanceId, item);
 
   useOutdoorAnimation(anim.root, ({ time: t }) => {
     if (bucketSwayRef.current) bucketSwayRef.current.rotation.z = Math.sin(t * 0.9) * 0.08;
+    if (waterMatRef.current) waterMatRef.current.emissiveIntensity = 0.28 + Math.sin(t * 1.6) * 0.08;
   }, { radius: 1.8, cullDistance: 34 });
 
   return (
@@ -2956,9 +3002,27 @@ function WishingWellModel({ scale, item, instanceId }: FurnitureModelProps) {
         <cylinderGeometry args={[0.645, 0.68, 0.30, 12]} />
         <meshStandardMaterial color={OUT_STONE} roughness={0.95} />
       </mesh>
+      {/* 上層砌石是一圈「開口」的石壁（openEnded），雙面材質讓井壁內側也畫得出來 —— 關起來的話，
+          頂上那片石蓋就是整口井的「水面」，硬幣會直接掉進石頭裡。 */}
       <mesh position={[0, 0.41, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.62, 0.648, 0.28, 12]} />
-        <meshStandardMaterial color={OUT_STONE_DARK} roughness={0.95} />
+        <cylinderGeometry args={[0.62, 0.648, 0.28, 12, 1, true]} />
+        {/* shadowSide 維持單面物件的預設（背面投影）：雙面材質預設兩面都寫進陰影貼圖，外牆會自己
+            遮自己，畫成一片細斜紋（shadow acne）。 */}
+        <meshStandardMaterial color={OUT_STONE_DARK} roughness={0.95} side={THREE.DoubleSide} shadowSide={THREE.BackSide} />
+      </mesh>
+      {/* 井水。不透明，所以不會跟島上其他半透明的東西搶排序；比井口低 8 公分。
+          半徑 0.59 是量過的：井壁是 12 邊形，這個高度的外接半徑約 0.628，邊的中點（內切半徑）只有
+          0.628 × cos 15° ≈ 0.607。水面比這個大，圓邊就會從每一面石牆的中間穿出來，畫成一條條藍線。 */}
+      <mesh position={[0, WELL_WATER_Y, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <circleGeometry args={[0.59, 24]} />
+        <meshStandardMaterial
+          ref={waterMatRef}
+          color="#2f8fb8"
+          emissive="#0c6a94"
+          emissiveIntensity={0.28}
+          roughness={0.15}
+          metalness={0.1}
+        />
       </mesh>
       {/* 井緣。環而不是圓盤 —— 圓盤會把水面蓋掉。 */}
       <mesh position={[0, 0.575, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
@@ -3054,7 +3118,7 @@ function WishingWellModel({ scale, item, instanceId }: FurnitureModelProps) {
           是從玩家合十的雙手那邊飛進井裡的 —— 許願井沒有正面，這一點不能寫死在模型座標裡。 */}
       <group ref={anim.ref('tossAim')}>
         {anim.since != null && (
-          <ObjectToss key={anim.since} since={anim.since} from={[0, 0.95, -0.95]} to={[0, 0.5, 0]} arc={0.32} over={0.55} spins={3}>
+          <ObjectToss key={anim.since} since={anim.since} from={[0, 0.95, -0.95]} to={[0, WELL_WATER_Y, 0]} arc={0.32} over={0.55} spins={3}>
             <mesh rotation={[Math.PI / 2, 0, 0]}>
               <cylinderGeometry args={[0.05, 0.05, 0.015, 12]} />
               <meshStandardMaterial color="#FCD34D" emissive="#FBBF24" emissiveIntensity={0.6} metalness={0.6} roughness={0.3} />
@@ -3067,7 +3131,7 @@ function WishingWellModel({ scale, item, instanceId }: FurnitureModelProps) {
         <ObjectBurst
           key={`ripple-${anim.since}`}
           since={anim.since}
-          at={[0, 0.585, 0]}
+          at={[0, WELL_WATER_Y + 0.012, 0]}
           shape="ripple"
           count={2}
           spread={0.52}
@@ -3278,22 +3342,26 @@ function CampChairModel({ scale, item, instanceId }: FurnitureModelProps) {
     // ×1.45：折疊椅原始比例的座面只有 0.41 世界高，低於髖關節高度會讓「腿伸到地板」的坐姿算出
     // 負值根高（npm run audit:ground 的第 4 部分）。整體放大保持所有比例不變，只是墊高整張椅子。
     <group ref={anim.root} scale={scale * 1.45}>
-      {/* 交叉腳架，兩側各一組 X */}
-      {[-0.24, 0.24].map((z) => (
-        <group key={`frame-${z}`} position={[0, 0, z]}>
-          <mesh position={[0, 0.22, 0]} rotation={[0, 0, 0.62]} castShadow>
+      {/* 交叉腳架，兩側各一組 X —— 交叉在左右兩側的 y-z 平面裡（繞 x 軸斜），座面正前方是空的。
+          改版前兩組 X 放在 z = ±0.24、繞 z 軸斜：也就是擋在座面的**正前方與正後方**，比座面前緣還
+          往外凸 3 公分，坐上去的人垂下來的腿一定穿過前面那組 X（`npm run audit:interactions` 量到
+          約 3 公分）。圖示（QVersionIcon）與註解一直說的都是「兩側各一組」。 */}
+      {[-0.24, 0.24].map((x) => (
+        <group key={`frame-${x}`} position={[x, 0, 0]}>
+          <mesh position={[0, 0.22, 0]} rotation={[0.62, 0, 0]} castShadow>
             <cylinderGeometry args={[0.018, 0.018, 0.52, 6]} />
             <meshStandardMaterial color={OUT_WOOD_DARK} roughness={0.85} />
           </mesh>
-          <mesh position={[0, 0.22, 0]} rotation={[0, 0, -0.62]} castShadow>
+          <mesh position={[0, 0.22, 0]} rotation={[-0.62, 0, 0]} castShadow>
             <cylinderGeometry args={[0.018, 0.018, 0.52, 6]} />
             <meshStandardMaterial color={OUT_WOOD_DARK} roughness={0.85} />
           </mesh>
         </group>
       ))}
-      {/* 前後兩根橫桿把兩側的 X 架連成一個穩定的箱形 */}
-      {[-0.20, 0.20].map((x) => (
-        <mesh key={`rail-${x}`} position={[x, 0.30, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
+      {/* 前後兩根橫桿把兩側的 X 架連成一個穩定的箱形：在座面前後緣（z = ±0.20）沿 x 橫跨兩組 X。
+          改版前放在 x = ±0.20、同樣沿 x —— 兩根桿子互相重疊在中間，兩端各往外凸出 0.2。 */}
+      {[-0.20, 0.20].map((z) => (
+        <mesh key={`rail-${z}`} position={[0, 0.30, z]} rotation={[0, 0, Math.PI / 2]} castShadow>
           <cylinderGeometry args={[0.016, 0.016, 0.48, 6]} />
           <meshStandardMaterial color={OUT_WOOD_DARK} roughness={0.85} />
         </mesh>
@@ -3324,10 +3392,41 @@ function CampChairModel({ scale, item, instanceId }: FurnitureModelProps) {
 
 const LOUNGER_WOOD_SEAT_Y = 0.40;
 
+/*
+ * 躺椅靠背的共同幾何：一個鉸點、一個仰角，靠背的每一個零件都沿著同一條斜線擺。
+ *
+ * 靠背在頭那一端（−X：後腳「靠背下方」在 x −0.35，腳踏端在 +X），所以斜線是往 −X 升高的：
+ * 沿著靠背的方向是 (−cos θ, sin θ)。一個沿 X 放的長條要躺在這條線上，要繞 Z 轉 **−θ** ——
+ * 轉 +θ 會把它的 +X 端抬起來，變成往座面那一側升高。
+ *
+ * 改版前兩張躺椅的靠背零件全部轉 +θ，而橫板的「位置」卻是照 −X 升高算的：側框朝座位翹起、
+ * 從座面上方穿過去，三片橫板每片都斜向另一邊，排出來像散開的百葉窗／一段錯位的階梯；
+ * 沙灘躺椅的帆布還把「薄」的那一軸放在 Z 上，轉完變成一片側立的菱形，頭枕浮在半空。
+ */
+/** 沿靠背往上 `along`、往坐的人那一側 `out` 的一點（局部 XY）。 */
+function backrestPoint(hinge: readonly [number, number], tilt: number, along: number, out = 0): [number, number] {
+  return [
+    hinge[0] - Math.cos(tilt) * along + Math.sin(tilt) * out,
+    hinge[1] + Math.sin(tilt) * along + Math.cos(tilt) * out,
+  ];
+}
+
+/** 木製躺椅的靠背：鉸點在座面後段的橫板高度，仰角 0.95。 */
+const LOUNGER_WOOD_HINGE = [-0.10, LOUNGER_WOOD_SEAT_Y + 0.03] as const;
+const LOUNGER_WOOD_TILT = 0.95;
+/** 靠背側框：0.62 長，從鉸點下方一點一路撐到最上面一片橫板之後，貼在橫板背面。 */
+const LOUNGER_WOOD_BACK_RAIL_LEN = 0.62;
+const LOUNGER_WOOD_BACK_RAIL_ALONG = 0.29;
+/** 橫板厚 0.03、側框高 0.05 —— 兩者半厚相加，側框剛好頂住橫板的背面。 */
+const LOUNGER_WOOD_BACK_RAIL_OUT = -(0.03 / 2 + 0.05 / 2);
+
 /** 木製躺椅 —— 兩側木框（座面段＋後仰的靠背段）、七片橫板、四支腳、兩支扶手。 */
 /** 木製躺椅 —— a solid wooden frame: it settles a centimetre and creaks, and that is all it does. */
 function WoodLoungerModel({ scale, item, instanceId }: FurnitureModelProps) {
   const anim = useObjectAnimation(instanceId, item);
+  const [railX, railY] = backrestPoint(
+    LOUNGER_WOOD_HINGE, LOUNGER_WOOD_TILT, LOUNGER_WOOD_BACK_RAIL_ALONG, LOUNGER_WOOD_BACK_RAIL_OUT,
+  );
   return (
     <group ref={anim.root} scale={scale}>
       <group ref={anim.ref('frame')}>
@@ -3338,9 +3437,9 @@ function WoodLoungerModel({ scale, item, instanceId }: FurnitureModelProps) {
             <boxGeometry args={[1.00, 0.05, 0.045]} />
             <meshStandardMaterial color={OUT_WOOD_DARK} roughness={0.9} />
           </mesh>
-          {/* 靠背段，繞椅背底部的鉸點往後上方翹起 */}
-          <mesh position={[-0.44, LOUNGER_WOOD_SEAT_Y + 0.20, z]} rotation={[0, 0, 0.95]} castShadow receiveShadow>
-            <boxGeometry args={[0.62, 0.05, 0.045]} />
+          {/* 靠背段，繞椅背底部的鉸點往後上方翹起（往 −X 升高，所以是 −θ） */}
+          <mesh position={[railX, railY, z]} rotation={[0, 0, -LOUNGER_WOOD_TILT]} castShadow receiveShadow>
+            <boxGeometry args={[LOUNGER_WOOD_BACK_RAIL_LEN, 0.05, 0.045]} />
             <meshStandardMaterial color={OUT_WOOD_DARK} roughness={0.9} />
           </mesh>
         </group>
@@ -3352,12 +3451,11 @@ function WoodLoungerModel({ scale, item, instanceId }: FurnitureModelProps) {
           <meshStandardMaterial color={i % 2 === 0 ? OUT_WOOD : OUT_WOOD_LIGHT} roughness={0.85} />
         </mesh>
       ))}
-      {/* 靠背段的橫板，三片，隨鉸點角度後仰 */}
+      {/* 靠背段的橫板，三片，沿同一條斜線、以同一個角度後仰 —— 三片共面，讀成一整片靠背 */}
       {[0.10, 0.28, 0.46].map((d, i) => {
-        const x = -0.10 - Math.cos(0.95) * d;
-        const y = LOUNGER_WOOD_SEAT_Y + 0.03 + Math.sin(0.95) * d;
+        const [x, y] = backrestPoint(LOUNGER_WOOD_HINGE, LOUNGER_WOOD_TILT, d);
         return (
-          <mesh key={`back-slat-${i}`} position={[x, y, 0]} rotation={[0, 0, 0.95]} castShadow receiveShadow>
+          <mesh key={`back-slat-${i}`} position={[x, y, 0]} rotation={[0, 0, -LOUNGER_WOOD_TILT]} castShadow receiveShadow>
             <boxGeometry args={[0.11, 0.03, 0.56]} />
             <meshStandardMaterial color={i % 2 === 0 ? OUT_WOOD : OUT_WOOD_LIGHT} roughness={0.85} />
           </mesh>
@@ -3384,10 +3482,30 @@ function WoodLoungerModel({ scale, item, instanceId }: FurnitureModelProps) {
 
 const BEACH_LOUNGER_SEAT_Y = 0.28;
 
+/**
+ * 沙灘躺椅的靠背：以側框中點為基準（鉸點在它下端，x ≈ −0.21，正好落在座框後段），仰角 0.85。
+ * 帆布、頭枕、斜撐全部從這一點與這個角度推出來 —— 見 backrestPoint 上面那段說明。
+ */
+const BEACH_LOUNGER_BACK_MID = [-0.40, BEACH_LOUNGER_SEAT_Y + 0.17] as const;
+const BEACH_LOUNGER_TILT = 0.85;
+/** 側框 0.035 見方、帆布 0.02 厚：帆布中心往坐的人那一側 0.02，兩者重疊 7.5 公釐 —— 繃在框上。 */
+const BEACH_LOUNGER_CANVAS_OUT = 0.02;
+/** 斜撐落地的那一點：靠背後方的地面。 */
+const BEACH_LOUNGER_BRACE_FOOT = [-0.72, 0] as const;
+
 /** 沙灘躺椅 —— 低矮鋁木框、帆布條座面、單支撐架撐起後仰的靠背，跟木製躺椅刻意做出「低矮＋軟面」的差異。 */
 /** 沙灘躺椅 —— canvas over a low frame: the seat straps sag and the backrest gives with them. */
 function BeachLoungerModel({ scale, item, instanceId }: FurnitureModelProps) {
   const anim = useObjectAnimation(instanceId, item);
+  const back = (along: number, out = 0) =>
+    backrestPoint(BEACH_LOUNGER_BACK_MID, BEACH_LOUNGER_TILT, along, out);
+  const [canvasX, canvasY] = back(0, BEACH_LOUNGER_CANVAS_OUT);
+  // 頭枕：靠在帆布正面的上段（帆布半厚 0.01 ＋ 頭枕半厚 0.05）。
+  const [pillowX, pillowY] = back(0.18, BEACH_LOUNGER_CANVAS_OUT + 0.01 + 0.05);
+  // 斜撐：從靠背後方的地面，撐到帆布背面的中上段。
+  const [topX, topY] = back(0.12, BEACH_LOUNGER_CANVAS_OUT - 0.01 - 0.016);
+  const braceDX = topX - BEACH_LOUNGER_BRACE_FOOT[0];
+  const braceDY = topY - BEACH_LOUNGER_BRACE_FOOT[1];
   return (
     <group ref={anim.root} scale={scale}>
       {[-0.27, 0.27].map((z) => (
@@ -3396,7 +3514,12 @@ function BeachLoungerModel({ scale, item, instanceId }: FurnitureModelProps) {
             <boxGeometry args={[0.96, 0.035, 0.035]} />
             <meshStandardMaterial color={OUT_WOOD_DARK} roughness={0.7} />
           </mesh>
-          <mesh position={[-0.40, BEACH_LOUNGER_SEAT_Y + 0.17, z]} rotation={[0, 0, 0.85]} castShadow receiveShadow>
+          <mesh
+            position={[BEACH_LOUNGER_BACK_MID[0], BEACH_LOUNGER_BACK_MID[1], z]}
+            rotation={[0, 0, -BEACH_LOUNGER_TILT]}
+            castShadow
+            receiveShadow
+          >
             <boxGeometry args={[0.56, 0.035, 0.035]} />
             <meshStandardMaterial color={OUT_WOOD_DARK} roughness={0.7} />
           </mesh>
@@ -3411,9 +3534,14 @@ function BeachLoungerModel({ scale, item, instanceId }: FurnitureModelProps) {
           </mesh>
         </group>
       ))}
-      {/* 撐住靠背的斜撐（沙灘椅常見的「腳架」），只在一側就足夠讀出結構 */}
-      <mesh position={[-0.62, BEACH_LOUNGER_SEAT_Y + 0.13, 0]} rotation={[0, 0, 1.35]} castShadow>
-        <cylinderGeometry args={[0.016, 0.016, 0.30, 6]} />
+      {/* 撐住靠背的斜撐（沙灘椅常見的「腳架」），只在中間一支就足夠讀出結構。
+          圓柱預設沿 Y，繞 Z 轉 φ 之後的方向是 (−sin φ, cos φ)，所以 φ = atan2(−dx, dy)。 */}
+      <mesh
+        position={[BEACH_LOUNGER_BRACE_FOOT[0] + braceDX / 2, BEACH_LOUNGER_BRACE_FOOT[1] + braceDY / 2, 0]}
+        rotation={[0, 0, Math.atan2(-braceDX, braceDY)]}
+        castShadow
+      >
+        <cylinderGeometry args={[0.016, 0.016, Math.hypot(braceDX, braceDY), 6]} />
         <meshStandardMaterial color={OUT_WOOD_DARK} roughness={0.7} />
       </mesh>
       {/* 帆布條座面，三條並排（不是疊在一起）、兩色交錯 */}
@@ -3425,14 +3553,16 @@ function BeachLoungerModel({ scale, item, instanceId }: FurnitureModelProps) {
           </mesh>
         </group>
       ))}
-      <group position={[-0.40, BEACH_LOUNGER_SEAT_Y + 0.19, 0]} rotation={[0, 0, 0.85]} ref={anim.ref('canvasBack')}>
+      {/* 靠背帆布：沿靠背 0.52、橫跨兩側框 0.50、厚 0.02 —— 薄的那一軸是 Y（貼著斜面的法線），
+          不是 Z。 */}
+      <group position={[canvasX, canvasY, 0]} rotation={[0, 0, -BEACH_LOUNGER_TILT]} ref={anim.ref('canvasBack')}>
         <mesh castShadow receiveShadow>
-          <boxGeometry args={[0.52, 0.50, 0.02]} />
+          <boxGeometry args={[0.52, 0.02, 0.50]} />
           <meshStandardMaterial color={OUT_CANVAS} roughness={0.95} />
         </mesh>
       </group>
       {/* 頭枕 */}
-      <mesh position={[-0.66, BEACH_LOUNGER_SEAT_Y + 0.42, 0]} rotation={[0, 0, 0.85]} castShadow>
+      <mesh position={[pillowX, pillowY, 0]} rotation={[0, 0, -BEACH_LOUNGER_TILT]} castShadow>
         <boxGeometry args={[0.16, 0.10, 0.44]} />
         <meshStandardMaterial color="#f5c85c" roughness={0.9} />
       </mesh>
@@ -3440,30 +3570,55 @@ function BeachLoungerModel({ scale, item, instanceId }: FurnitureModelProps) {
   );
 }
 
-/** 吊椅的吊點 —— 局部單位，跟 SUSPENDED_MOTIONS.hangingChair.pivotY（世界 1.95）換算一致。 */
-const HANGING_CHAIR_PIVOT_Y = 1.48;
-const HANGING_CHAIR_PIVOT_X = 0.30;
 /**
- * 蛋殼本體的球心與半徑（吊點以下的局部座標），以及四條吊繩接上去的那一圈。
+ * 吊椅的尺寸 —— 局部單位（島上繪製倍率 1.3175）。這一組數字是**從坐在上面的角色量回來**的，
+ * 不是隨手放大：
  *
- * 冠部那一圈的半徑是**解出來的**：球心在 −0.88、半徑 0.44、y 方向拉長 1.08，所以高度 y 上的
- * 水平半徑是 r·√(1 − ((y − cy) / ky / r)²)。把繩子接在算出來的那個半徑上，殼的大小改了繩子
- * 自己會跟著走，不會再像改版前那樣停在殼外面的半空中。
+ *   改版前是一顆半徑 0.44（世界 0.58）的封閉蛋殼，吊點 1.95、離立柱 0.40。坐姿角色的頭骨半徑
+ *   就有 0.54、頭頂在 2.7 —— 頭整顆高過吊點，四條往中間收的吊繩穿過臉，立柱擦過手臂，身體
+ *   卡在蛋殼頂蓋底下。`npm run audit:interactions` 量到手 7 公分、軀幹 6.6 公分、腿 12.8 公分。
+ *
+ *   ① 座面降到世界 0.62，跟其他椅子一樣高（腳離地一點點），整顆身體才有高度放。
+ *   ② 蛋殼去掉頂蓋、做深做寬，變成正面開口的藤編吊籃：身體坐在籃子前緣，背靠著籃壁。
+ *   ③ 兩條繩接在籃子兩側、上方用一根撐桿撐開 —— 跟鞦韆一樣，頭在兩條繩中間。
+ *   ④ 吊點升到坐姿頭頂以上（世界 2.45），曲臂外伸 0.64（世界 0.84），立柱離開身體。
+ *
+ * 模型與角色控制器繞同一個點擺動：HANGING_CHAIR_PIVOT_Y × 1.3175 = SUSPENDED_MOTIONS.hangingChair.pivotY。
  */
-const HANGING_CHAIR_SHELL_Y = -0.88;
-const HANGING_CHAIR_SHELL_R = 0.44;
-const HANGING_CHAIR_SHELL_KY = 1.08;
-const HANGING_CHAIR_CROWN_Y = -0.46;
-const HANGING_CHAIR_CROWN_R = (() => {
-  const t = (HANGING_CHAIR_CROWN_Y - HANGING_CHAIR_SHELL_Y) / HANGING_CHAIR_SHELL_KY / HANGING_CHAIR_SHELL_R;
-  return HANGING_CHAIR_SHELL_R * Math.sqrt(Math.max(0, 1 - t * t));
-})();
+const HANGING_CHAIR_PIVOT_Y = 1.86;
+const HANGING_CHAIR_PIVOT_X = 0.64;
+/** 曲臂的高度：立柱頂端橫伸出去，吊鉤從這裡垂到吊點。 */
+const HANGING_CHAIR_ARM_Y = 1.97;
+/** 撐桿：吊點下方一小段，兩端各拉一條繩到籃子兩側。 */
+const HANGING_CHAIR_SPREADER_Y = -0.12;
+const HANGING_CHAIR_SPREAD = 0.52;
+/**
+ * 吊籃本體：一顆去掉頂蓋、正面開口的球（吊點以下的局部座標）。`RIM_THETA` 是頂端開口的邊緣，
+ * 籃緣那一圈的高度與半徑都是從球解出來的，繩子接在那一圈的兩側，籃子大小改了繩子自己跟著走。
+ */
+const HANGING_CHAIR_SHELL_Y = -1.27;
+const HANGING_CHAIR_SHELL_R = 0.50;
+const HANGING_CHAIR_SHELL_KY = 0.85;
+const HANGING_CHAIR_RIM_THETA = Math.PI * 0.32;
+const HANGING_CHAIR_RIM_Y = HANGING_CHAIR_SHELL_Y + HANGING_CHAIR_SHELL_R * HANGING_CHAIR_SHELL_KY * Math.cos(HANGING_CHAIR_RIM_THETA);
+const HANGING_CHAIR_RIM_R = HANGING_CHAIR_SHELL_R * Math.sin(HANGING_CHAIR_RIM_THETA);
+/** 正面開口（three.js 球的 phi：π/2 朝 +Z）。籃壁從 phi = 0.81π 畫 1.38π，剩下正前方 0.62π。 */
+const HANGING_CHAIR_PHI_START = Math.PI * 0.81;
+const HANGING_CHAIR_PHI_LENGTH = Math.PI * 1.38;
+/**
+ * 坐墊：一塊頂面平的圓墊（上寬下窄），頂面在吊點下 1.389 —— 世界 (1.86 − 1.389) × 1.3175 = 0.620，
+ * 就是目錄的 `surfaceY`；前緣在 z 0.02 + 0.34 = 0.36，世界 0.474，就是 `seatFront`。平頂而不是
+ * 壓扁的球，是為了讓「坐在哪個高度、腿從哪條邊垂下去」是模型上真的存在的一個面、一條邊。
+ */
+const HANGING_CHAIR_CUSHION_TOP = -1.389;
+const HANGING_CHAIR_CUSHION_R = 0.34;
+const HANGING_CHAIR_CUSHION_H = 0.14;
 
 /**
- * 吊椅 —— C 形立架（獨立站立，不需要掛在真的樹上）＋ 藤編蛋椅，繞吊點擺動。
+ * 吊椅 —— C 形立架（獨立站立，不需要掛在真的樹上）＋ 藤編吊籃，繞吊點擺動。
  *
  * 跟鞦韆共用同一套懸吊解算（`suspendedAngle`／`suspendedPhase`），但讀的是自己的
- * `SUSPENDED_MOTIONS.hangingChair`（更短的擺長、小得多的 `ride`），所以晃起來明顯比鞦韆溫和。
+ * `SUSPENDED_MOTIONS.hangingChair`（小得多的 `ride`），所以晃起來明顯比鞦韆溫和。
  */
 function HangingChairModel({ scale, instanceId }: FurnitureModelProps) {
   const rootRef = useRef<THREE.Group>(null);
@@ -3477,127 +3632,123 @@ function HangingChairModel({ scale, instanceId }: FurnitureModelProps) {
     const phase = suspendedPhase(timeline.current, performance.now(), FURNITURE_WIND.sway);
     seat.rotation.x = suspendedAngle(SUSPENDED_MOTIONS.hangingChair, phase);
     seat.position.y = HANGING_CHAIR_PIVOT_Y + suspendedSag(SUSPENDED_MOTIONS.hangingChair, phase) / (scale || 1);
-  }, { radius: 2.2 });
+  }, { radius: 2.6 });
+
+  const ropeDx = HANGING_CHAIR_SPREAD - HANGING_CHAIR_RIM_R;
+  const ropeDy = HANGING_CHAIR_SPREADER_Y - HANGING_CHAIR_RIM_Y;
+  const ropeLen = Math.hypot(ropeDx, ropeDy);
 
   return (
     <group ref={rootRef} scale={scale}>
-      {/* 配重底座 */}
+      {/* 配重底座：立柱腳下一塊圓座，再用一條貼地的木腳伸到吊籃正下方，把重心拉回來。 */}
       <mesh position={[0, 0.05, 0]} receiveShadow>
         <cylinderGeometry args={[0.42, 0.46, 0.10, 12]} />
         <meshStandardMaterial color={OUT_WOOD_SHADOW} roughness={0.95} />
       </mesh>
+      <mesh position={[HANGING_CHAIR_PIVOT_X * 0.62, 0.035, 0]} receiveShadow>
+        <boxGeometry args={[HANGING_CHAIR_PIVOT_X * 1.1, 0.07, 0.16]} />
+        <meshStandardMaterial color={OUT_WOOD_SHADOW} roughness={0.95} />
+      </mesh>
       {/* 立柱 */}
-      <mesh position={[0, 0.68, 0]} castShadow>
-        <cylinderGeometry args={[0.055, 0.07, 1.26, 8]} />
+      <mesh position={[0, (0.10 + HANGING_CHAIR_ARM_Y) / 2, 0]} castShadow>
+        <cylinderGeometry args={[0.055, 0.07, HANGING_CHAIR_ARM_Y - 0.10, 8]} />
         <meshStandardMaterial color={OUT_WOOD_DARK} roughness={0.85} />
       </mesh>
-      {/* 頂端外伸的曲臂，兩段模擬彎曲，把吊點推離立柱中心 */}
-      <mesh position={[0.10, 1.34, 0]} rotation={[0, 0, -0.55]} castShadow>
-        <cylinderGeometry args={[0.045, 0.055, 0.32, 8]} />
+      {/* 肘：立柱頂端與曲臂的接頭，讓轉角是圓的而不是兩根棍子插在一起。 */}
+      <mesh position={[0, HANGING_CHAIR_ARM_Y, 0]} castShadow>
+        <sphereGeometry args={[0.07, 10, 8]} />
         <meshStandardMaterial color={OUT_WOOD_DARK} roughness={0.85} />
       </mesh>
-      <mesh position={[HANGING_CHAIR_PIVOT_X, HANGING_CHAIR_PIVOT_Y - 0.03, 0]} rotation={[0, 0, -1.25]} castShadow>
-        <cylinderGeometry args={[0.038, 0.045, 0.26, 8]} />
+      {/* 外伸的曲臂，水平伸到吊籃正上方。 */}
+      <mesh position={[(HANGING_CHAIR_PIVOT_X + 0.03) / 2, HANGING_CHAIR_ARM_Y, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
+        <cylinderGeometry args={[0.045, 0.055, HANGING_CHAIR_PIVOT_X + 0.03, 8]} />
         <meshStandardMaterial color={OUT_WOOD_DARK} roughness={0.85} />
+      </mesh>
+      {/* 吊鉤：從曲臂垂到吊點。 */}
+      <mesh position={[HANGING_CHAIR_PIVOT_X, (HANGING_CHAIR_ARM_Y + HANGING_CHAIR_PIVOT_Y) / 2, 0]} castShadow>
+        <cylinderGeometry args={[0.015, 0.015, HANGING_CHAIR_ARM_Y - HANGING_CHAIR_PIVOT_Y, 6]} />
+        <meshStandardMaterial color={OUT_METAL_DARK} metalness={0.5} roughness={0.4} />
       </mesh>
 
-      {/* 吊點以下：掛環、四條扇形吊繩、藤編蛋椅本體。整組繞 X 軸擺動。 */}
+      {/* 吊點以下：掛環、撐桿、兩條繩、吊籃本體。整組繞 X 軸擺動。 */}
       <group ref={seatGroupRef} position={[HANGING_CHAIR_PIVOT_X, HANGING_CHAIR_PIVOT_Y, 0]}>
         <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
           <torusGeometry args={[0.045, 0.014, 6, 10]} />
           <meshStandardMaterial color={OUT_METAL_DARK} metalness={0.5} roughness={0.4} />
         </mesh>
-        {/* 四條吊繩落在**蛋殼的冠部**（半徑 0.21、高 -0.46），不是舊的 0.42／-0.645。
-            殼從一個開口的截錐改成一顆蛋之後，0.42 那一圈已經在蛋的最寬處外面 —— 繩子停在半空，
-            下面再掛一個蛋，讀成兩件不相干的東西。收到冠部才是「這顆蛋被吊著」。 */}
-        {[0, 1, 2, 3].map((i) => {
-          const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-          const rimR = HANGING_CHAIR_CROWN_R;
-          const x = Math.cos(a) * rimR;
-          const z = Math.sin(a) * rimR;
-          const dy = HANGING_CHAIR_CROWN_Y;
-          const len = Math.hypot(x, dy, z);
-          return (
-            <mesh
-              key={`rope-${i}`}
-              position={[x / 2, dy / 2, z / 2]}
-              rotation={[Math.atan2(z, -dy), 0, -Math.atan2(x, -dy)]}
-              castShadow
-            >
-              <cylinderGeometry args={[0.012, 0.012, len, 5]} />
-              <meshStandardMaterial color={OUT_DRY} roughness={1} />
-            </mesh>
-          );
-        })}
-        {/*
-          蛋椅籃身 —— 一顆**正面開口**的球。
-
-          改版前這裡是「一圈頂緣 ＋ 五根 1.6 公分粗的肋 ＋ 一顆底球」，也就是一個沒有面的籃子：
-          從外面看過去，五根細棒之間全是空的，玩家看到的是一個白色圓盤加幾根輻射狀的刺。商店
-          縮圖畫的是一顆有厚度、有開口的藤編蛋椅 —— 差的不是細節，是「那是什麼」。
-
-          做法是把球的方位角切掉正面那一塊：three.js 的 SphereGeometry 在 phi=π/2 面向 +Z，所以
-          從 π/2 + 0.31π 開始畫 1.38π，剩下的 0.62π 就是正前方的開口。一個 mesh 同時給了外殼的
-          輪廓、開口的邊、以及（雙面材質）看得見的內壁 —— 這是 low poly 做一張蛋椅最省的方式，
-          比用十幾根藤條去圍出一個殼便宜得多，而且不會像圍欄一樣從縫裡看穿。
-
-          `scale` 把球拉成蛋形；上面再蓋一頂小圓罩把極點那個洞收掉。
-        */}
-        {/* 四條吊繩收在這一圈藤箍上 —— 沒有它，四條繩子是四根停在殼上的棒子。 */}
-        <mesh position={[0, HANGING_CHAIR_CROWN_Y, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <torusGeometry args={[HANGING_CHAIR_CROWN_R, 0.024, 5, 12]} />
+        <mesh position={[0, HANGING_CHAIR_SPREADER_Y / 2, 0]} castShadow>
+          <cylinderGeometry args={[0.012, 0.012, -HANGING_CHAIR_SPREADER_Y, 5]} />
+          <meshStandardMaterial color={OUT_DRY} roughness={1} />
+        </mesh>
+        {/* 撐桿 —— 把兩條繩撐到籃子兩側，頭就在兩條繩中間，不會被往中間收的繩子穿過。 */}
+        <mesh position={[0, HANGING_CHAIR_SPREADER_Y, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
+          <cylinderGeometry args={[0.028, 0.028, HANGING_CHAIR_SPREAD * 2 + 0.06, 8]} />
+          <meshStandardMaterial color={OUT_WOOD} roughness={0.85} />
+        </mesh>
+        {[-1, 1].map((s) => (
+          <mesh
+            key={`rope-${s}`}
+            position={[s * (HANGING_CHAIR_SPREAD + HANGING_CHAIR_RIM_R) / 2, (HANGING_CHAIR_SPREADER_Y + HANGING_CHAIR_RIM_Y) / 2, 0]}
+            rotation={[0, 0, -s * Math.atan2(ropeDx, ropeDy)]}
+            castShadow
+          >
+            <cylinderGeometry args={[0.014, 0.014, ropeLen, 5]} />
+            <meshStandardMaterial color={OUT_DRY} roughness={1} />
+          </mesh>
+        ))}
+        {/* 籃緣的藤箍，正面開口那一段跳過 —— 跟籃壁的開口是同一個角度。 */}
+        <mesh
+          position={[0, HANGING_CHAIR_RIM_Y, 0]}
+          rotation={[Math.PI / 2, 0, HANGING_CHAIR_PHI_START]}
+          castShadow
+        >
+          <torusGeometry args={[HANGING_CHAIR_RIM_R, 0.026, 5, 16, HANGING_CHAIR_PHI_LENGTH]} />
           <meshStandardMaterial color={OUT_WOOD_DARK} roughness={0.95} />
         </mesh>
-        <mesh
-          position={[0, HANGING_CHAIR_SHELL_Y, 0]}
-          scale={[1, HANGING_CHAIR_SHELL_KY, 1]}
-          castShadow
-          receiveShadow
-        >
-          <sphereGeometry args={[HANGING_CHAIR_SHELL_R, 16, 10, Math.PI * 0.81, Math.PI * 1.38, Math.PI * 0.13, Math.PI * 0.87]} />
+        {/*
+          藤編吊籃 —— 一顆**去掉頂蓋、正面開口**的球。
+
+          three.js 的 SphereGeometry 在 phi=π/2 面向 +Z，所以從 0.81π 開始畫 1.38π，剩下的 0.62π
+          就是正前方的開口；theta 從 RIM_THETA 開始，頂上那一塊就是空的，坐進去的身體從那裡出來。
+          雙面材質讓內壁也看得見。
+        */}
+        <mesh position={[0, HANGING_CHAIR_SHELL_Y, 0]} scale={[1, HANGING_CHAIR_SHELL_KY, 1]} castShadow receiveShadow>
+          <sphereGeometry args={[HANGING_CHAIR_SHELL_R, 18, 10, HANGING_CHAIR_PHI_START, HANGING_CHAIR_PHI_LENGTH, HANGING_CHAIR_RIM_THETA, Math.PI - HANGING_CHAIR_RIM_THETA]} />
           <meshStandardMaterial color={OUT_DRY} roughness={0.95} side={THREE.DoubleSide} />
         </mesh>
-        <mesh position={[0, HANGING_CHAIR_SHELL_Y, 0]} scale={[1, HANGING_CHAIR_SHELL_KY, 1]} castShadow>
-          <sphereGeometry args={[HANGING_CHAIR_SHELL_R + 0.002, 16, 4, 0, Math.PI * 2, 0, Math.PI * 0.15]} />
-          <meshStandardMaterial color={OUT_DRY} roughness={0.95} side={THREE.DoubleSide} />
-        </mesh>
-        {/* 內襯：同一顆球小一號、深一階，透過開口看進去的那一層。藤編椅的內外是兩種顏色，
-            而那個顏色差正是「這裡面是可以坐進去的」讀感的來源。 */}
+        {/* 內襯：同一顆球小一號、深一階，透過開口看進去的那一層。 */}
         <mesh position={[0, HANGING_CHAIR_SHELL_Y, 0]} scale={[1, HANGING_CHAIR_SHELL_KY, 1]}>
-          <sphereGeometry args={[HANGING_CHAIR_SHELL_R - 0.035, 16, 9, Math.PI * 0.81, Math.PI * 1.38, Math.PI * 0.14, Math.PI * 0.86]} />
+          <sphereGeometry args={[HANGING_CHAIR_SHELL_R - 0.035, 18, 9, HANGING_CHAIR_PHI_START, HANGING_CHAIR_PHI_LENGTH, HANGING_CHAIR_RIM_THETA + 0.02, Math.PI - HANGING_CHAIR_RIM_THETA - 0.02]} />
           <meshStandardMaterial color={OUT_WOOD} roughness={0.95} side={THREE.DoubleSide} />
         </mesh>
-        {/* 藤條肋，貼在殼外面繞著背側 —— 正面開口那一段跳過，不然會橫在開口前面。
-            每根的傾角照著球面走：在高度 y 上，球面半徑是 √(r²−y²)。 */}
+        {/* 藤條肋，貼在殼外面繞著背側 —— 正面開口那一段跳過。每根的高度只到籃緣。 */}
         {[0, 1, 2, 3].map((i) => {
           const a = Math.PI * (0.95 + (i / 3) * 1.1);
           return (
             <mesh
               key={`rib-${i}`}
-              position={[Math.cos(a) * (HANGING_CHAIR_SHELL_R - 0.02), HANGING_CHAIR_SHELL_Y, Math.sin(a) * (HANGING_CHAIR_SHELL_R - 0.02)]}
+              position={[Math.cos(a) * (HANGING_CHAIR_SHELL_R - 0.02), HANGING_CHAIR_SHELL_Y - 0.05, Math.sin(a) * (HANGING_CHAIR_SHELL_R - 0.02)]}
               rotation={[0, -a, 0]}
               castShadow
             >
-              <boxGeometry args={[0.02, 0.60, 0.02]} />
+              <boxGeometry args={[0.02, 0.52, 0.02]} />
               <meshStandardMaterial color={OUT_WOOD_DARK} roughness={0.9} />
             </mesh>
           );
         })}
-        {/* 坐墊。中心壓在 -0.781 而不是隨手擺：壓扁後的半徑是 0.30×0.42 = 0.126，頂面因此落在
-            -0.655 —— 跟改版前那片圓柱坐墊的頂面同一個數字，這件商品的 `surfaceY: 1.03` 就還是
-            量在坐下去的那個面上。見 `npm run audit:interactions`。 */}
-        <mesh position={[0, -0.781, 0.02]} scale={[1, 0.42, 1]} castShadow>
-          <sphereGeometry args={[0.30, 12, 8]} />
+        {/* 坐墊。見 HANGING_CHAIR_CUSHION_Y：頂面就是目錄的 surfaceY，前緣就是 seatFront。 */}
+        <mesh position={[0, HANGING_CHAIR_CUSHION_TOP - HANGING_CHAIR_CUSHION_H / 2, 0.02]} castShadow receiveShadow>
+          <cylinderGeometry args={[HANGING_CHAIR_CUSHION_R, HANGING_CHAIR_CUSHION_R - 0.03, HANGING_CHAIR_CUSHION_H, 16]} />
           <meshStandardMaterial color={OUT_CANVAS} roughness={0.95} />
         </mesh>
-        {/* 靠背抱枕，縮圖上那一塊淺色坐墊在 3D 也要有。 */}
-        <mesh position={[0, -0.58, -0.20]} rotation={[-0.34, 0, 0]} scale={[1, 1, 0.42]} castShadow>
-          <sphereGeometry args={[0.17, 10, 7]} />
+        {/* 靠背抱枕，貼著籃子的背壁。 */}
+        <mesh position={[0, HANGING_CHAIR_CUSHION_TOP + 0.16, -0.30]} rotation={[-0.30, 0, 0]} scale={[1, 1, 0.42]} castShadow>
+          <sphereGeometry args={[0.20, 10, 7]} />
           <meshStandardMaterial color={OUT_CANVAS_DARK} roughness={0.95} />
         </mesh>
         {/* 底端小流蘇，生活感的最後一筆 */}
         {[-0.10, 0.10].map((x) => (
-          <mesh key={`tassel-${x}`} position={[x, -1.30, 0]} castShadow>
+          <mesh key={`tassel-${x}`} position={[x, HANGING_CHAIR_SHELL_Y - HANGING_CHAIR_SHELL_R * HANGING_CHAIR_SHELL_KY - 0.04, 0]} castShadow>
             <coneGeometry args={[0.02, 0.10, 5]} />
             <meshStandardMaterial color={OUT_DRY} roughness={1} />
           </mesh>
@@ -3660,6 +3811,11 @@ function PicnicBlanketModel({ scale, item, instanceId }: FurnitureModelProps) {
  * frozen half-way rather than un-asked. The lid's travel, its hold and its easing are now the
  * `picnic-basket` row, and the model is geometry again.
  */
+/** 籃口：籃身頂面的高度與半徑（籃身是 0.30 → 0.256 的圓台，高 0.35）。 */
+const PICNIC_BASKET_RIM_Y = 0.35;
+const PICNIC_BASKET_RIM_R = 0.30;
+/** 提把跨在籃口前半的哪一條弦上。 */
+const PICNIC_BASKET_HANDLE_Z = 0.12;
 function PicnicBasketModel({ scale, item, instanceId }: FurnitureModelProps) {
   const anim = useObjectAnimation(instanceId, item);
   return (
@@ -3702,9 +3858,18 @@ function PicnicBasketModel({ scale, item, instanceId }: FurnitureModelProps) {
           <meshStandardMaterial color={OUT_DRY} roughness={0.95} />
         </mesh>
       </group>
-      {/* 拱形提把 */}
-      <mesh position={[0, 0.62, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-        <torusGeometry args={[0.20, 0.022, 6, 12, Math.PI]} />
+      {/* 拱形提把 —— 兩腳落在籃口上、跨過籃子的一道拱。
+
+          半圓環（torus 只畫 π）預設就是站在 XY 平面上、往 +Y 拱起的形狀，本身就是提把該有的
+          樣子。改版前多轉了 [π/2, 0, 0]，把它放倒成一個水平的半圈，還浮在籃口上方 27 公分 ——
+          商店圖上跨在籃子上的那道提把，模型上是一根懸空的橫條。
+          現在不轉，兩腳正好落在籃口（y 0.35、半徑 0.30）上；放在籃子的前半（z +0.12），
+          跟往後掀的籃蓋（前緣最遠到 z ≈ 0.03）錯開，蓋子打開時不會撞到提把。 */}
+      <mesh
+        position={[0, PICNIC_BASKET_RIM_Y, PICNIC_BASKET_HANDLE_Z]}
+        castShadow
+      >
+        <torusGeometry args={[Math.sqrt(PICNIC_BASKET_RIM_R ** 2 - PICNIC_BASKET_HANDLE_Z ** 2), 0.022, 6, 12, Math.PI]} />
         <meshStandardMaterial color={OUT_WOOD} roughness={0.9} />
       </mesh>
       {/* 兩個金屬扣 */}
@@ -3771,73 +3936,153 @@ function PicnicTableModel({ scale }: FurnitureModelProps) {
   );
 }
 
-/** 小型觀景平台 —— 抬高的木棧板、三面欄杆、一段木階梯。互動：走到欄杆邊眺望遠方。 */
-/**
- * 小型觀景平台 —— 眺望風景.
+/*
+ * 小型觀景平台的尺寸 —— 模型自己的局部單位（畫出來再乘 BUILDING 的 1.3175）。
  *
- * Nothing on a viewing deck opens, so the reaction is the thing the deck is FOR: a pennant on the
- * rail that snaps up in the wind while somebody is standing there looking at the view. It is hung
- * off an EXISTING rail post rather than on a new pole of its own, because a new post on a piece
+ * 全部寫成具名常數、其他尺寸從它們推出來，是這件模型這一輪修掉的錯誤的反面：改版前每個零件的
+ * 高度都是各自打的數字，於是欄杆群組放在 `DECK_Y + 0.16 = 0.71`、而木板頂面在 0.6825 —— 三面
+ * 欄杆整組懸空 2.75 公分；階梯三階的 y 從 0.10 往上加、z 從 −1.05 往外減 —— 最高的一階離平台
+ * 最遠，整段樓梯是反的，最低一階還浮在地面上 5 公分。任何一個高度改了，另一個不會跟著動。
+ */
+/** 支柱頂＝底板底。 */
+const DECK_Y = 0.55;
+/** 底板的半邊長與厚度。 */
+const DECK_HALF = 0.95;
+const SUBDECK_H = 0.10;
+const SUBDECK_TOP = DECK_Y + SUBDECK_H;
+/** 木板：中心高、厚度 —— 木板頂面就是玩家站的那一層（lib/furniturePlacement.ts 量出來的）。 */
+const PLANK_Y = DECK_Y + 0.11;
+const PLANK_H = 0.045;
+const DECK_TOP = PLANK_Y + PLANK_H / 2;
+/**
+ * 支柱往地面以下延伸到哪裡。平台放在斜坡上時是坐在「底下最高的那塊地」上
+ * （lib/placementSurfaces.ts 的 resolvePlacementY），低的那一側要靠支柱一路插到地裡，
+ * 不然四支腳會停在半空中。跟木製平台的角柱是同一個道理。
+ */
+const DECK_POST_FOOT = -0.45;
+/** 欄杆：立在底板上（穿過木板那一層），柱頂維持改版前的 1.31，橫杆也維持原本的絕對高度。 */
+const RAIL_TOP = 1.31;
+const RAIL_BARS_Y = [0.95, 1.26] as const;
+const SIDE_RAIL_X = 0.92;
+const BACK_RAIL_Z = 0.85;
+/**
+ * 階梯：四個等高的踏步（三塊踏板＋最後一步踏上甲板），從甲板的開放面（−Z）往外、往下。
+ * 最高的那一塊貼著甲板邊，最低的那一塊最遠 —— 走上去是往平台走，不是往外走。
+ */
+const STAIR_RISERS = 4;
+const STAIR_RISE = DECK_TOP / STAIR_RISERS;
+const STAIR_RUN = 0.28;
+const STAIR_WIDTH = 0.72;
+const STAIR_TREAD_H = 0.05;
+/** 最高一塊踏板的內緣就是甲板前緣，其他依序往外。 */
+const stairTreadZ = (i: number) => -DECK_HALF - (STAIR_RISERS - 2 - i + 0.5) * STAIR_RUN;
+/**
+ * 兩側斜梁：沿著踏板前緣那條線（每一階的鼻端都在同一條斜線上，斜率就是 RISE/RUN），
+ * 上緣比踏步高 2 公分，下端插進地面、上端頂到甲板前緣 —— 所以每一塊踏板兩端都架在梁上，
+ * 整段樓梯既落地、也接在平台上。
+ */
+const STRINGER_T = 0.05;
+const STRINGER_H = 0.14;
+const STRINGER_SLOPE = Math.atan2(STAIR_RISE, STAIR_RUN);
+const STRINGER_TOP_Z = -DECK_HALF;
+const STRINGER_BOTTOM_Z = stairTreadZ(0) - STAIR_RUN / 2 - 0.07;
+/** 踏板前緣連成的那條線在 z 處的高度。 */
+const stairNosingY = (z: number) => STAIR_RISE + (z - (stairTreadZ(0) - STAIR_RUN / 2)) * Math.tan(STRINGER_SLOPE);
+const stringerCenterY = (z: number) =>
+  stairNosingY(z) + 0.02 - STRINGER_H / 2 / Math.cos(STRINGER_SLOPE);
+
+/**
+ * 小型觀景平台 —— 抬高的木棧板、三面欄杆、一段通往開放面的木階梯。
+ *
+ * 眺望風景. Nothing on a viewing deck opens, so the reaction is the thing the deck is FOR: a pennant
+ * on the rail that snaps up in the wind while somebody is standing there looking at the view. It is
+ * hung off an EXISTING rail post rather than on a new pole of its own, because a new post on a piece
  * the player walks around on is a new thing to walk into.
+ *
+ * 碰撞完全是量出來的（lib/furniturePlacement.ts 的 STAND_RULES）：木板與三塊踏板是「地」，
+ * 欄杆、支柱、斜梁與甲板側面是「牆」—— 從地面上來只能走階梯，站在甲板上會被欄杆擋住。
+ * 這裡沒有任何一個碰撞數字，改了模型碰撞就跟著改。
  */
 function ViewingDeckModel({ scale, item, instanceId }: FurnitureModelProps) {
   const anim = useObjectAnimation(instanceId, item);
-  const DECK_Y = 0.55;
+  const postH = DECK_Y - DECK_POST_FOOT;
+  const railH = RAIL_TOP - SUBDECK_TOP;
+  const stringerLen = (STRINGER_TOP_Z - STRINGER_BOTTOM_Z) / Math.cos(STRINGER_SLOPE);
+  const stringerZ = (STRINGER_TOP_Z + STRINGER_BOTTOM_Z) / 2;
   return (
     <group ref={anim.root} scale={scale}>
       {/* The pennant, on the top of the back rail's +X post. */}
-      <group position={[0.75, 1.30, 0.85]} ref={anim.ref('pennant')}>
+      <group position={[0.75, RAIL_TOP - 0.01, BACK_RAIL_Z]} ref={anim.ref('pennant')}>
         <mesh position={[-0.14, -0.045, 0]} castShadow>
           <boxGeometry args={[0.26, 0.13, 0.012]} />
           <meshStandardMaterial color={OUT_FLOWER_RED} roughness={0.95} side={THREE.DoubleSide} />
         </mesh>
       </group>
-      {/* 四支支柱 */}
+      {/* 四支支柱，從地面以下一路撐到底板 */}
       {[[-0.85, -0.85], [0.85, -0.85], [-0.85, 0.85], [0.85, 0.85]].map(([x, z], i) => (
-        <mesh key={`post-${i}`} position={[x, DECK_Y / 2, z]} castShadow>
-          <cylinderGeometry args={[0.07, 0.09, DECK_Y, 8]} />
+        <mesh key={`post-${i}`} position={[x, DECK_POST_FOOT + postH / 2, z]} castShadow>
+          <cylinderGeometry args={[0.07, 0.09, postH, 8]} />
           <meshStandardMaterial color={OUT_WOOD_SHADOW} roughness={0.95} />
         </mesh>
       ))}
       {/* 棧板 */}
-      <mesh position={[0, DECK_Y + 0.05, 0]} receiveShadow>
-        <boxGeometry args={[1.9, 0.10, 1.9]} />
+      <mesh position={[0, DECK_Y + SUBDECK_H / 2, 0]} receiveShadow>
+        <boxGeometry args={[DECK_HALF * 2, SUBDECK_H, DECK_HALF * 2]} />
         <meshStandardMaterial color={OUT_WOOD_SHADOW} roughness={0.95} />
       </mesh>
       {[-0.72, -0.24, 0.24, 0.72].map((z, i) => (
-        <mesh key={`plank-${i}`} position={[0, DECK_Y + 0.11, z]} castShadow receiveShadow>
-          <boxGeometry args={[1.86, 0.045, 0.42]} />
+        <mesh key={`plank-${i}`} position={[0, PLANK_Y, z]} castShadow receiveShadow>
+          <boxGeometry args={[1.86, PLANK_H, 0.42]} />
           <meshStandardMaterial color={i % 2 === 0 ? OUT_WOOD_LIGHT : OUT_WOOD} roughness={0.9} />
         </mesh>
       ))}
       {/* 三面欄杆（正面朝 -Z 開放，留給眺望與階梯的方向），每面兩根柱＋兩道橫杆。
-          柱子刻意內縮較多（0.20 而不是貼齊邊角），避免相鄰兩面的角柱在轉角處疊在一起。 */}
+          欄杆立在底板上、穿過木板那一層，所以柱腳一定踩在甲板上（改版前整組浮在木板上方 2.75 公分）。
+          兩側欄杆收在底板邊緣以內，柱子不會有一半懸在甲板外。
+          背面橫杆的兩端各插進側面橫杆 5 公釐 —— 接在一起、但不共平面。 */}
       {[
-        { at: [0, 0.85] as const, len: 1.9, rotY: 0 },
-        { at: [-0.95, 0] as const, len: 1.9, rotY: Math.PI / 2 },
-        { at: [0.95, 0] as const, len: 1.9, rotY: Math.PI / 2 },
+        { at: [0, BACK_RAIL_Z] as const, barLen: (SIDE_RAIL_X - 0.02 + 0.005) * 2, postAt: 0.75, rotY: 0 },
+        { at: [-SIDE_RAIL_X, 0] as const, barLen: 1.82, postAt: 0.75, rotY: Math.PI / 2 },
+        { at: [SIDE_RAIL_X, 0] as const, barLen: 1.82, postAt: 0.75, rotY: Math.PI / 2 },
       ].map((side, i) => (
-        <group key={`rail-${i}`} position={[side.at[0], DECK_Y + 0.16, side.at[1]]} rotation={[0, side.rotY, 0]}>
-          {[-side.len / 2 + 0.20, side.len / 2 - 0.20].map((p, j) => (
-            <mesh key={`rp-${j}`} position={[p, 0.30, 0]} castShadow>
-              <boxGeometry args={[0.05, 0.60, 0.05]} />
+        <group key={`rail-${i}`} position={[side.at[0], SUBDECK_TOP, side.at[1]]} rotation={[0, side.rotY, 0]}>
+          {[-side.postAt, side.postAt].map((p, j) => (
+            <mesh key={`rp-${j}`} position={[p, railH / 2, 0]} castShadow>
+              <boxGeometry args={[0.05, railH, 0.05]} />
               <meshStandardMaterial color={OUT_WOOD_DARK} roughness={0.9} />
             </mesh>
           ))}
-          {/* 橫杆比整面短一截，讓相鄰兩面的橫杆在轉角處不會互相插進去 */}
-          {[0.24, 0.55].map((y, j) => (
-            <mesh key={`rr-${j}`} position={[0, y, 0]} castShadow>
-              <boxGeometry args={[side.len - 0.08, 0.04, 0.04]} />
+          {RAIL_BARS_Y.map((y, j) => (
+            <mesh key={`rr-${j}`} position={[0, y - SUBDECK_TOP, 0]} castShadow>
+              <boxGeometry args={[side.barLen, 0.04, 0.04]} />
               <meshStandardMaterial color={OUT_WOOD} roughness={0.9} />
             </mesh>
           ))}
         </group>
       ))}
-      {/* 通往開放面的木階梯 */}
-      {[0, 1, 2].map((i) => (
-        <mesh key={`step-${i}`} position={[0, 0.10 + i * 0.16, -1.05 - i * 0.20]} castShadow receiveShadow>
-          <boxGeometry args={[0.7, 0.10, 0.30]} />
-          <meshStandardMaterial color={OUT_WOOD} roughness={0.9} />
+      {/* 通往開放面的木階梯：三塊踏板，一階比一階高、一階比一階靠近甲板 */}
+      {Array.from({ length: STAIR_RISERS - 1 }, (_, i) => (
+        <mesh
+          key={`step-${i}`}
+          position={[0, (i + 1) * STAIR_RISE - STAIR_TREAD_H / 2, stairTreadZ(i)]}
+          castShadow
+          receiveShadow
+        >
+          <boxGeometry args={[STAIR_WIDTH, STAIR_TREAD_H, STAIR_RUN]} />
+          <meshStandardMaterial color={i % 2 === 0 ? OUT_WOOD : OUT_WOOD_LIGHT} roughness={0.9} />
+        </mesh>
+      ))}
+      {/* 兩側斜梁 */}
+      {[-1, 1].map((s) => (
+        <mesh
+          key={`stringer-${s}`}
+          position={[s * (STAIR_WIDTH / 2 + STRINGER_T / 2), stringerCenterY(stringerZ), stringerZ]}
+          rotation={[-STRINGER_SLOPE, 0, 0]}
+          castShadow
+          receiveShadow
+        >
+          <boxGeometry args={[STRINGER_T, STRINGER_H, stringerLen]} />
+          <meshStandardMaterial color={OUT_WOOD_DARK} roughness={0.9} />
         </mesh>
       ))}
     </group>
@@ -6708,6 +6953,10 @@ function PetCatTowerModel({ scale }: FurnitureModelProps) {
  * written in two places and must be changed together — and it is the surface, never the axis, or
  * the bird sinks into the bar by its radius.
  */
+/** The top of the bars, where the rim ring sits and the dome meets it. */
+const BIRD_CAGE_RIM_Y = 1.23;
+/** How much of the sphere the dome is, from its pole down — 75°. */
+const BIRD_CAGE_DOME_ARC = Math.PI / 2.4;
 function PetBirdCageModel({ scale }: FurnitureModelProps) {
   const bars = 12;
   return (
@@ -6738,13 +6987,20 @@ function PetBirdCageModel({ scale }: FurnitureModelProps) {
           </mesh>
         );
       })}
-      {/* Rim and dome, so the bars are held top and bottom. */}
-      <mesh position={[0, 1.23, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+      {/* Rim and dome, so the bars are held top and bottom.
+
+          The dome is a CAP — the top 75° of a sphere — so its lower edge is not at the sphere's
+          centre but `cos(75°)·r` above it. It used to be centred at the rim's own height, which put
+          that edge 6 cm above the rim: daylight between the roof and the cage, and the hanging ring
+          (1.42) buried inside the dome instead of standing on it. Centring the sphere that far
+          BELOW the rim seats the cap's edge on the ring, and the cap's edge radius (0.29) on the
+          ring's (0.30). */}
+      <mesh position={[0, BIRD_CAGE_RIM_Y, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
         <torusGeometry args={[0.3, 0.026, 6, 20]} />
         <meshStandardMaterial color={PET_WOOD} roughness={0.9} />
       </mesh>
-      <mesh position={[0, 1.24, 0]} castShadow>
-        <sphereGeometry args={[0.3, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2.4]} />
+      <mesh position={[0, BIRD_CAGE_RIM_Y - 0.3 * Math.cos(BIRD_CAGE_DOME_ARC), 0]} castShadow>
+        <sphereGeometry args={[0.3, 18, 8, 0, Math.PI * 2, 0, BIRD_CAGE_DOME_ARC]} />
         <meshStandardMaterial color={PET_WOOD} roughness={0.9} side={THREE.DoubleSide} />
       </mesh>
       {/* The ring it hangs from. */}
@@ -6889,6 +7145,19 @@ function PetBirdNestModel({ scale }: FurnitureModelProps) {
 
 /* ------------------------------------------------------------------- 客廳 · 沙發與椅子 */
 
+/**
+ * The tub's open front, as an arc of angle round its axis (`a`, with x = cos a and z = sin a — the
+ * front is a = PI/2). The staves are left out across it and the hoops stop at its edges, so the two
+ * agree by construction.
+ *
+ * 80° wide — five staves — rather than the three it used to leave out. The opening is where the
+ * sitter's body comes out of the tub (the hips sit at the seat's front edge, see
+ * lib/occupantFit.ts), and at the rim's radius a three-stave gap is 0.49 wide against a body 0.62
+ * across: the rim ran through the sitter's sides. Measured, not judged — `npm run
+ * audit:interactions`.
+ */
+const RATTAN_OPENING = { start: (50 * Math.PI) / 180, end: (130 * Math.PI) / 180 } as const;
+
 /** 藤編單人沙發 — 海島系列. An open rattan tub chair with a cushion dropped into it. */
 function RattanArmchairModel({ scale, item, instanceId }: FurnitureModelProps) {
   const anim = useObjectAnimation(instanceId, item);
@@ -6908,7 +7177,7 @@ function RattanArmchairModel({ scale, item, instanceId }: FurnitureModelProps) {
         const a = (i / 24) * Math.PI * 2;
         // Only the narrow front is left open, so the seat is visible from the room side without
         // the tub losing its shape.
-        if (Math.sin(a) > 0.9) return null;
+        if (a > RATTAN_OPENING.start && a < RATTAN_OPENING.end) return null;
         return (
           <mesh
             key={`stave-${i}`}
@@ -6922,10 +7191,16 @@ function RattanArmchairModel({ scale, item, instanceId }: FurnitureModelProps) {
         );
       })}
       {/* Three hoops binding the staves — the weave reading. The rim stops at 0.74, low enough
-          that the seat inside is visible from a standing camera; a taller tub reads as a barrel. */}
+          that the seat inside is visible from a standing camera; a taller tub reads as a barrel.
+
+          They stop where the staves stop. They used to run the full circle, so the top two hoops
+          crossed the open front at thigh and waist height — a bar straight across the doorway of a
+          chair whose whole point is that it is open at the front, and one that anybody sitting in
+          it passed through (`npm run audit:interactions`: 3 cm). The arc skips the same angles the
+          staves skip; see RATTAN_OPENING. */}
       {[0.26, 0.5, 0.72].map((y) => (
-        <mesh key={`hoop-${y}`} position={[0, y, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <torusGeometry args={[0.485, 0.028, 6, 20]} />
+        <mesh key={`hoop-${y}`} position={[0, y, 0]} rotation={[Math.PI / 2, 0, RATTAN_OPENING.end]} castShadow>
+          <torusGeometry args={[0.485, 0.028, 6, 20, Math.PI * 2 - (RATTAN_OPENING.end - RATTAN_OPENING.start)]} />
           <meshStandardMaterial color="#a8834b" roughness={0.95} />
         </mesh>
       ))}

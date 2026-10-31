@@ -8,7 +8,7 @@ import { createPortal, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Html } from '@react-three/drei';
 import { motion } from 'motion/react';
-import { useApp } from '../../context/AppContext';
+import { useAppPick, useAppReader } from '../../context/AppContext';
 import { getItemById } from '../../constants/items';
 import { CharacterModel } from './character';
 import { resolveCharacterOutfit } from './character/outfit';
@@ -24,7 +24,7 @@ import { FIRST_PERSON_ZOOM, avatarZoomOpacity } from '../../constants/cameraZoom
 import { usePlayerHome } from '../../hooks/usePlayerHome';
 import { WATER_SURFACE_Y, SWIM_BODY_Y } from '../../constants/world';
 import { DECAL_DEPTH_BIAS, SURFACE_DECAL_LIFT } from '../../constants/terrain';
-import { View, CameraMode, WeatherType } from '../../types';
+import { View, CameraMode, WeatherType, type PlacedItem } from '../../types';
 import {
   playFootstepThud, primeSynthAudio, startSwimAmbience, stopSwimAmbience, setSwimActivity,
   playStrokeSplash, playWaterEntrySplash, startBeachSurfAmbience, setBeachSurfIntensity,
@@ -36,7 +36,10 @@ import {
   getTerrainInfo,
   findNearbyHome,
   footLevelAt,
-  resolveCollisions as resolveCollisionsShared,
+  resolveMovement as resolveCollisionsShared,
+  stepReferenceY,
+  feetFloorY,
+  easeBodyBase,
   CRAWL_BODY_REACH,
   SWIM_BODY_REACH,
   FOOT_LIFT,
@@ -64,27 +67,22 @@ import {
   isJumpAirborne,
 } from './jumpPose';
 import { isGroundedAt } from '../../lib/placementSurfaces';
-import {
-  hasFurnitureInteraction,
-  liePitch,
-} from '../../constants/furnitureInteractions';
+import { hasFurnitureInteraction } from '../../constants/furnitureInteractions';
 import {
   BodyPose,
   PostureId,
   RigJointName,
-  getPosture,
 } from '../../constants/interactionPostures';
 import {
   actionFinished,
   resolveActionFrame,
-  resolveOccupancyFrame,
-  settleFrom,
-  solveLegSwing,
 } from '../../lib/interactionPosture';
+import { type PieceMotion, compensateArmSplay, resolveOccupantPose } from '../../lib/occupantFit';
 import {
   InteractionTarget,
+  type ReachHit,
+  collectInteractablesInReach,
   describeInteraction,
-  findNearbyInteractable,
   resolveEntryPoint,
   resolveExitTarget,
 } from '../../lib/furnitureInteraction';
@@ -98,10 +96,11 @@ import {
   suspendedSag,
 } from '../../lib/outdoorMotion';
 import { getFootprintVersion } from '../../lib/furniturePlacement';
+import type { FurnitureInReach } from '../../lib/playerBus';
 import { buildWalkableRects, toShellRooms, type WalkRect } from '../../constants/interiorShell';
 import { parseUnlockedRooms } from '../../constants/rooms';
 import { getWorldSolids } from '../../lib/worldSolids';
-import { interiorLights, nearestLightSwitch, toggleInteriorLights } from '../../lib/interiorLights';
+import { interiorLights, toggleInteriorLights } from '../../lib/interiorLights';
 import { CandleInHand } from './CandleInHand';
 
 
@@ -554,10 +553,14 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
  * passes it, so the avatar on the island is always the player. Item IDS, same as equippedItems.
  */ equippedOverride?: string[] }) {
   const {
-    profile, nearbyBuilding, setNearbyBuilding, setNearbyInteractable, currentView,
+    profile, nearbyBuilding, setNearbyBuilding, currentView,
     setCurrentView, joystickData, externalActionTrigger, cameraMode, isGameLoading,
-    uiScale, weather, pendingPetFood
-  } = useApp();
+    uiScale,
+  } = useAppPick('profile', 'nearbyBuilding', 'setNearbyBuilding', 'currentView', 'setCurrentView', 'joystickData', 'externalActionTrigger', 'cameraMode', 'isGameLoading', 'uiScale');
+  // The weather is read once a frame (the sunny-day stretch) and never by the render, so it is
+  // read, not subscribed to: picking it re-rendered this component and its whole wardrobe on
+  // every weather tick. See useAppReader.
+  const readApp = useAppReader();
   
   const isDressingRoom = currentView === View.DRESSING_ROOM;
 
@@ -663,17 +666,37 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
   const jumpRequestRef = useRef(false);
   /** Last frame's support height, so this frame can tell how fast the ground is dropping away. */
   const prevSupportYRef = useRef(0);
+  /**
+   * How far above its SMOOTHED base height the drawn root was put last frame — the jump arc plus
+   * the footfall bounce — so this frame can take it back off before easing the base.
+   *
+   * The body's height is a first-order ease toward the surface it stands on, and it has to be:
+   * stepping down off a deck or wading out of the sea should glide, not teleport. What must NOT go
+   * through that ease is anything the body does ON TOP of the surface. The jump arc used to: its
+   * 0.46 s flight went through a ~0.1 s lag, which was measured to (a) lift the body only 0.10 by
+   * the time physics had it at 0.48, (b) keep the body climbing after `vy` turned negative, so the
+   * 下降 pose played on the way up, and (c) leave the body 0.78 in the air on the frame physics
+   * landed — the knee absorb and the squash ran in mid-air and the character then floated down
+   * out of a pose it had already recovered from. The crouch dip, which is derived to keep the soles
+   * planted (jumpPose.ts's poseDip), stopped doing so for the same reason.
+   *
+   * So the base is eased and the lift is added afterwards, raw. Reading `position.y` back each
+   * frame (which the ease has always done) therefore has to subtract what was added, or last
+   * frame's arc and bounce are fed back into the ease as if they were ground.
+   */
+  const visualLiftRef = useRef(0);
   // 0..1 through the somersault, published by the pose block so the limb animation further down
   // can tuck in time with it, and the group offset that keeps the flip turning about the body's
   // centre instead of its feet (see FLIP_PIVOT_LOCAL_Y).
   const flipProgress = useRef(0);
   const flipPivotOffset = useRef(new THREE.Vector3());
   /**
-   * THE FURNITURE INTERACTION STATE — two slots, and that is the whole of it.
+   * THE FURNITURE INTERACTION STATE.
    *
-   * `nearbyInteraction` is whichever single piece the player is standing close enough to act on,
-   * already resolved into a verb, a body anchor and a prompt anchor by
-   * lib/furnitureInteraction.ts. `occupied` is the piece they are currently sitting or lying on.
+   * `occupied` is the piece the player is currently sitting or lying on. What they could act on
+   * NEXT is not a slot here any more: every piece in reach is published for the targeting pass
+   * (see the proximity scan, and lib/interactionTargeting.ts), and the one the player means is
+   * `playerBus.interactionTarget` — the same object the badge is drawn from.
    *
    * This replaced FOUR pieces of state that between them said the same thing: a `nearbyHammock`
    * (with its own position/rotation record), a `nearbyDecor`, an `isLying` boolean, and an
@@ -687,8 +710,6 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
    * read them at times React state has not committed yet — the same arrangement the hammock
    * pair used.
    */
-  const [nearbyInteraction, setNearbyInteraction] = useState<InteractionTarget | null>(null);
-  const nearbyInteractionRef = useRef<InteractionTarget | null>(null);
   const [occupied, setOccupied] = useState<InteractionTarget | null>(null);
   const occupiedRef = useRef<InteractionTarget | null>(null);
   /**
@@ -852,10 +873,11 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
     lastConsumedActionTriggerRef.current = externalActionTrigger;
 
     if (!isCorrectInstance) return;
-    // Already on a piece counts: the button is what gets you back off it.
-    if (nearbyInteractionRef.current === null && occupiedRef.current === null && nearbyBuilding === null) return;
+    // The tap acts on exactly what the E key would: the selected target, or getting off the piece
+    // the player is on. handleAction decides both, so the two entry points cannot diverge.
     handleAction();
-  }, [externalActionTrigger, isCorrectInstance, nearbyBuilding]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a press is the counter moving, nothing else
+  }, [externalActionTrigger, isCorrectInstance]);
 
   useEffect(() => {
     if (isCorrectInstance) {
@@ -892,18 +914,6 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
     };
   }, [isCorrectInstance, isFlipping, leaveFurniture, abandonAction]);
 
-  // Which interaction fires when the player activates one (desktop E key, or the on-screen
-  // prompt / mobile action button, which route here via externalActionTrigger) is decided by a
-  // SINGLE source of truth: whichever nearest target InteractionPromptTracker is currently showing
-  // a prompt for. This used to check `nearbyBuilding` first and unconditionally enter the house.
-  // But the home's door has a far larger trigger radius (HOME_ENTRY_RADIUS, ~3.3u) than a piece of
-  // furniture, so a decoration placed near the house leaves `nearbyBuilding` AND the furniture
-  // target set at the same time - and the building always won the priority check, so interacting
-  // with e.g. 手作鳥屋 / 溫馨營火 parked by the house wrongly entered the house even while the
-  // prompt read 「使用 <decoration>」. The tracker already resolves that overlap by projecting only
-  // the single nearest candidate (see its candidates.sort); reading its result here keeps the
-  // action and the visible prompt in lockstep, so each object only ever triggers its own
-  // interaction. No per-object exceptions needed - one rule covers every piece of furniture.
   /**
    * 撥一下牆上的電燈開關。
    *
@@ -917,8 +927,8 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
    * `leaveFurniture()`：坐著或躺著的時候按 Q，是站起來走過去撥它 —— 一個躺在床上隔空把燈關掉
    * 的角色，那個伸手的動作會演在半空中。所以先離座，再轉身面向它。
    *
-   * 附近沒有開關就什麼都不做，這是這個函式唯一的守門 —— 按鍵、行動版的徽章、之後任何新的觸發
-   * 點都經過這裡，所以「不在開關旁邊按 Q 會發生什麼」只有一個答案。
+   * 沒有選到開關（playerBus.lightSwitchTarget）就什麼都不做，這是這個函式唯一的守門 —— 按鍵、
+   * 行動版的徽章、之後任何新的觸發點都經過這裡，所以「不在開關旁邊按 Q 會發生什麼」只有一個答案。
    *
    * 動作用 `operate`（constants/interactionPostures.ts）：站著、抬起右手、按三下。那一列本來就
    * 是為了「操作一個控制器」寫的，而牆上的開關正是那個東西 —— 它不需要自己一個姿勢。
@@ -928,7 +938,9 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
    */
   const flipLightSwitch = useCallback(() => {
     if (!isCorrectInstance) return;
-    const sw = nearestLightSwitch(position.current.x, position.current.z);
+    // The switch the Q badge is on — chosen by the interior tracker, with the same "no wall in
+    // between" rule as the E slot. Not searched for again here.
+    const sw = playerBus.lightSwitchTarget;
     if (!sw) return;
     leaveFurniture();
     // A fridge the player pressed E at a moment ago and then turned to the wall from is an action
@@ -964,9 +976,9 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
   useEffect(() => {
     if (!isCorrectInstance) return;
     const onNpc = (e: Event) => {
-      const npc = playerBus.npcTarget;
       const npcId = (e as CustomEvent<{ npcId?: string }>).detail?.npcId;
-      if (!npc || npc.npcId !== npcId) return;
+      const npc = npcId ? playerBus.npcTargets.get(npcId) : undefined;
+      if (!npc) return;
       leaveFurniture();
       abandonAction();
       rotation.current = Math.atan2(npc.anchor.x - position.current.x, npc.anchor.z - position.current.z);
@@ -1019,77 +1031,50 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
     };
   }, [isCorrectInstance, leaveFurniture, abandonAction]);
 
+  /**
+   * THE ACTION KEY — desktop E, and the floating badge / mobile button (which arrive through
+   * `externalActionTrigger` above). Both run exactly this.
+   *
+   * It does not decide WHAT to act on. That is `playerBus.interactionTarget`: the one target the
+   * targeting pass selected this frame (Three/InteractionPromptTracker.tsx,
+   * lib/interactionTargeting.ts), and the same object the badge's text and position come from.
+   * The target carries its own `action`, so this function has no per-kind search and no
+   * per-object branch — it executes what the badge says.
+   *
+   * What it replaced read the badge's CATEGORY (`interactionPrompt.key`) and then re-read that
+   * category's own single slot — the nearest furniture, THE merchant, THE resident — which is how
+   * the key could land on a different piece from the one the player had turned to face.
+   */
   const handleAction = useCallback(() => {
-    const promptKey = playerBus.interactionPrompt?.key;
-
-    if (promptKey === 'building') {
-      if (nearbyBuilding) setCurrentView(View.BUILDING_INTERIOR);
-      return;
-    }
-    if (promptKey === 'dog') {
-      // The pet's interaction panel is otherwise opened by tapping the prompt (see
-      // InteractionPrompt.tsx); routing E through the same event keeps the key consistent with what
-      // the prompt offers, and - like every branch here - stops it from falling through to the
-      // house.
-      //
-      // 餵食模式 splits the same slot in two, and the condition is deliberately IDENTICAL to the
-      // badge's (InteractionPrompt.tsx): the key and the on-screen label must never offer different
-      // things, which is the rule every branch in this function exists to keep.
-      window.dispatchEvent(new CustomEvent(pendingPetFood ? 'pet-feed' : 'pet-interact'));
-      return;
-    }
-    if (promptKey === 'merchant') {
-      // 與旅行商人交易. Same shape as the two branches around it, and deliberately so: this
-      // dispatches an event naming WHICH merchant, and something else decides what that opens.
-      //
-      // There is no `setCurrentView(View.LIMITED_SHOP)` here on purpose (§17). The avatar knows
-      // it walked up to a merchant; it does not know — and must not learn — that this particular
-      // merchant happens to run the 限時小攤. That link is data
-      // (constants/merchants.ts's `shop`), it is read by the one component that owns the shop
-      // session (UI/MerchantSession.tsx), and it re-checks the visit before opening anything —
-      // so a press that lands in the same tick the merchant casts off opens nothing rather than
-      // opening a shop that is no longer there.
-      const merchantId = playerBus.merchantTarget?.merchantId;
-      if (merchantId) {
-        window.dispatchEvent(new CustomEvent('merchant-interact', { detail: { merchantId } }));
-      }
-      return;
-    }
-    if (promptKey === 'npc') {
-      // 與居民聊天. An event naming WHICH resident, exactly like the merchant branch above: the
-      // walker that draws her (Three/NpcWalker.tsx) decides what the press means — first line,
-      // next line — and the listener below turns this body toward her and plays the gesture.
-      // The floating badge sends the identical event, so a tap and the E key cannot diverge.
-      const npcId = playerBus.npcTarget?.npcId;
-      if (npcId) window.dispatchEvent(new CustomEvent('npc-interact', { detail: { npcId } }));
-      return;
-    }
-    if (promptKey === 'tidy') {
-      // 整理 the offline overgrowth the tracker is pointing at. Same shape as the branch above:
-      // one event, handled by the feature that owns the write (UI/IslandTidy.tsx), so the key and
-      // the on-screen badge can never do two different things.
-      window.dispatchEvent(new CustomEvent('island-tidy'));
-      return;
-    }
-    // 牆上的電燈開關以前也是這裡的一個分支，現在不是了：它按的是 Q，有自己的徽章，也就不再
-    // 跟家具搶這一格。見下面的 handleKeyDown 和 UI/LightSwitchPrompt.tsx。
-
-    // promptKey === 'interactable' — a piece of furniture. Also the safe fallback when no prompt
-    // has been computed yet: acting on something genuinely in reach is always correct, and never
-    // enters the house.
-    //
-    // Getting OFF comes first and does not consult the proximity scan at all. A player lying on a
-    // bed has walked their own collider onto the mattress; whether the scan still likes the angle
-    // they are at must not decide whether they can get up again.
+    // Getting OFF comes first and does not consult targeting at all. A player lying on a bed has
+    // walked their own collider onto the mattress; whether anything still likes the angle they are
+    // at must not decide whether they can get up again. (Targeting agrees anyway: while a piece is
+    // occupied it is the only, locked, candidate — and its badge reads 起身.)
     if (occupiedRef.current) {
       playSound(SoundEffect.TICK, 0.22);
       leaveFurniture();
       return;
     }
 
-    const target = nearbyInteractionRef.current;
-    if (!target) return;
+    const selected = playerBus.interactionTarget;
+    if (!selected || selected.scope !== (isInterior ? 'interior' : 'island')) return;
+    const action = selected.action;
 
+    if (action.type === 'enter-home') {
+      setCurrentView(View.BUILDING_INTERIOR);
+      return;
+    }
+    if (action.type === 'event') {
+      // The feature that owns the rest — the pet panel or the feed (UI/PetInteractionPanel.tsx,
+      // UI/PetFeeding.tsx), the resident's conversation (Three/NpcWalker.tsx and the listener
+      // above), the merchant's shop (UI/MerchantSession.tsx), 整理 (UI/IslandTidy.tsx). The
+      // detail names WHICH one; every listener acts on that rather than on its own slot.
+      window.dispatchEvent(new CustomEvent(action.name, { detail: { ...action.detail } }));
+      return;
+    }
+
+    // A piece of furniture.
+    const target = action.target;
     // The one sound every furniture interaction makes, played HERE rather than in the badge so
     // the E key and the on-screen button sound the same. A piece with a voice of its own (the
     // campfire's crackle, the well's splash) plays it on top, from its own model.
@@ -1150,8 +1135,8 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
     rotation.current = target.spot
       ? target.spot.yaw
       : Math.atan2(
-        target.promptAnchor.x - position.current.x,
-        target.promptAnchor.z - position.current.z,
+        target.interactionPoint.x - position.current.x,
+        target.interactionPoint.z - position.current.z,
       );
     // The face a piece is used from is the piece's own answer and takes no account of what is
     // behind it, so a wardrobe turned to face the wall it stands against resolves a spot 0.8
@@ -1197,16 +1182,7 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
         },
       },
     }));
-  }, [nearbyBuilding, leaveFurniture, setCurrentView, pendingPetFood]);
-
-  // The display name AppContext carries for the prompt. The VERB that goes with it travels on
-  // playerBus (see the proximity scan below) rather than through React state, because it changes
-  // at walking speed and nothing but the badge reads it.
-  useEffect(() => {
-    if (isCorrectInstance) {
-      setNearbyInteractable(nearbyInteraction?.itemName ?? null);
-    }
-  }, [nearbyInteraction, setNearbyInteractable, isCorrectInstance]);
+  }, [isInterior, leaveFurniture, setCurrentView, abandonAction, announceOccupy]);
   const position = useRef(new THREE.Vector3(0, 0, 0));
   const rotation = useRef(0);
   const isMoving = useRef(false);
@@ -1218,6 +1194,16 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
    * two are in the same useFrame but separated by ~350 lines of pose work.
    */
   const supportFootstepRef = useRef<'wood' | 'stone' | null>(null);
+  /**
+   * The height the feet were resolved to on the last collision pass — what the next step is taken
+   * FROM (characterMovement's `footY`). It is what makes a deck taller than a step a wall from the
+   * grass and floor from its own stairs.
+   *
+   * `null` whenever the body arrives somewhere it did not walk to (a teleport, a view change), so
+   * the first pass there takes whatever surface is on top rather than judging a step from
+   * wherever the player last happened to be.
+   */
+  const footYRef = useRef<number | null>(null);
   const currentTerrain = useRef<string | null>(null);
 
   // Custom states and refs for swimming state machine & visual water ripples
@@ -1549,22 +1535,33 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
   } | null>(null);
 
   /**
-   * The world point the floating badge hangs over, rewritten in place every frame.
+   * The pieces in reach, described — one record per piece, built when it comes into reach and
+   * kept while it stays there. Rebuilt when:
    *
-   * One vector rather than a fresh one per change: this is published on playerBus and read by the
-   * tracker inside the Canvas, which copies it, so there is no reason to allocate — and it has to
-   * be updated every frame anyway (see the scan below).
+   *   the footprint registry's version moves   a piece measures itself a frame after its model
+   *                                            mounts, so a record built before that carries the
+   *                                            unmeasured fallback;
+   *   the placement object changes             it was moved or turned in build mode;
+   *   the player has walked a quarter unit     for an acting piece, whose stand spot depends on the
+   *                                            side the player is on (see DESCRIBE_REFRESH_DISTANCE).
+   *
+   * `seen` is the frame stamp that last found it in reach; anything older is dropped.
    */
-  const promptAnchorRef = useRef(new THREE.Vector3());
-  /**
-   * The footprint version the current interaction record was described against. A piece measures
-   * itself one frame after its model mounts (lib/furniturePlacement.ts), so a record built before
-   * that carries the fallback anchor — this is what makes it get rebuilt once, on the frame the
-   * real measurement lands, instead of every frame or never.
-   */
-  const describedVersionRef = useRef(-1);
-  /** Where the player was standing when that record was built — see the proximity scan. */
-  const describedFromRef = useRef(new THREE.Vector3());
+  const describedRef = useRef(new Map<string, {
+    target: InteractionTarget;
+    placement: PlacedItem;
+    version: number;
+    fromX: number;
+    fromZ: number;
+    seen: number;
+  }>());
+  const describeStampRef = useRef(0);
+  /** The reach scan's reusable hit records. */
+  const reachHitsRef = useRef<ReachHit[]>([]);
+  /** What this avatar publishes as playerBus.furnitureInReach — reused, never reallocated. */
+  const furnitureOutRef = useRef<{ scope: 'island' | 'interior'; items: FurnitureInReach[]; count: number }>({
+    scope: isInterior ? 'interior' : 'island', items: [], count: 0,
+  });
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1605,7 +1602,7 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
       // 事同時有意義。以前它是 E 的其中一個候選人，結果房裡只要有任何一件家具離你更近，開關就
       // 永遠按不到，玩家會以為那面牆上根本沒有開關。
       //
-      // 附近沒有開關的時候 flipLightSwitch 自己會什麼都不做（nearestLightSwitch 回 null），
+      // 沒有選到開關的時候 flipLightSwitch 自己會什麼都不做（playerBus.lightSwitchTarget 是 null），
       // 所以這裡不需要再問一次「現在在不在室內」。
       if (key === 'q') {
         flipLightSwitch();
@@ -1772,7 +1769,7 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
    * how close the camera can come before it starts cutting this body open, so the proximity fade
    * has to ask rather than assume. See cameraProximityOpacity.
    */
-  const { camera } = useThree();
+  const camera = useThree((s) => s.camera);
 
   /**
    * The two joint heights the animation RE-ASSERTS every frame, so they cannot be model-
@@ -1870,6 +1867,8 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
       if (pendingTeleport) {
         position.current.x = pendingTeleport.x;
         position.current.z = pendingTeleport.z;
+        // Not walked to, so there is no step to judge — see footYRef.
+        footYRef.current = null;
         if (typeof pendingTeleport.rotation === 'number') {
           rotation.current = pendingTeleport.rotation;
         }
@@ -1994,8 +1993,14 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
      * the body, because then the root is at seat height against a support height nobody updated,
      * and the difference would read as a two-foot fall.
      */
+    // What the root was lifted by on top of its eased base last frame (see visualLiftRef). Taken
+    // off everywhere this frame reads `position.y` back, and zeroed here so that whichever branch
+    // positions the body below re-declares its own lift — a branch that adds none (furniture, the
+    // dressing room) then leaves nothing for the next frame to subtract.
+    const prevLift = visualLiftRef.current;
+    visualLiftRef.current = 0;
     const supportGap = groupRef.current && !inFurniturePose && !isDressingRoom
-      ? groupRef.current.position.y - bodyRootYRef.current
+      ? groupRef.current.position.y - prevLift - bodyRootYRef.current
       : 0;
     /**
      * HOW FAST THE GROUND IS GOING AWAY, world units per second, positive downward — the signal
@@ -2059,9 +2064,19 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
       : CRAWL_BODY_REACH * Math.sin(THREE.MathUtils.clamp(bodyTiltRef.current, 0, Math.PI / 2));
 
     // Thin per-frame wrapper around the shared implementation (characterMovement.ts) - keeps
-    // every existing call site below (`resolveCollisions(proposedPos)` etc.) unchanged.
-    const resolveCollisions = (testPos: THREE.Vector3) => resolveCollisionsShared({
+    // every existing call site below (`resolveCollisions(proposedPos)` etc.) unchanged. It also
+    // carries the feet from one pass to the next (footYRef), which is the only state the step rule
+    // needs. The shared call is `resolveMovement`: the frame's move from `position.current` taken
+    // in pieces short enough that a slow frame cannot skip a stair tread or step through a railing
+    // (see MAX_COLLISION_SUBSTEP). A frame at 60 fps is still exactly one resolve.
+    const resolveCollisions = (testPos: THREE.Vector3) => {
+      const result = resolveCollisionsAt(testPos);
+      footYRef.current = result.terrainY;
+      return result;
+    };
+    const resolveCollisionsAt = (testPos: THREE.Vector3) => resolveCollisionsShared({
       testPos,
+      footY: footYRef.current,
       currentPos: position.current,
       isInterior,
       islandScale,
@@ -2206,113 +2221,94 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
     if (activeAction && !actionIsLive) actionPostureRef.current = null;
 
     // ------------------------------------------------------------------
-    // WHAT IS IN REACH — the proximity scan behind every 「E 坐下」/「E 躺下」 badge.
+    // WHAT IS IN REACH — every piece of furniture the player could act on from here.
     // ------------------------------------------------------------------
     //
-    // Runs on EVERY frame, not only the idle ones. It used to live at the bottom of the "nothing
-    // is being steered" branch, so the prompt for a piece of furniture could not appear until the
-    // player let go of the keys - you walked up to a hammock and nothing happened until you
-    // stopped. Walking toward something is exactly when you want to be told you can use it.
+    // Runs on EVERY frame, not only the idle ones: walking toward something is exactly when you
+    // want to be told you can use it.
     //
-    // The cost of moving it is one distance test per interactive piece per frame, over a list
-    // that was already narrowed to interactive pieces at save time (interactableCandidates) and
-    // that rejects anything out of range on a squared-distance compare before it touches an
-    // oriented box. A fully decorated house has a handful of entries.
+    // It reports ALL of them rather than choosing. Choosing needs the player's facing, and it
+    // needs to be weighed against the door, the pet and the residents on the same scale — which
+    // is lib/interactionTargeting.ts's job, run by the tracker that also draws the badge. This
+    // scan used to keep only the nearest box (the first in the save on a tie), so a player
+    // between two pieces was offered whichever was saved first, whichever one they turned to.
     //
-    // Suspended while occupying a piece: the answer cannot change (the player is not moving) and
-    // leaving is handled by the occupancy itself, so re-ranking the room from inside a bed would
-    // only be a chance to point the badge at the nightstand.
+    // The per-frame cost is one distance test per interactive piece (the list is narrowed at save
+    // time, and rejects out-of-range pieces on a squared-distance compare), and the DESCRIPTION
+    // of each piece — verb, anchors, spot, interaction point — is built only when it comes into
+    // reach or its inputs change (see describedRef), so a standing player allocates nothing.
+    //
+    // While the player is ON a piece, that piece is the only thing published, marked occupied:
+    // it is locked in as the target (its action is 起身), and re-ranking the room from inside a
+    // bed would only be a chance to point the badge at the nightstand.
     //
     // `isCorrectInstance` gates the whole thing, and has to: BOTH avatars are mounted for the
     // ~0.18s the front door crossfades, and the one whose view is not on screen is standing at a
-    // stale position. Without the gate the inactive instance would write its own answer onto the
-    // shared bus and the badge would point at furniture in the other world.
+    // stale position. The list is tagged with this avatar's world, and a tracker only ranks its own.
+    const furnitureOut = furnitureOutRef.current;
     if (isCorrectInstance) {
-      // While occupying, the badge keeps pointing at what the player is ON so it can offer 起身;
-      // the scan itself is suspended (see above).
-      const inReach = occupiedRef.current || isDressingRoom || isBuildMode
-        ? null
-        : findNearbyInteractable(position.current.x, position.current.z, interactableCandidates);
-
-      // The SEARCH runs every frame and allocates nothing; the DESCRIPTION (verb, anchors, spot)
-      // is rebuilt only when the answer actually changes — a different piece, or the same piece
-      // now that its footprint has finished measuring. Rebuilding it per frame would put three
-      // small objects a frame straight at the GC, which is the exact thing the candidate-list
-      // memo above exists to avoid.
-      const prev = nearbyInteractionRef.current;
+      const px = position.current.x;
+      const pz = position.current.z;
       const footprintVersion = getFootprintVersion();
-      const targetId = occupiedRef.current?.instanceId ?? inReach?.instanceId ?? null;
-      /*
-       * A THIRD REASON TO RE-DESCRIBE: the player has walked somewhere else while the same piece
-       * stayed in reach.
-       *
-       * The record is built once, when a piece comes into range, and `from` — which is what an
-       * `approach: 'nearest'` piece uses to decide which side you use it from — is sampled then
-       * and kept. That is right for a campfire (the side you walked up on should not shuffle
-       * around you while you stand there) and wrong for anything you can walk ONTO: you approach
-       * 小型觀景平台 across the grass, the record resolves a stand spot down on the grass, and
-       * then you climb the steps — but the record still says "grass", so 眺望風景 hauled you back
-       * off the platform you had just climbed to look out from.
-       *
-       * Re-describing on movement fixes that case without giving the campfire the jitter, because
-       * the threshold is a quarter of a unit rather than a frame: standing at a piece never
-       * crosses it, and walking from one end of it to the other always does. Occupying pieces are
-       * excluded — their anchor is the piece's own, so where the player stood never mattered.
-       */
-      const movedSinceDescribe = describedFromRef.current.distanceToSquared(position.current)
-        > DESCRIBE_REFRESH_DISTANCE * DESCRIBE_REFRESH_DISTANCE;
-      const wantsFreshApproach = !occupiedRef.current && prev != null && !prev.occupies && movedSinceDescribe;
-      if ((prev?.instanceId ?? null) !== targetId
-        || describedVersionRef.current !== footprintVersion
-        || wantsFreshApproach) {
-        describedVersionRef.current = footprintVersion;
-        describedFromRef.current.copy(position.current);
-        const found = occupiedRef.current
-          // The player's own position matters to a piece with no front (`approach: 'nearest'` —
-          // a campfire, a wishing well): it is what decides which side of it they use it from.
-          // Sampled HERE rather than per frame, which is the right moment as well as the cheap
-          // one — the record is rebuilt when the piece comes into reach, so the side is the side
-          // they walked up on, and it does not shuffle around them while they stand there.
-          ?? (inReach
-            ? describeInteraction(inReach, skeleton, 0, { x: position.current.x, z: position.current.z })
-            : null);
-        nearbyInteractionRef.current = found;
-        if ((prev?.instanceId ?? null) !== (found?.instanceId ?? null)) setNearbyInteraction(found);
-      }
-      const found = nearbyInteractionRef.current;
-
-      // See playerBus.ts - AppContext's nearbyInteractable only carries a display string, so the
-      // tracker needs this separate world point to anchor the floating badge over the object. It
-      // is the piece's measured TOP now, not its origin, so the badge clears a wardrobe and does
-      // not float a metre above a footstool.
-      //
-      // Rewritten every frame into ONE vector rather than published when the target changes: the
-      // anchor of a piece the player is already standing next to moves the moment its footprint
-      // finishes measuring (that lands a frame after the model first mounts), and a
-      // publish-on-change would have pinned it to the unmeasured fallback height for as long as
-      // they stood there.
-      if (found) {
-        promptAnchorRef.current.set(found.promptAnchor.x, found.promptAnchor.y, found.promptAnchor.z);
-        playerBus.nearbyInteractablePos = promptAnchorRef.current;
-      } else {
-        playerBus.nearbyInteractablePos = undefined;
-      }
-    }
-
-    // What the badge should SAY. On the bus rather than in React state because it changes at
-    // walking speed and exactly one component reads it (UI/InteractionPrompt.tsx, which is
-    // already polling this object every animation frame).
-    if (isCorrectInstance) {
-      const promptTarget = nearbyInteractionRef.current;
-      playerBus.nearbyInteraction = promptTarget
-        ? {
-          instanceId: promptTarget.instanceId,
-          itemName: promptTarget.itemName,
-          verb: occupiedRef.current ? promptTarget.exitVerb : promptTarget.verb,
-          icon: promptTarget.icon,
-          occupied: occupiedRef.current !== null,
+      const described = describedRef.current;
+      const stamp = ++describeStampRef.current;
+      const items = furnitureOut.items;
+      let count = 0;
+      const seat = occupiedRef.current;
+      if (seat) {
+        const item = items[0] ?? (items[0] = {
+          target: seat, distance: 0, reach: 0, aimX: 0, aimZ: 0, occupied: true,
+        });
+        item.target = seat;
+        item.distance = 0;
+        item.reach = seat.interaction.reach ?? 1;
+        item.aimX = px;
+        item.aimZ = pz;
+        item.occupied = true;
+        count = 1;
+      } else if (!isDressingRoom && !isBuildMode) {
+        const hits = reachHitsRef.current;
+        const n = collectInteractablesInReach(px, pz, interactableCandidates, hits);
+        for (let i = 0; i < n; i++) {
+          const hit = hits[i];
+          const id = hit.placement.instanceId;
+          let entry = described.get(id);
+          const stale = !entry
+            || entry.version !== footprintVersion
+            || entry.placement !== hit.placement
+            // An acting piece's stand spot depends on which side the player is on; see
+            // DESCRIBE_REFRESH_DISTANCE. Occupying pieces anchor on the piece itself.
+            || (!entry.target.occupies
+              && Math.hypot(entry.fromX - px, entry.fromZ - pz) > DESCRIBE_REFRESH_DISTANCE);
+          if (stale) {
+            const target = describeInteraction(hit.placement, skeleton, 0, { x: px, z: pz });
+            if (!target) continue;
+            entry = { target, placement: hit.placement, version: footprintVersion, fromX: px, fromZ: pz, seen: stamp };
+            described.set(id, entry);
+          }
+          entry!.seen = stamp;
+          const item = items[count] ?? (items[count] = {
+            target: entry!.target, distance: 0, reach: 0, aimX: 0, aimZ: 0, occupied: false,
+          });
+          item.target = entry!.target;
+          item.distance = hit.distance;
+          item.reach = hit.reach;
+          item.aimX = hit.aimX;
+          item.aimZ = hit.aimZ;
+          item.occupied = false;
+          count++;
         }
-        : null;
+      }
+      // A piece that walked out of reach loses its record, so coming back re-describes it from
+      // where the player is then.
+      if (described.size > count) {
+        for (const [id, entry] of described) if (entry.seen !== stamp) described.delete(id);
+      }
+      furnitureOut.count = count;
+      playerBus.furnitureInReach = furnitureOut;
+    } else if (playerBus.furnitureInReach === furnitureOut) {
+      // This world is not on screen: its list must not be ranked the next time it is.
+      furnitureOut.count = 0;
     }
 
     // The swim state machine is driven purely by distance from the world ORIGIN, which only
@@ -2397,8 +2393,14 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
       // isInterior guard near the transition tick above.
       let currentState = movementStateRef.current;
       if (!isInterior) {
-        // Standing on a deck over the sea is standing on ground - see isInWaterZone.
-        const grounded = isGroundedAt(proposedPos.x, proposedPos.z, profile?.islandPlacements || [], islandScale);
+        // Standing on a deck over the sea is standing on ground - see isInWaterZone. Only a deck
+        // the body can actually step up onto from where it is, though: the same step rule the
+        // collision resolve applies, or a swimmer beside a tall deck would be "on" it here and
+        // pushed off its side there, every frame.
+        const grounded = isGroundedAt(
+          proposedPos.x, proposedPos.z, profile?.islandPlacements || [], islandScale,
+          stepReferenceY(footYRef.current, currentState === 'swimming' || currentState === 'enteringWater'),
+        );
         const proposedState = nextSwimState(currentState, proposedPos.x, proposedPos.z, islandScale, grounded);
         if (proposedState !== currentState) {
           transitionTimerRef.current = swimTransitionTimer(currentState, proposedState, transitionTimerRef.current);
@@ -2543,7 +2545,6 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
       swimDriveRef.current.strafe = THREE.MathUtils.lerp(swimDriveRef.current.strafe, strafeDot, driveEase);
 
       if (groupRef.current) {
-        const currentY = groupRef.current.position.y;
         // While actively entering/exiting water, targetY is already a smooth p-based
         // interpolation between swim depth and terrain height (see above) - an extra 10*delta
         // ease on top of that lagged behind the tilt (which applies its own p-based value
@@ -2582,19 +2583,26 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
         // and the body cross the drop on one curve.
         bodyRootYRef.current = targetY;
 
-        // Lerp toward the COMPLETE target height (terrain/swim + jump arc) in one step, the same
-        // way the idle "Standing up" branch does with its yOffset. Lerping toward the base
-        // terrain target and adding jumpYOffset as a separate step afterward was the bug: this
-        // group's Y read back next frame (via currentY above) already had last frame's jump
-        // offset baked in, so it only partially decayed through the lerp before a *fresh* full
-        // jumpYOffset got added on top again - compounding across the jump's ~24 frames into a
-        // height far beyond JUMP_HEIGHT, which is what sent the character flying off-screen.
-        // Crawling has to keep its pose while actually crawling somewhere, so the crawl lift is
-        // folded into the same single target height as the jump arc (see CRAWL_RISE). The pitch
-        // half of the pose is applied with the orientation further below.
-        const fullTargetY = targetY + jumpYOffset + (emote === 'CRAWL' ? CRAWL_RISE : 0);
-        const smoothY = isSwimTransition ? fullTargetY : THREE.MathUtils.lerp(currentY, fullTargetY, 10 * delta);
-        groupRef.current.position.set(position.current.x, smoothY, position.current.z);
+        // Ease the BASE - the surface plus the crawl lift, which is a resting pose and wants the
+        // same glide in and out - and add the jump arc on top of it afterwards, unsmoothed. The
+        // arc is already a smooth physical curve, and the pose that goes with it is chosen from
+        // that curve's own `vy`; putting it through this lag as well is what made the drawn body
+        // trail the physics by a tenth of a second and land after its landing had played (see
+        // visualLiftRef). This does not bring back the old compounding-arc bug (an arc added on
+        // top of a lerp that then read it back): easeBodyBase takes last frame's lift off first.
+        const baseTargetY = targetY + (emote === 'CRAWL' ? CRAWL_RISE : 0);
+        const easedY = isSwimTransition
+          ? baseTargetY
+          : easeBodyBase(groupRef.current.position.y, prevLift, baseTargetY, 10, delta);
+        // ...but never eased UP THROUGH a step. See feetFloorY: on dry land the soles are held on
+        // the surface they are standing on, so stepping onto a deck or a stair tread lifts the body
+        // with the step instead of walking the shins through the boards for a fifth of a second.
+        // Only the base is floored; the jump's crouch dip rides on top and still bends the knees.
+        const baseY = currentState === 'walking'
+          ? Math.max(easedY, feetFloorY(targetY, baseTargetY - targetY))
+          : easedY;
+        groupRef.current.position.set(position.current.x, baseY + jumpYOffset, position.current.z);
+        visualLiftRef.current = jumpYOffset;
 
         if (poseProgressRef.current > 0) {
           // Still unwinding out of the hammock recline - moving interrupted the dismount before
@@ -2671,7 +2679,11 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
           // keypress "caught up", which read as swimming on dry sand (or vice versa).
           // Skipped indoors for the same reason as the moving branch above.
           if (!isInterior) {
-            const grounded = isGroundedAt(position.current.x, position.current.z, profile?.islandPlacements || [], islandScale);
+            const wet = movementStateRef.current === 'swimming' || movementStateRef.current === 'enteringWater';
+            const grounded = isGroundedAt(
+              position.current.x, position.current.z, profile?.islandPlacements || [], islandScale,
+              stepReferenceY(footYRef.current, wet),
+            );
             const idleState = nextSwimState(movementStateRef.current, position.current.x, position.current.z, islandScale, grounded);
             if (idleState !== movementStateRef.current) {
               transitionTimerRef.current = swimTransitionTimer(movementStateRef.current, idleState, transitionTimerRef.current);
@@ -2740,7 +2752,6 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
           // over a resolved anchor (lib/furnitureInteraction.ts) and this drives the body to it,
           // which is why sitting cost no second animation system.
           const spot = posePiece.spot;
-          const posture = getPosture(posePostureId);
           const p = poseProgressRef.current;
 
           // XZ: toward the anchor while getting on, toward the exit step while getting off.
@@ -2753,115 +2764,78 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
             position.current.lerp(poseTargetPos, 6 * delta);
           }
 
-          // The pose itself only develops over the back 60% of the transition, so the character
-          // arrives at the seat before it starts settling into it rather than reclining its way
-          // across the floor.
-          const settleP = settleFrom(p);
-
-          // WHERE THE LEGS GO is measured HERE and solved THERE (lib/interactionPosture.ts) —
-          // because the right answer differs per piece and this character makes it awkward: its
-          // legs are 0.53 long against a sofa 1.15 deep, so "drop the feet to the floor" buries
-          // both shins in the cushion. The two inputs are the only things this file is in a
-          // position to know: how far the hip ended up above the floor the player was standing
-          // on, and how far the piece reaches ahead of the anchor (measured off the model).
-          const legLength = toWorld(skeleton.hip.y - skeleton.soleY);
-          const hipDrop = groupRef.current.position.y + toWorld(skeleton.hip.y) - targetY;
-          const legSwing = solveLegSwing(posture.legs, {
-            legLength,
-            hipDrop,
-            reachAhead: spot.reachAhead,
-            // The posture pitches the ROOT the legs hang off, so its lean is part of the leg's
-            // angle in the world — see LegGeometry.lean.
-            lean: posture.lean ?? 0,
-          });
-
           /*
-            THE PIECE'S OWN MOTION, and the body's share of it.
+            THE PIECE'S OWN MOTION — one number, the SAME one its model is drawn at this frame.
 
-            `spot.motion` is set only for a piece that hangs and swings (a hammock, a swing —
-            constants/outdoorAnimation.ts). The angle comes from the SAME function the piece's own
-            model calls, with the same timeline, so the seat and the rider are not synchronised so
-            much as identical. Everything after this is just resolving that one number into the
-            three places a body feels it:
-
-              along the arc   an offset in the piece's own local +Z, turned into world by the
-                              piece's yaw. Applied to the DRAWN body only — see occupantOffsetRef.
-              up             the arc's rise, plus a hammock's one-off sag as the cloth takes the
-                              weight.
-              tilt           the root pitch, scaled by how rigidly this piece carries its rider
-                              (`bodyFollow`: near 1 on a swing, 0 in a hammock, which rocks about
-                              the axis the body is lying along).
-
-            Scaled by `settleP`, so a body still climbing on is not yet being thrown around, and
-            a body climbing off lets go of the arc over the back of the dismount rather than
-            being cut loose from it on one frame.
+            `spot.motion` is set only for a piece that hangs and swings (a hammock, a swing, a
+            rocking chair — constants/outdoorAnimation.ts). The angle comes from the function the
+            piece's own model calls, with the same timeline and the wind sampled at the same point
+            (the piece's own origin, not the player's: two samples a body-width apart were two
+            slightly different winds), so the seat and the rider are not synchronised so much as
+            identical.
           */
-          let rideTilt = 0;
-          if (spot.motion) {
+          let motion: PieceMotion | null = null;
+          if (spot.motion && spot.fit) {
             const spec = SUSPENDED_MOTIONS[spot.motion.id];
-            sampleWind(position.current.x, position.current.z, 0, occupantWind);
-            const phase = suspendedPhase(
-              suspendedTimelineRef.current, performance.now(), occupantWind.sway,
-            );
-            const angle = suspendedAngle(spec, phase);
-            const radius = spot.motion.radius;
-            const alongZ = -radius * Math.sin(angle) * settleP;
-            occupantRiseRef.current =
-              (radius * (1 - Math.cos(angle)) + suspendedSag(spec, phase)) * settleP;
-            occupantOffsetRef.current.set(
-              alongZ * Math.sin(spot.motion.pieceYaw),
-              0,
-              alongZ * Math.cos(spot.motion.pieceYaw),
-            );
-            rideTilt = angle * spec.bodyFollow * settleP;
-          } else {
-            occupantOffsetRef.current.set(0, 0, 0);
-            occupantRiseRef.current = 0;
+            sampleWind(spot.fit.origin.x, spot.fit.origin.z, 0, occupantWind);
+            const phase = suspendedPhase(suspendedTimelineRef.current, performance.now(), occupantWind.sway);
+            motion = { spec, angle: suspendedAngle(spec, phase), sag: suspendedSag(spec, phase) };
           }
 
-          // THE WHOLE BODY, from one table row. This replaced `if (isSit) { … } else { … }` —
-          // a pose vocabulary of exactly two, hard-coded in the middle of the controller, which
-          // is why 泡澡 could not be anything but a hand-wave beside the bath.
-          const frame = resolveOccupancyFrame(posePostureId, {
-            progress: p, settle: settleP, time, legSwing, tilt: rideTilt,
-          });
+          /*
+            THE WHOLE BODY ON THE PIECE (lib/occupantFit.ts). It used to be assembled here: the
+            ROOT placed on the anchor, the lean and the swing's tilt turned about that root, the
+            legs solved against the piece's bounding box. Each of those put some part of the body
+            inside the furniture — the root is a point in mid-air under the seat, so turning about
+            it slid the hips along the plank; the bounding box is the armrests, not the cushion.
+            The body is now fastened at its PIVOT (the hips, or the soles of a lying body), every
+            rotation is about that point, and the limbs are placed in the piece's own frame.
+          */
+          const pose = spot.fit
+            ? resolveOccupantPose({
+              posture: posePostureId,
+              skeleton,
+              fit: spot.fit,
+              spotX: spot.x,
+              spotZ: spot.z,
+              progress: p,
+              time,
+              groundY: targetY,
+              motion,
+            })
+            : null;
 
-          // The recline. A posture states its own lean, EXCEPT for the one that is a fact about
-          // the rig rather than a choice: how far a lying body is tipped off flat is exactly the
-          // angle that keeps an oversized chibi skull out of the mattress (liePitch), so `lie`
-          // declares no lean and gets it derived. `frame.rootPitch` carries the posture's own
-          // lean plus whatever its idle is rocking by.
-          const reclinePitch = posture.anchoring === 'side' ? liePitch(skeleton) * settleP : 0;
-          const targetPitch = reclinePitch + frame.rootPitch + rideTilt;
-          const targetPoseY = THREE.MathUtils.lerp(targetY, spot.y, settleP) + frame.rootRise;
+          if (pose) {
+            // The drawn body's share of the arc, applied outside the ease — see occupantOffsetRef.
+            occupantOffsetRef.current.set(pose.offsetX, 0, pose.offsetZ);
+            occupantRiseRef.current = pose.rise;
 
-          // Higher slerp rate on the way off (20 vs 8): settleP only reaches 0 once p <= 0.4,
-          // giving roughly the last 40% of the dismount for pitch to fully unwind back to
-          // upright. At rate 8 that left a meaningful residual tilt (still tens of degrees) by
-          // the time p hit exactly 0 and control passed to the plain "Standing up" branch below -
-          // which lerps rotation.x and increments rotation.y as two independent Euler writes, the
-          // same unsafe combination applyLyingOrientation exists to avoid.
-          applyLyingOrientation(groupRef.current, spot.yaw, targetPitch, delta, isOccupying ? 8 : 20);
-          // The arc's rise is added AFTER the ease, and subtracted back out before it — a
-          // first-order lag at rate 8 would put the body ~17 degrees of phase behind a swing at
-          // its natural frequency, which over a full arc is the body visibly lagging the seat it
-          // is sitting on. What the lag is for is the SETTLE (arriving at the seat height), and
-          // that still gets it.
-          const easedBase = THREE.MathUtils.lerp(
-            groupRef.current.position.y - prevOccupantRise, targetPoseY, 8 * delta,
-          );
-          groupRef.current.position.y = easedBase + occupantRiseRef.current;
+            /*
+              Orientation: eased while getting on and off (a slerp is what turns a standing body
+              into a seated one without passing through a diagonal lean), then WRITTEN once
+              settled. A first-order ease at rate 8 trails a swing at its natural frequency by
+              about 17 degrees of phase, and because the root hangs below the hips, a body pitched
+              17 degrees behind its seat is a body whose hips have slid off it. The `settle³`
+              term hands over smoothly: it is 0 through the approach and 1 once seated.
+            */
+            const settled = pose.settle * pose.settle * pose.settle;
+            const turnRate = (isOccupying ? 8 : 20) * delta;
+            groupRef.current.quaternion.slerp(
+              pose.quaternion,
+              isOccupying ? Math.min(1, turnRate + settled) : Math.min(1, turnRate),
+            );
+            // The arc's rise is added AFTER the ease and subtracted back out before it — the same
+            // reason: what the lag is for is the SETTLE (arriving at the seat height), not the arc.
+            const easedBase = THREE.MathUtils.lerp(
+              groupRef.current.position.y - prevOccupantRise - prevLift, pose.baseY, 8 * delta,
+            );
+            groupRef.current.position.y = easedBase + occupantRiseRef.current;
 
-          // The limbs, by JOINT NAME. Everything above this line is geometry; the pose itself
-          // came out of a table, and this is a loop over whichever joints that table named —
-          // which is what makes 泡澡 (legs out, arms wide on the rim, head back) and 坐下 (legs
-          // down, hands on thighs) the same amount of code.
-          //
-          // A first-order ease rather than a straight write, at the rate the two hand-written
-          // branches used, because nothing else is animating these joints while a posture owns
-          // the body (see `inPoseTransition`) — so their previous frame's value IS the pose's
-          // own history and easing against it is what makes settling in look like settling in.
-          applyBodyPose(postureJoints, frame.joints, Math.min(1, 10 * delta));
+            // The limbs, by JOINT NAME — eased while settling in, exact once seated, for the same
+            // reason as the orientation: a leg placed clear of a moving seat has to BE where it
+            // was placed, not a frame behind it.
+            applyBodyPose(postureJoints, pose.joints, isOccupying ? Math.min(1, 10 * delta + settled) : Math.min(1, 10 * delta));
+          }
         } else {
           // Standing up
           let targetRotX = 0;
@@ -2873,6 +2847,8 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
           // Whether this frame's pitch is OWNED by an animation curve (the flip) rather than
           // being a resting pose the body eases toward. See the assignment below.
           let tiltIsDriven = false;
+          // The jump arc, kept OUT of `yOffset` so it bypasses the ease below - see visualLiftRef.
+          let jumpLift = 0;
 
           if (isFlipping) {
             const elapsed = (performance.now() - flipStartTime.current) / 1000;
@@ -2922,7 +2898,7 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
             // see the jump step above. Standing still and walking are two views of one jump,
             // which is what stops a hop started at a standstill from changing shape the instant
             // the player presses W in mid-air.
-            yOffset += jumpAnim.rootOffset;
+            jumpLift = jumpAnim.rootOffset;
             applyRootScale(jumpAnim.stretch);
           } else {
             if (emote === 'CRAWL') {
@@ -2985,9 +2961,18 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
           // rising when the body has already finished coming round. Applied directly, the
           // takeoff and the landing hit at the same instants the rotation does.
           const isSwimTransition = movementStateRef.current === 'enteringWater' || movementStateRef.current === 'exitingWater';
-          groupRef.current.position.y = (isSwimTransition || isFlipping)
+          const easedY = (isSwimTransition || isFlipping)
             ? yOffset
-            : THREE.MathUtils.lerp(groupRef.current.position.y, yOffset, 12 * delta);
+            : easeBodyBase(groupRef.current.position.y, prevLift, yOffset, 12, delta);
+          // The same floor the moving branch holds the soles to — a push that nudges an idle
+          // player onto a deck's edge must not leave them standing in its boards either.
+          const baseY = movementStateRef.current === 'walking' && !isFlipping
+            ? Math.max(easedY, feetFloorY(targetY, yOffset - targetY))
+            : easedY;
+          // The jump rides on the eased base, unsmoothed, exactly as in the moving branch - so a hop
+          // is one curve whether or not a key is held, and landing is where physics says it is.
+          groupRef.current.position.y = baseY + jumpLift;
+          visualLiftRef.current = jumpLift;
         }
         // `position.current` is the character's logical spot on the island and the flip never
         // touches it - the somersault stays exactly where it started. The pivot offset is a
@@ -3407,7 +3392,7 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
         // mid-step; decays regardless of weather so an in-progress stretch still finishes
         // gracefully if the weather changes underneath it.
         weatherStretchPulseRef.current = Math.max(0, weatherStretchPulseRef.current - delta / WEATHER_STRETCH_DURATION);
-        if (weather === WeatherType.SUNNY && moveWeight.current < 0.1) {
+        if (readApp().weather === WeatherType.SUNNY && moveWeight.current < 0.1) {
           weatherStretchTimerRef.current -= delta;
           if (weatherStretchTimerRef.current <= 0) {
             weatherStretchPulseRef.current = 1;
@@ -3425,8 +3410,22 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
         // stride bounce at walking cadence, riding on a 0.05 swell, which is most of why the
         // old swim looked like it was being jostled rather than floating. The surface bob that
         // replaces it is part of the float height itself (see SWIM_BOB_AMP).
-        groupRef.current.position.y +=
-          THREE.MathUtils.lerp(idleSway, walkBounce, moveWeight.current) * (1 - swimPose);
+        //
+        // Also faded out by the JUMP, for the same reason: there are no footfalls in the air, and a
+        // stride bounce riding on the arc is a wobble in a curve that should be clean. The jump's
+        // weight is 0 on the ground and eases in and out through the crouch and the landing, so
+        // the bounce hands over to the jump and back without a step.
+        //
+        // And it is recorded as LIFT (visualLiftRef), not left in `position.y` for the next
+        // frame's height ease to read back. Read back, it was fed into that ease as if it were
+        // ground every frame, and a first-order lag fed its own output settles at
+        // bounce·(1−k)/k above the target: measured at +0.64..0.79 while walking - the body
+        // floating a third of its height up whenever it walked, by an amount that grew with the
+        // frame rate (k is 10·delta), and every jump taken mid-stride launching from up there.
+        const bounceLift = THREE.MathUtils.lerp(idleSway, walkBounce, moveWeight.current)
+          * (1 - swimPose) * (1 - jumpAnim.weight);
+        groupRef.current.position.y += bounceLift;
+        visualLiftRef.current += bounceLift;
         
         // Slight tilt when moving
         const tiltIntensity = 0.05;
@@ -3563,13 +3562,14 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
                 // idle, "always glance at it" produced the exact same angle every single cycle
                 // (read as "the head only ever turns left/right"). Rolling for it each cycle keeps
                 // the curious glance as occasional flavor instead of a permanent, repetitive bias.
-                const interactionAnchor = nearbyInteractionRef.current?.promptAnchor;
+                // What the player could interact with right now — its interaction point, so the
+                // glance lands on the door or the seat rather than on the middle of the building.
+                const selected = playerBus.interactionTarget;
+                const focus = selected && selected.scope === (isInterior ? 'interior' : 'island')
+                  ? selected.point
+                  : null;
                 const curiosityTarget: readonly [number, number, number] | null =
-                  (nearbyBuilding || interactionAnchor) && Math.random() < 0.4
-                    ? (nearbyBuilding
-                      ? home?.position ?? null
-                      : [interactionAnchor!.x, interactionAnchor!.y, interactionAnchor!.z])
-                    : null;
+                  focus && Math.random() < 0.4 ? [focus.x, focus.y, focus.z] : null;
 
                 if (curiosityTarget) {
                   const dx = curiosityTarget[0] - position.current.x;
@@ -4065,7 +4065,10 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
      * underneath and cannot be left stranded mid-reach if the posture is cancelled.
      */
     if (actionFrame && activeAction) {
-      applyBodyPose(postureJoints, actionFrame.joints, actionFrame.weight);
+      // The posture's arm angles are DIRECTIONS written for arms that hang straight; this model's
+      // may hang splayed (the authored one, 30°), so the splay comes back out before they are
+      // written — or clasped hands end up a shoulder-width apart. See compensateArmSplay.
+      applyBodyPose(postureJoints, compensateArmSplay(actionFrame.joints, skeleton), actionFrame.weight);
       // The walk-up. Easing rather than teleporting, and toward a spot that is already outside
       // the piece's collider (lib/furnitureInteraction.ts), so the collision resolve has nothing
       // to undo. Pressing E across the room does not drag the player in: the spot is only ever

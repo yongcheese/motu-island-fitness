@@ -17,7 +17,7 @@ import { INTERIOR_FLOOR_Y, buildWalkableRects, WalkRect } from '../../constants/
 import { resolvePlayerAgainstFurniture, resolvePlayerAgainstSolids, type SolidBox } from '../../lib/furniturePlacement';
 import { getSurfaceAt } from '../../lib/placementSurfaces';
 import { WATER_SURFACE_Y } from '../../constants/world';
-import { ResolvedHome, getHomeDoorPosition, HOME_ENTRY_RADIUS } from '../../hooks/usePlayerHome';
+import { ResolvedHome, homeEntryDistance, HOME_ENTRY_RADIUS } from '../../hooks/usePlayerHome';
 import {
   GRASS_RADIUS,
   SHORELINE_RADIUS,
@@ -208,11 +208,19 @@ export function findNearbyHome(
 ): { id: string; name: string } | null {
   if (!home) return null;
 
-  const dist = position.distanceTo(getHomeDoorPosition(home));
-  if (dist >= HOME_ENTRY_RADIUS) return null;
+  if (homeEntryDistance(position.x, position.z, home) >= HOME_ENTRY_RADIUS) return null;
 
-  return { id: 'player-home', name: '我的家' };
+  return HOME_ENTRY_TARGET;
 }
+
+/**
+ * The one enterable structure, as the entry prompt names it. One shared object rather than a
+ * fresh literal per call: findNearbyHome runs every frame and its result is compared by `id`.
+ */
+export const HOME_ENTRY_TARGET: { readonly id: string; readonly name: string } = {
+  id: 'player-home',
+  name: '我的家',
+};
 
 /**
  * Pushes the player out of the Home, which is solid on all four sides.
@@ -352,6 +360,9 @@ function resolveProneBody(
   home: ResolvedHome | null,
   placements: NonNullable<UserProfile['islandPlacements']> | null,
   solids: readonly SolidBox[] | null | undefined,
+  // The step reference the upright resolve uses (see stepReferenceY), so a railing stops the
+  // crawling body's head exactly as it stops its feet.
+  fromY: number | null = null,
 ): void {
   if (reach <= 0) return;
 
@@ -370,7 +381,7 @@ function resolveProneBody(
     let px = proneProbe.x;
     let pz = proneProbe.z;
     if (placements) {
-      const pushed = resolvePlayerAgainstFurniture(px, pz, playerRadius, placements);
+      const pushed = resolvePlayerAgainstFurniture(px, pz, playerRadius, placements, fromY);
       px = pushed.x;
       pz = pushed.z;
     }
@@ -440,6 +451,30 @@ export interface ResolveCollisionsParams {
    * non-player agent) keeps exactly the behaviour this function has always had.
    */
   wallClearance?: number;
+  /**
+   * The height the feet were resolved to last frame — the previous result's `terrainY`.
+   *
+   * It is what gives a standable piece a SIDE. With it, a deck is floor only where it is within a
+   * step of where the player is standing and a wall everywhere else (STAND_RULES in
+   * lib/furniturePlacement.ts): the viewing deck is reached by its stairs, its railings stop a
+   * body, and walking into it from the grass is walking into a wall rather than being lifted 0.9 in
+   * one frame. Omit it (null) after a teleport, a view change or anything else that puts the body
+   * somewhere it did not walk to; the lookup then takes whatever is on top, as it always has.
+   */
+  footY?: number | null;
+}
+
+/**
+ * The height a body is stepping FROM, for the step rule — the feet, or the sea surface when the
+ * body is floating in it.
+ *
+ * A swimmer's `terrainY` is the seabed, a metre or more below them, and measured from there a pier
+ * standing 0.4 out of the water would be a cliff. The body is at the surface, so that is where a
+ * step up out of the sea starts from.
+ */
+export function stepReferenceY(footY: number | null | undefined, inWater: boolean): number | null {
+  if (footY == null) return null;
+  return inWater ? Math.max(footY, WATER_SURFACE_Y) : footY;
 }
 
 /**
@@ -465,6 +500,55 @@ export interface ResolveCollisionsParams {
  * this is the one place to say so rather than four.
  */
 export const FOOT_LIFT = 0;
+
+/**
+ * How far below the surface the feet are standing on the drawn body may ever be — about the
+ * thickness of a sole.
+ */
+const FEET_SINK_TOLERANCE = 0.02;
+
+/**
+ * The lowest the drawn body may be, on dry land, given the surface it stands on and whatever the
+ * pose adds on top of it (a jump arc, the crawl lift, an action's dip).
+ *
+ * The body's height is eased toward its target, which is right for every change that comes from
+ * the body (a jump, a crouch, walking down off a deck) and wrong for exactly one that does not: a
+ * step UP. The target jumps up by the rise, the ease takes a fifth of a second to follow, and for
+ * that fifth of a second the legs are drawn inside the tread they are standing on — the "walks
+ * through the boards" look on every deck edge and every stair.
+ *
+ * Only the SUPPORT is floored. A pose that deliberately lowers the body (the jump's crouch, a
+ * kneel) is subtracted first, so it still dips; a pose that raises it (the jump's arc) is ignored,
+ * so the ease still owns how an airborne body moves. The only frames this changes are the ones
+ * where the soles would otherwise be below the surface.
+ */
+export function feetFloorY(supportY: number, poseOffset: number): number {
+  return supportY + Math.min(0, poseOffset) - FEET_SINK_TOLERANCE;
+}
+
+/**
+ * One frame of the body's eased BASE height — the surface it stands on, glided toward.
+ *
+ * `drawnY` is where the root was actually drawn last frame and `prevLift` is how much of that was
+ * lift the body added on top of its base (the jump arc, the footfall bounce). The lift is taken
+ * back off before easing, because anything left in is fed into the ease as if it were ground:
+ *
+ *   - the jump arc, eased, trailed the physics by ~0.1 s and landed 0.78 above the ground;
+ *   - the stride bounce, fed back every frame, settled at bounce·(1−k)/k ABOVE the ground —
+ *     +0.4..0.8 while walking, growing with the frame rate.
+ *
+ * The caller adds this frame's lift to the returned base and remembers it for the next call.
+ * `npm run audit:jump` drives this exact function, so what it measures is what the island draws.
+ */
+export function easeBodyBase(
+  drawnY: number,
+  prevLift: number,
+  baseTargetY: number,
+  rate: number,
+  delta: number,
+): number {
+  return THREE.MathUtils.lerp(drawnY - prevLift, baseTargetY, rate * delta);
+}
 
 export interface CollisionResult {
   position: THREE.Vector3;
@@ -524,6 +608,7 @@ export function resolveCollisions({
   proneReach = 0,
   facingYaw = 0,
   wallClearance = PLAYER_PHYSICAL_RADIUS,
+  footY = null,
 }: ResolveCollisionsParams): CollisionResult {
   // Both branches below assign this; the initialiser is only the compiler's.
   let terrainY = INTERIOR_FLOOR_Y + FOOT_LIFT;
@@ -640,13 +725,85 @@ export function resolveCollisions({
       }
     }
 
-    // Base surface. One lookup for "how high is the ground here", and it is the same one the
-    // placement ghost resolves an object's height with, so a deck the player can see props
-    // standing on is a deck they stand on at exactly the same height. The three pasted copies of
+    const placements = profile?.islandPlacements || [];
+
+    // The height this step is taken FROM. Decks are floor within a step of it and wall above it
+    // (STAND_RULES in lib/furniturePlacement.ts), and both halves of that — the push below and the
+    // surface lookup after it — must measure from the same number, or a deck could be a wall to
+    // the push and floor to the lookup in the same frame.
+    const fromY = stepReferenceY(footY, isSwimmingBoundary);
+
+    // Placed decorations, against the same measured boxes the interior uses (see
+    // resolvePlayerAgainstFurniture). This replaced a name-substring radius ladder that gave a
+    // 椰子樹 - a 0.24-wide trunk under fronds four units up - a 0.9-unit circle at ground level,
+    // stopped the player short of a 吊床 by more than a metre at its ends, and fell back to 0.65
+    // for anything it had never heard of.
+    //
+    // Decks are pushed against too now, part by part and only where they stand more than a step
+    // above the feet: a railing, a post, the side of a deck too high to step onto. They used to be
+    // left out entirely ("a surface, resolved by height"), which made every part of every deck
+    // something the body passed through — see STAND_RULES.
+    //
+    // The one structure that is not a placement (the Home) is resolved separately at the top of
+    // each relaxation pass, since its solid box comes from its House Style footprint.
+    const playerRadius = PLAYER_PHYSICAL_RADIUS;
+
+    // Loop multi-iterations for perfect island collision relaxation!
+    for (let iter = 0; iter < 3; iter++) {
+      if (home) {
+        // The house's outside is a wall like any other, so it gets the same head clearance the
+        // rooms inside it do. `resolveHomeCollision` already inflates by PLAYER_PHYSICAL_RADIUS,
+        // so what it is handed here is only the DIFFERENCE - see wallClearance.
+        resolveHomeCollision(testPos, home, wallClearance - PLAYER_PHYSICAL_RADIUS);
+      }
+
+      const pushed = resolvePlayerAgainstFurniture(testPos.x, testPos.z, playerRadius, placements, fromY);
+      testPos.x = pushed.x;
+      testPos.z = pushed.z;
+
+      // Whatever is solid in the world without being in the save — the merchant's boat and its
+      // deck. Inside the same relaxation loop rather than after it, so a player wedged between a
+      // hull and something on the beach is resolved by the same three passes that already settle
+      // furniture against the house, instead of being pushed by one and then by the other.
+      const clear = resolvePlayerAgainstSolids(testPos.x, testPos.z, playerRadius, solids);
+      testPos.x = clear.x;
+      testPos.z = clear.z;
+
+      // The body itself, for the two poses where it is not above the point resolved above.
+      // The crawl reserves against everything; the swimmer only against what floats — see
+      // SWIM_BODY_REACH. Both early-return on a zero reach, and they are mutually exclusive, so
+      // this is one pass in practice.
+      resolveProneBody(testPos, proneReach, facingYaw, playerRadius, home, placements, solids, fromY);
+      resolveProneBody(testPos, swimReach, facingYaw, playerRadius, null, null, solids, fromY);
+    }
+
+    // The Home gets the last word. Every iteration above ends with the decoration pass, which
+    // pushes radially and can shove the player back through a wall when a prop is parked against
+    // the house; without this the frame would commit that position and the player would end up
+    // standing inside the building. Resolving the one non-negotiable obstacle after the relaxation
+    // converges guarantees the exterior is never penetrable, whatever else is on the island.
+    //
+    // The prone pass runs BEFORE that final word rather than after it: it moves the feet
+    // backwards to free the head, and a backwards step is never into the house it is stepping
+    // away from — whereas letting it run last would leave a body that had just been freed at the
+    // head able to end the frame with its feet unchecked.
+    resolveProneBody(testPos, proneReach, facingYaw, playerRadius, home, placements, solids, fromY);
+    resolveProneBody(testPos, swimReach, facingYaw, playerRadius, null, null, solids, fromY);
+
+    if (home) {
+      resolveHomeCollision(testPos, home, wallClearance - PLAYER_PHYSICAL_RADIUS);
+    }
+
+    // Base surface — AFTER the pushes, at the spot the body actually ends the frame on. It used to
+    // be read at the requested spot before anything had moved it, so the feet could be given the
+    // height of a place the push had just refused.
+    //
+    // One lookup for "how high is the ground here", and it is the same one the placement ghost
+    // resolves an object's height with, so a deck the player can see props standing on is a deck
+    // they stand on at exactly the same height. The three pasted copies of
     // `if (dx < 2.15 && dz < 2.15) terrainY = 0.6` this replaced were a square that was neither
     // the platform's real size nor its real deck height, and did not turn with it.
-    const placements = profile?.islandPlacements || [];
-    const surface = getSurfaceAt(testPos.x, testPos.z, placements, islandScale);
+    const surface = getSurfaceAt(testPos.x, testPos.z, placements, islandScale, null, fromY);
     terrainY = surface.y + FOOT_LIFT;
     supportId = surface.supportId;
     supportFootstep = surface.surface?.footstep ?? null;
@@ -675,67 +832,71 @@ export function resolveCollisions({
         terrainY = Math.max(terrainY, rPos[1] + Math.sqrt(radius * radius - distSq) + FOOT_LIFT);
       }
     });
-
-    // Placed decorations, against the same measured boxes the interior uses (see
-    // resolvePlayerAgainstFurniture). This replaced a name-substring radius ladder that gave a
-    // 椰子樹 - a 0.24-wide trunk under fronds four units up - a 0.9-unit circle at ground level,
-    // stopped the player short of a 吊床 by more than a metre at its ends, and fell back to 0.65
-    // for anything it had never heard of. Decks are absent by construction rather than by a
-    // special case: they are surfaces, so they are resolved by height above, not pushed against.
-    //
-    // The one structure that is not a placement (the Home) is resolved separately at the top of
-    // each relaxation pass, since its solid box comes from its House Style footprint.
-    const playerRadius = PLAYER_PHYSICAL_RADIUS;
-
-    // Loop multi-iterations for perfect island collision relaxation!
-    for (let iter = 0; iter < 3; iter++) {
-      if (home) {
-        // The house's outside is a wall like any other, so it gets the same head clearance the
-        // rooms inside it do. `resolveHomeCollision` already inflates by PLAYER_PHYSICAL_RADIUS,
-        // so what it is handed here is only the DIFFERENCE - see wallClearance.
-        resolveHomeCollision(testPos, home, wallClearance - PLAYER_PHYSICAL_RADIUS);
-      }
-
-      const pushed = resolvePlayerAgainstFurniture(testPos.x, testPos.z, playerRadius, placements);
-      testPos.x = pushed.x;
-      testPos.z = pushed.z;
-
-      // Whatever is solid in the world without being in the save — the merchant's boat and its
-      // deck. Inside the same relaxation loop rather than after it, so a player wedged between a
-      // hull and something on the beach is resolved by the same three passes that already settle
-      // furniture against the house, instead of being pushed by one and then by the other.
-      const clear = resolvePlayerAgainstSolids(testPos.x, testPos.z, playerRadius, solids);
-      testPos.x = clear.x;
-      testPos.z = clear.z;
-
-      // The body itself, for the two poses where it is not above the point resolved above.
-      // The crawl reserves against everything; the swimmer only against what floats — see
-      // SWIM_BODY_REACH. Both early-return on a zero reach, and they are mutually exclusive, so
-      // this is one pass in practice.
-      resolveProneBody(testPos, proneReach, facingYaw, playerRadius, home, placements, solids);
-      resolveProneBody(testPos, swimReach, facingYaw, playerRadius, null, null, solids);
-    }
-
-    // The Home gets the last word. Every iteration above ends with the decoration pass, which
-    // pushes radially and can shove the player back through a wall when a prop is parked against
-    // the house; without this the frame would commit that position and the player would end up
-    // standing inside the building. Resolving the one non-negotiable obstacle after the relaxation
-    // converges guarantees the exterior is never penetrable, whatever else is on the island.
-    //
-    // The prone pass runs BEFORE that final word rather than after it: it moves the feet
-    // backwards to free the head, and a backwards step is never into the house it is stepping
-    // away from — whereas letting it run last would leave a body that had just been freed at the
-    // head able to end the frame with its feet unchecked.
-    resolveProneBody(testPos, proneReach, facingYaw, playerRadius, home, placements, solids);
-    resolveProneBody(testPos, swimReach, facingYaw, playerRadius, null, null, solids);
-
-    if (home) {
-      resolveHomeCollision(testPos, home, wallClearance - PLAYER_PHYSICAL_RADIUS);
-    }
   }
 
   return { position: testPos, terrainY, supportId, supportFootstep, isGrounded };
 }
+
+/**
+ * The longest single move {@link resolveMovement} hands to {@link resolveCollisions} in one go.
+ *
+ * The resolve is a POSITION test: it looks at where the body would end up, not at the path there.
+ * That is exact while a frame's move is short, and the walk speed (≈5.5 units/s) keeps it short at
+ * 60 fps — 0.09. It stops being exact on a slow frame. The controller caps a frame at
+ * MAX_FRAME_DELTA (0.1 s, lib/playerBus.ts), which is a 0.55 move, and that is long enough to:
+ *
+ *  - skip a whole stair tread. 小型觀景平台's treads are 0.37 deep and 0.225 apart in height; a move
+ *    that lands two treads up asks for a 0.45 rise, which is over STAND_RULES.maxStepUp, so the step
+ *    rule calls the stairs a wall and the deck cannot be climbed at all on a slow device or through
+ *    a hitch (measured: `npm run test:collision-registry` §4);
+ *  - carry the body's centre past the middle of a thin wall — a railing inflated by the body radius
+ *    is 0.75 across — where the push resolves it out of the FAR side.
+ *
+ * 0.15 is under half the thinnest inflated wall and well under a tread, so neither can happen, and
+ * over the 60 fps move, so a normal frame is still exactly one resolve.
+ */
+export const MAX_COLLISION_SUBSTEP = 0.15;
+
+/**
+ * {@link resolveCollisions} for a MOVE from `currentPos` to `testPos`, taken in steps no longer than
+ * {@link MAX_COLLISION_SUBSTEP}, each resolved from where the last one ended and at the height the
+ * last one stood at — exactly as consecutive frames are. Resolving a frame's move in pieces is what
+ * makes where the body can go independent of the frame rate.
+ *
+ * Mutates and returns `testPos` as `resolveCollisions` does, so it drops in at the same call sites.
+ * Without a `currentPos` there is no move to split, and this is one plain resolve.
+ */
+export function resolveMovement(params: ResolveCollisionsParams): CollisionResult {
+  const { testPos, currentPos } = params;
+  if (!currentPos) return resolveCollisions(params);
+
+  const dx = testPos.x - currentPos.x;
+  const dz = testPos.z - currentPos.z;
+  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / MAX_COLLISION_SUBSTEP));
+  if (steps === 1) return resolveCollisions(params);
+
+  // Every piece is the SAME share of the move, applied from wherever the last piece was pushed to —
+  // so a body sliding along a wall keeps sliding. Never "the rest of the way divided by the pieces
+  // left": a wall that holds the body back leaves the rest undiminished, and the last piece would
+  // then carry all of it at once — exactly the long step this exists to prevent, and measured doing
+  // what a long step does, putting the body out through the far side of a railing.
+  const stepX = dx / steps;
+  const stepZ = dz / steps;
+  const y = testPos.y;
+  const from = SUBSTEP_FROM.copy(currentPos);
+  let footY = params.footY ?? null;
+  let result: CollisionResult | null = null;
+  for (let i = 0; i < steps; i++) {
+    testPos.set(from.x + stepX, y, from.z + stepZ);
+    result = resolveCollisions({ ...params, testPos, currentPos: from, footY });
+    from.copy(result.position);
+    footY = result.terrainY;
+  }
+  return result!;
+}
+
+/** Scratch for resolveMovement — it runs every moving frame. */
+const SUBSTEP_FROM = new THREE.Vector3();
 
 /**
  * The height the character's feet stand at, at one spot — the height half of
@@ -757,7 +918,9 @@ export function footLevelAt(
   isInterior: boolean,
   islandScale: number,
   placements: PlacedItem[] | undefined,
+  /** Where the feet are now, for the step rule — see ResolveCollisionsParams.footY. */
+  footY?: number | null,
 ): number {
   if (isInterior) return INTERIOR_FLOOR_Y + FOOT_LIFT;
-  return getSurfaceAt(x, z, placements ?? [], islandScale).y + FOOT_LIFT;
+  return getSurfaceAt(x, z, placements ?? [], islandScale, null, footY).y + FOOT_LIFT;
 }

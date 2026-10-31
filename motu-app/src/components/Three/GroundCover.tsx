@@ -61,7 +61,7 @@
 import { memo, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 
-import { useApp } from '../../context/AppContext';
+import { useAppPick } from '../../context/AppContext';
 import { usePlayerHome } from '../../hooks/usePlayerHome';
 import { windAmount } from '../../lib/outdoorMotion';
 import { useOutdoorAnimation } from './outdoorAnimation';
@@ -302,7 +302,7 @@ export const GroundCoverField = memo(function GroundCoverField({
 });
 
 export const GroundCover = memo(function GroundCover({ islandScale }: { islandScale: number }) {
-  const { profile } = useApp();
+  const { profile } = useAppPick('profile');
   // Grass routes around the player's Home for the same reason the flowers do — nothing may grow
   // inside the shell, where the floor would slice it.
   const home = usePlayerHome(profile);

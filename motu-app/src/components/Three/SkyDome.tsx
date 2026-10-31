@@ -1,7 +1,7 @@
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { useApp } from '../../context/AppContext';
+import { useAppPick } from '../../context/AppContext';
 import { WeatherType } from '../../types';
 import { useLightningFlicker } from '../../hooks/useLightningFlicker';
 
@@ -19,7 +19,7 @@ const flashTopScratch = new THREE.Color();
 const flashBottomScratch = new THREE.Color();
 
 export function SkyDome() {
-  const { weather } = useApp();
+  const { weather } = useAppPick('weather');
 
   const topColorRef = useRef(new THREE.Color('#bae6fd'));
   const bottomColorRef = useRef(new THREE.Color('#e0f2fe'));

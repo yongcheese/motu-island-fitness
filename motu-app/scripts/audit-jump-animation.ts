@@ -24,6 +24,16 @@
  *            a foot underground.
  *   HANG     a jump that never comes back to 'grounded'; the failure mode the old flag had when
  *            it was set in a branch that could not clear it.
+ *   DRAWN    the body the player SEES disagreeing with the physics. Every check above reads the
+ *            machine's own output, and all of them passed while the island drew the jump through
+ *            a 0.1 s height ease: 0.10 up when physics said 0.48, still climbing after the apex,
+ *            and 0.78 in the air on the frame the landing started. The drawn height is now built
+ *            here with the controller's own function (characterMovement.ts's easeBodyBase).
+ *   FLOAT    a periodic lift (the stride bounce) accumulating into a standing offset because the
+ *            height ease read it back as ground — measured at +0.64..0.79 while walking.
+ *
+ * The squash/stretch is audited with the joints (SNAP): the landing used to cut it from the
+ * fall's stretch to full squash in a single frame.
  *
  * Everything below the scripts is imported from the shipping module; nothing here restates a
  * curve, so what this measures is what ships.
@@ -43,6 +53,7 @@ import {
 } from '../src/components/Three/jumpPose';
 import type { RigJointName } from '../src/constants/interactionPostures';
 import { LEGACY_SKELETON, CHARACTER_ROOT_SCALE } from '../src/constants/characterRig';
+import { easeBodyBase } from '../src/components/Three/characterMovement';
 
 const DT = 1 / 60;
 const LEG_LENGTH = (LEGACY_SKELETON.hip.y - LEGACY_SKELETON.soleY) * CHARACTER_ROOT_SCALE;
@@ -71,6 +82,16 @@ const DISCONTINUITY_FLOOR = 0.02;
 const ROOT_SNAP_LIMIT = 0.42;
 /** How much total joint travel counts as "there is an animation here at all". */
 const ALIVE_LIMIT = 0.5;
+/**
+ * Squash/stretch is normalised to -1..1 and scaled to a few percent by the caller. The landing
+ * impact is the fastest thing it does (fall stretch to full squash in 60 ms); a one-frame cut is
+ * what the discontinuity check is for.
+ */
+const STRETCH_SNAP_LIMIT = 0.8;
+/** How far the drawn root may be from the arc, world units. A frame of float noise, nothing more. */
+const DRAWN_TOLERANCE = 0.01;
+/** The moving branch's height-ease rate (Avatar.tsx) — the slower of the two, so the harsher test. */
+const BASE_EASE_RATE = 10;
 
 const JOINTS: RigJointName[] = ['head', 'torso', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'];
 
@@ -82,6 +103,13 @@ interface Sample {
   airborne: boolean;
   weight: number;
   rootOffset: number;
+  stretch: number;
+  /**
+   * Where the controller actually DRAWS the root on flat ground: its eased base plus the lift,
+   * composed with the same function Avatar.tsx uses. Only meaningful where the support is flat
+   * (the ledge and slope scripts move the support, and are not checked against this).
+   */
+  drawn: number;
   /** The pose as the BODY sees it: the joint angle scaled by the weight it is applied at. */
   applied: Record<string, number>;
 }
@@ -105,6 +133,8 @@ interface Step {
 function run(script: (frame: number, state: JumpState) => Step, frames: number): Sample[] {
   const state = createJumpState();
   const out: Sample[] = [];
+  let drawn = 0;
+  let lift = 0;
   for (let i = 0; i < frames; i++) {
     const step = script(i, state);
     const gap = step.gap ?? Math.max(0, state.offsetY);
@@ -121,6 +151,9 @@ function run(script: (frame: number, state: JumpState) => Step, frames: number):
       applied[`${joint}.x`] = (pose?.x ?? 0) * anim.weight;
       applied[`${joint}.z`] = (pose?.z ?? 0) * anim.weight;
     }
+    const base = easeBodyBase(drawn, lift, 0, BASE_EASE_RATE, DT);
+    lift = anim.rootOffset;
+    drawn = base + lift;
     out.push({
       t: (i + 1) * DT,
       phase: state.phase,
@@ -129,6 +162,8 @@ function run(script: (frame: number, state: JumpState) => Step, frames: number):
       airborne: isJumpAirborne(state),
       weight: anim.weight,
       rootOffset: anim.rootOffset,
+      stretch: anim.stretch,
+      drawn,
       applied,
     });
   }
@@ -171,12 +206,18 @@ function checkSnap(scenario: string, samples: Sample[]) {
       fail(scenario, `SNAP root moved ${dRoot.toFixed(3)} units in one frame at t=${samples[i].t.toFixed(3)} (${samples[i - 1].phase}->${samples[i].phase})`);
       return;
     }
+    const dStretch = Math.abs(samples[i].stretch - samples[i - 1].stretch);
+    if (dStretch > STRETCH_SNAP_LIMIT) {
+      fail(scenario, `SNAP squash/stretch moved ${dStretch.toFixed(3)} in one frame at t=${samples[i].t.toFixed(3)} (${samples[i - 1].phase}->${samples[i].phase})`);
+      return;
+    }
   }
 
   // The discontinuity half: one frame moving far more than its neighbours, which is what a
   // mismatched phase join looks like whatever the speed.
-  const channels = [...Object.keys(samples[0].applied), 'root'];
-  const valueOf = (s: Sample, key: string) => (key === 'root' ? s.rootOffset : s.applied[key]);
+  const channels = [...Object.keys(samples[0].applied), 'root', 'stretch'];
+  const valueOf = (s: Sample, key: string) =>
+    (key === 'root' ? s.rootOffset : key === 'stretch' ? s.stretch : s.applied[key]);
   for (const key of channels) {
     for (let i = 2; i < samples.length - 1; i++) {
       const d = Math.abs(valueOf(samples[i], key) - valueOf(samples[i - 1], key));
@@ -201,6 +242,26 @@ function checkSync(scenario: string, samples: Sample[]) {
     }
     if (!s.airborne && s.rootOffset > 0.01) {
       fail(scenario, `DESYNC grounded pose while ${s.rootOffset.toFixed(3)} above the ground at t=${s.t.toFixed(3)}`);
+    }
+  }
+}
+
+/**
+ * The body the player sees, against the arc. On flat ground the drawn root must BE the arc: the
+ * pose is chosen from the arc's `vy`, so any lag between the two is a pose playing at the wrong
+ * height — 下降 on the way up, the absorb in mid-air.
+ */
+function checkDrawn(scenario: string, samples: Sample[]) {
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
+    const lag = s.drawn - s.rootOffset;
+    if (Math.abs(lag) > DRAWN_TOLERANCE) {
+      fail(scenario, `DRAWN body ${s.drawn.toFixed(3)} vs arc ${s.rootOffset.toFixed(3)} during ${s.phase} at t=${s.t.toFixed(3)}`);
+      return;
+    }
+    if (s.phase === 'land' && samples[i - 1]?.phase !== 'land' && s.drawn > DRAWN_TOLERANCE) {
+      fail(scenario, `DRAWN landing started ${s.drawn.toFixed(3)} above the ground at t=${s.t.toFixed(3)}`);
+      return;
     }
   }
 }
@@ -251,10 +312,11 @@ function phases(samples: Sample[]): JumpPhase[] {
   return seq;
 }
 
-function audit(scenario: string, samples: Sample[], opts: { terminates?: boolean } = {}) {
+function audit(scenario: string, samples: Sample[], opts: { terminates?: boolean; flat?: boolean } = {}) {
   checkAlive(scenario, samples);
   checkSnap(scenario, samples);
   checkSync(scenario, samples);
+  if (opts.flat !== false) checkDrawn(scenario, samples);
   checkStranded(scenario, samples);
   checkFeet(scenario, samples);
   // Skipped only where the script itself is still asking for jumps on the last frame.
@@ -308,7 +370,13 @@ audit('buffered jump', buffered);
 // 5. 從高處落下 — the ground vanishes in a single frame (a ledge), the body is left above it
 // for half a second, and then the terrain catches up underneath.
 const cliff = run((i) => ({ drop: i === 10 ? 90 : 0, gap: i > 10 && i < 45 ? 1.4 : 0 }), 120);
-audit('walking off a ledge', cliff);
+audit('walking off a ledge', cliff, { flat: false });
+
+// A SHORT drop — a low step, the ground back under the feet before the fall pose has finished
+// fading in. The landing used to take the body at full weight on its first frame whatever the
+// fall had reached, which the SNAP check sees as the arms jumping to the absorb.
+const step = run((i) => ({ drop: i === 10 ? 60 : 0, gap: i > 10 && i < 16 ? 0.4 : 0 }), 60);
+audit('stepping off a low ledge', step, { flat: false });
 {
   const seq = phases(cliff);
   if (!seq.includes('fall') || !seq.includes('land')) {
@@ -352,6 +420,41 @@ audit('permission lost mid-air', interrupted);
     }
   }
   if (!seen.includes('land')) fail('frame hitch', `never landed: ${seen.join(' -> ')}`);
+}
+
+// FLOAT — two seconds of walking on flat ground. The stride bounce is a lift on top of the base,
+// 0..0.12 (Avatar.tsx's walk bounce); it must stay exactly that, not settle into a standing offset.
+// Run at 60 and 144 Hz because the old composition's error grew with the frame rate.
+for (const hz of [60, 144]) {
+  const dt = 1 / hz;
+  const BOUNCE = 0.12;
+  let drawn = 0;
+  let lift = 0;
+  let legacy = 0;
+  let worst = 0;
+  let legacyWorst = 0;
+  for (let i = 0; i < hz * 2; i++) {
+    const bounce = Math.abs(Math.sin(i * dt * 9)) * BOUNCE;
+    drawn = easeBodyBase(drawn, lift, 0, BASE_EASE_RATE, dt) + bounce;
+    lift = bounce;
+    // What it replaced: the same ease, reading its own output back with the bounce still in it.
+    legacy = easeBodyBase(legacy, 0, 0, BASE_EASE_RATE, dt) + bounce;
+    if (i > hz) { worst = Math.max(worst, drawn); legacyWorst = Math.max(legacyWorst, legacy); }
+  }
+  if (worst > BOUNCE + DRAWN_TOLERANCE) fail(`walking at ${hz} Hz`, `FLOAT the stride bounce accumulated to ${worst.toFixed(3)} above the ground (max bounce ${BOUNCE})`);
+  notes.push(`walking at ${hz} Hz: root peaks ${worst.toFixed(2)} above the ground (legacy composition: ${legacyWorst.toFixed(2)})`);
+}
+{
+  // The same comparison for the arc: how far behind the physics the old composition drew the hop.
+  let legacy = 0;
+  let worstLag = 0;
+  let atTouchdown = 0;
+  for (let i = 0; i < plain.length; i++) {
+    legacy = legacy + (plain[i].rootOffset - legacy) * BASE_EASE_RATE * DT;
+    worstLag = Math.max(worstLag, Math.abs(legacy - plain[i].rootOffset));
+    if (plain[i].phase === 'land' && plain[i - 1]?.phase !== 'land') atTouchdown = legacy;
+  }
+  notes.push(`standing jump: drawn body within ${DRAWN_TOLERANCE} of the arc (legacy composition lagged up to ${worstLag.toFixed(2)}, and began the landing ${atTouchdown.toFixed(2)} in the air)`);
 }
 
 // ---------------------------------------------------------------------------

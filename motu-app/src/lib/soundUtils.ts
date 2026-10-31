@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { sharedSingleton } from './sharedRegistry';
+
 // These used to point at cdn.pixabay.com, which returns 403 on this network
 // (verified directly, including pixabay.com's own homepage) - so every
 // playSound(SoundEffect.X) call was silently failing the same way
@@ -26,6 +28,32 @@ export enum SoundEffect {
 }
 
 /**
+ * EVERYTHING THE MUTE DEPENDS ON, ONE COPY PER PAGE.
+ *
+ * The mute is pushed into this module once, by MusicPlayer's effect, and only when `isMuted`
+ * changes. A bare `let sfxMuted` therefore only silences the module instance MusicPlayer happened
+ * to import — and under the dev server that is not guaranteed to be the only one (see
+ * lib/sharedRegistry.ts): after a hot update, a component such as NavBar can be re-executed
+ * against a fresh `soundUtils.ts?t=…`, whose flag starts at `false` and is never told otherwise,
+ * and which opens its own second AudioContext the first time it plays. Measured on the running
+ * island: with 全部靜音 on, a second instance's `playSound(CLICK)` created a new AudioContext and
+ * started an oscillator, while the original instance correctly reported muted. That is the
+ * 「靜音了，點下方導覽列還是有聲音」 shape exactly — the mute was set, just not in the copy that
+ * played the sound.
+ *
+ * Anchored on the page through sharedSingleton, so every instance reads the same mute, the same
+ * 海浪環境音 volume and the same AudioContext. A production bundle only ever has one instance;
+ * this makes the dev server agree with it. Bump the key if the shape changes.
+ */
+const audio = sharedSingleton('audio.mute.v1', () => ({
+  sfxMuted: false,
+  ambienceMuted: false,
+  /** Player's 海浪環境音 setting, 0..1. `setAmbienceVolume` is the single writer. */
+  ambienceVolume: 1,
+  ctx: null as AudioContext | null,
+}));
+
+/**
  * Whether the player has muted the game, pushed here from the one place that already owns
  * "settings → audio" (components/UI/MusicPlayer.tsx).
  *
@@ -44,11 +72,12 @@ export enum SoundEffect {
  * label promises 全部靜音. Everything one-shot now goes through {@link sfxContext}; the
  * continuous ambiences answer to their own gate (see THE AMBIENCE GATE below), which the same
  * setting drives via setAmbienceMuted.
+ *
+ * Lives in {@link audio} below rather than in a bare `let`, like every other piece of state the
+ * mute depends on — see there for why.
  */
-let sfxMuted = false;
-
 export const setSfxMuted = (muted: boolean) => {
-  sfxMuted = muted;
+  audio.sfxMuted = muted;
 };
 
 /**
@@ -56,7 +85,7 @@ export const setSfxMuted = (muted: boolean) => {
  * 每幀都要問一次，而它不能走 sfxContext()，因為它要的是「靜音時把整條聲音拆掉」而不只是
  * 「這一聲不出」。
  */
-export const isSfxMuted = () => sfxMuted;
+export const isSfxMuted = () => audio.sfxMuted;
 
 /**
  * The AudioContext a ONE-SHOT sound effect may use — null while the game is muted.
@@ -71,7 +100,7 @@ export const isSfxMuted = () => sfxMuted;
  * those questions are already answered together.
  */
 function sfxContext(): AudioContext | null {
-  return sfxMuted ? null : getSynthAudioContext();
+  return audio.sfxMuted ? null : getSynthAudioContext();
 }
 
 const audioPool: { [key: string]: HTMLAudioElement } = {};
@@ -100,7 +129,7 @@ export const playSound = (effect: SoundEffect | string, volume = 0.4) => {
   // The URL branch answers to the mute too. The enum branch above is already covered - every
   // synthesizer it reaches goes through sfxContext() - but this one bypasses Web Audio entirely,
   // so it needs the question asked here or a custom sound would be the one thing left audible.
-  if (sfxMuted) return;
+  if (audio.sfxMuted) return;
 
   try {
     let audio: HTMLAudioElement;
@@ -129,19 +158,18 @@ export const playSound = (effect: SoundEffect | string, volume = 0.4) => {
 // HTMLAudioElement.play() just rejects and gets swallowed. These fire constantly
 // during normal play, so instead of depending on those remote files, synthesize
 // them locally with a single shared AudioContext.
-let synthAudioCtx: AudioContext | null = null;
 
 export function getSynthAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
   const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
   if (!AudioContextClass) return null;
-  if (!synthAudioCtx) {
-    synthAudioCtx = new AudioContextClass();
+  if (!audio.ctx) {
+    audio.ctx = new AudioContextClass();
   }
-  if (synthAudioCtx.state === 'suspended') {
-    synthAudioCtx.resume().catch(() => {});
+  if (audio.ctx.state === 'suspended') {
+    audio.ctx.resume().catch(() => {});
   }
-  return synthAudioCtx;
+  return audio.ctx;
 }
 
 /**
@@ -153,7 +181,7 @@ export function getSynthAudioContext(): AudioContext | null {
  * 會拿到那個已經解鎖的 context。
  */
 export function peekSynthAudioContext(): AudioContext | null {
-  return synthAudioCtx;
+  return audio.ctx;
 }
 
 /** Call from a real user-gesture handler (click/keydown) so the AudioContext isn't blocked by autoplay policy. */
@@ -181,8 +209,8 @@ function digNoise(ctx: AudioContext): AudioBuffer {
 
 /** 可以出聲的 context：已解鎖、正在跑、沒有靜音。三者缺一就是 null。 */
 function unlockedSfxContext(): AudioContext | null {
-  if (sfxMuted) return null;
-  const ctx = synthAudioCtx;
+  if (audio.sfxMuted) return null;
+  const ctx = audio.ctx;
   return ctx && ctx.state === 'running' ? ctx : null;
 }
 
@@ -399,7 +427,7 @@ export const playEpicReveal = (volume = 0.4) => {
  * Muted players are checked here rather than in playSound: see {@link setSfxMuted}.
  */
 export const playLegendaryFanfare = (volume = 0.4) => {
-  if (sfxMuted) return;
+  if (audio.sfxMuted) return;
   // The brass bed. Started at the same instant as the arpeggio so the first note lands ON a
   // chord instead of arriving over silence.
   playBlip([
@@ -426,7 +454,7 @@ export const playLegendaryFanfare = (volume = 0.4) => {
  * because it contains the rung below it.
  */
 export const playMythicFanfare = (volume = 0.4) => {
-  if (sfxMuted) return;
+  if (audio.sfxMuted) return;
   playLegendaryFanfare(volume);
   const run = [1047, 1175, 1319, 1397, 1568, 1760, 1976, 2093];
   playBlip(
@@ -509,7 +537,7 @@ export const playRevealSpin = (
   ctxOverride?: BaseAudioContext,
 ): (() => void) => {
   const noop = () => {};
-  if (sfxMuted && !ctxOverride) return noop;
+  if (audio.sfxMuted && !ctxOverride) return noop;
   const ctx = ctxOverride ?? getSynthAudioContext();
   if (!ctx) return noop;
   try {
@@ -666,7 +694,7 @@ export const playWheelSpin = (
   ctxOverride?: BaseAudioContext,
 ): (() => void) => {
   const noop = () => {};
-  if (sfxMuted && !ctxOverride) return noop;
+  if (audio.sfxMuted && !ctxOverride) return noop;
   const ctx = ctxOverride ?? getSynthAudioContext();
   if (!ctx || pegTimesMs.length === 0) return noop;
 
@@ -744,6 +772,84 @@ export const playWheelSpin = (
   } catch (e) {
     // Web Audio unavailable/blocked - fail silently like the rest of the audio layer
     return noop;
+  }
+};
+
+/**
+ * {@link playWheelJackpot} 裡「噹」那一下落在第幾毫秒。
+ *
+ * 給呼叫端對時用：轉盤的全螢幕揭曉（UI/LuckyWheel.tsx）要讓這一下剛好落在獎品著陸的那一幀，
+ * 所以它要知道鈴聲前奏有多長，才能提早這麼多開始播。
+ */
+export const WHEEL_JACKPOT_HIT_MS = 620;
+
+/**
+ * 幸運轉盤 中獎 —— 「叮叮叮叮叮 —— 噹啷～」。
+ *
+ * 跟 {@link playUiReward} 那串三音琶音刻意分開：那是這個遊戲「有好事發生」的通用聲，商店買最便宜
+ * 的東西也是它；轉盤中獎要聽起來像**中獎**，也就是拉霸機那種一串越來越響的鈴聲滾上去，然後一個
+ * 大和弦砸下來。
+ *
+ * 三段：
+ *  * **鈴聲滾奏**（0 → {@link WHEEL_JACKPOT_HIT_MS}）—— 兩個高音交替敲，間隔越來越短、音量越來越大，
+ *    是在「憋」那一下。泛音比用 3（八度加五度），聽起來是鈴不是笛。
+ *  * **噹**（HIT）—— C 大三和弦四個音同時下去，底下墊一顆三角波根音給它重量。
+ *  * **啷～**—— 一串往上爬的琶音和最後一點閃光，讓和弦有個尾巴而不是一刀切掉。
+ *
+ * `grand`（史詩造型）在 HIT 底下多墊一層銅管長音、尾巴多一段快速上行——跟稀有度階梯同一條規則：
+ * 越稀有是「更多音樂」，不是同一首開更大聲（見 playRareReveal 那段註解）。
+ *
+ * 靜音照樣不出聲：全部走 playBlip → sfxContext。
+ */
+export const playWheelJackpot = (volume = 0.4, grand = false) => {
+  if (audio.sfxMuted) return;
+  const hit = WHEEL_JACKPOT_HIT_MS / 1000;
+
+  // 鈴聲滾奏：間隔從 62ms 收到 32ms，在 HIT 前一點停下。
+  const roll: BlipNote[] = [];
+  let t = 0;
+  for (let i = 0; i < 14 && t < hit - 0.03; i++) {
+    const p = i / 13;
+    roll.push({
+      freq: i % 2 === 0 ? 1319 : 1568,
+      delay: t,
+      duration: 0.09,
+      harmonicGain: 0.35,
+      harmonicRatio: 3,
+      gain: 0.22 + 0.38 * p,
+    });
+    t += 0.062 - 0.03 * p;
+  }
+  playBlip(roll, volume * 0.7);
+
+  // 噹：C 大三和弦。
+  playBlip([
+    { freq: 262, delay: hit, duration: 1.2, type: 'triangle', gain: 0.5 },
+    { freq: 523, delay: hit, duration: 1.0, harmonicGain: 0.3, gain: 0.42 },
+    { freq: 659, delay: hit, duration: 1.0, harmonicGain: 0.3, gain: 0.36 },
+    { freq: 784, delay: hit, duration: 1.05, harmonicGain: 0.3, gain: 0.36 },
+    { freq: 1047, delay: hit, duration: 1.1, harmonicGain: 0.35, gain: 0.4 },
+  ], volume);
+
+  // 啷～：往上爬，最後一點閃光。
+  playBlip([
+    { freq: 1047, delay: hit + 0.08, duration: 0.28, harmonicGain: 0.3, gain: 0.45 },
+    { freq: 1319, delay: hit + 0.14, duration: 0.28, harmonicGain: 0.3, gain: 0.45 },
+    { freq: 1568, delay: hit + 0.2, duration: 0.3, harmonicGain: 0.3, gain: 0.45 },
+    { freq: 2093, delay: hit + 0.27, duration: 0.6, harmonicGain: 0.25, gain: 0.5 },
+    { freq: 2637, delay: hit + 0.42, duration: 0.5, gain: 0.25 },
+  ], volume);
+
+  if (grand) {
+    playBlip([
+      { freq: 196, delay: hit, duration: 1.6, type: 'triangle', gain: 0.5 },
+      { freq: 392, delay: hit, duration: 1.5, type: 'triangle', gain: 0.3 },
+    ], volume);
+    const run = [1047, 1175, 1319, 1568, 1760, 2093, 2349, 2637];
+    playBlip(
+      run.map((freq, i) => ({ freq, delay: hit + 0.55 + i * 0.05, duration: 0.3, harmonicGain: 0.3, gain: 0.45 })),
+      volume,
+    );
   }
 };
 
@@ -1527,10 +1633,10 @@ export function createBrownNoiseBuffer(ctx: AudioContext, seconds: number, gainS
 // or in the water (both are no-ops while already running), so the first frame after the scale
 // leaves zero rebuilds whichever bed belongs to where the player is standing.
 
-/** Player's 海浪環境音 setting, 0..1. `setAmbienceVolume` is the single writer. */
-let ambienceVolume = 1;
-/**
- * The master mute, mirrored from `settings.isMuted`.
+/*
+ * `audio.ambienceVolume` is the player's 海浪環境音 setting; `audio.ambienceMuted` is the master
+ * mute, mirrored from `settings.isMuted`. Both live in the shared {@link audio} state at the top
+ * of this file.
  *
  * The ambience used to ignore it entirely, on the reasoning that muting the MUSIC should not
  * silence the sea. That is a fair distinction and it survives — as the 海浪環境音 slider,
@@ -1540,13 +1646,12 @@ let ambienceVolume = 1;
  * actually names them (slider to 0 for a silent sea with music, music volume to 0 for a
  * silent island with waves).
  */
-let ambienceMuted = false;
 
 /**
  * The scale every continuous ambience multiplies into its gain. Exactly 0 means silent, and
  * callers treat that as "do not exist" rather than "be quiet" — see the note above.
  */
-export const ambienceScale = () => (ambienceMuted ? 0 : ambienceVolume);
+export const ambienceScale = () => (audio.ambienceMuted ? 0 : audio.ambienceVolume);
 
 /** True when nothing that counts as ambience may be audible. */
 const ambienceSilenced = () => ambienceScale() <= 0;
@@ -1581,14 +1686,14 @@ function applyAmbienceScale(): void {
  * nothing change until they walked.
  */
 export const setAmbienceVolume = (volume: number) => {
-  ambienceVolume = Math.min(1, Math.max(0, volume));
+  audio.ambienceVolume = Math.min(1, Math.max(0, volume));
   applyAmbienceScale();
 };
 
 /** Mirrors `settings.isMuted` into the ambience layer. See `ambienceMuted`. */
 export const setAmbienceMuted = (muted: boolean) => {
-  if (ambienceMuted === muted) return;
-  ambienceMuted = muted;
+  if (audio.ambienceMuted === muted) return;
+  audio.ambienceMuted = muted;
   applyAmbienceScale();
 };
 

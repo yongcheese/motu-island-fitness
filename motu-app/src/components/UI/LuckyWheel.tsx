@@ -3,13 +3,21 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { animate, motion, AnimatePresence, useMotionValue } from 'motion/react';
+import confetti from 'canvas-confetti';
 import { ChevronDown, Gift, RotateCw } from 'lucide-react';
 import { View } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { useEscapeToClose } from '../../hooks/useEscapeToClose';
-import { playSound, playWheelSpin, SoundEffect, triggerHaptic } from '../../lib/soundUtils';
+import {
+  playSound,
+  playWheelJackpot,
+  playWheelSpin,
+  SoundEffect,
+  triggerHaptic,
+  WHEEL_JACKPOT_HIT_MS,
+} from '../../lib/soundUtils';
 import { getItemById } from '../../constants/items';
 import { fragmentName, getRaffleTickets } from '../../constants/fragments';
 import { TOUR_TARGET, tourTag } from '../../constants/tourTargets';
@@ -35,6 +43,7 @@ import type { WheelPrize } from '../../context/useWheelActions';
 import { FragmentShard, RaffleTicket } from './FragmentProgress';
 import { FloatingPanelPortal } from './FloatingPanelPortal';
 import { ModalOverlay, ModalShell, PanelHeader, SCRIM_INK_DEEP } from './DesignKit';
+import { REVEAL_SETTLE_MS } from './DailyClaimReveal';
 import { QVersionIcon } from '../QVersionIcon';
 
 /**
@@ -482,6 +491,362 @@ function PrizeCard({ prize, onDismiss }: { prize: WheelPrize; onDismiss: () => v
 }
 
 /**
+ * 轉盤停下之後、跳成全螢幕之前，留給玩家看「指針停在哪一格」的時間。
+ *
+ * 一停就整個畫面變黑，玩家會錯過唯一能證明「轉盤沒有騙人」的那一眼 —— 中獎那一格的框亮起來。
+ * 不到半秒，夠看清楚、不夠讓人覺得在等。
+ */
+const WIN_PAUSE_MS = 450;
+
+/** 從獎品著陸起多久可以點掉。跟 `.daily-reveal-hint` 一樣在著陸後再等一拍。 */
+const REVEAL_SKIPPABLE_AT_MS = REVEAL_SETTLE_MS + 400;
+
+/** 收下之後整層淡出的時間，對應 `.daily-reveal-layer.is-exiting`。 */
+const REVEAL_EXIT_MS = 280;
+
+/** 碎片／功能卡／抽獎券用的兩組彩帶色，跟每日登入揭曉同一套（白色是為了讓它讀成彩紙不是火花）。 */
+const REVEAL_TEAL = ['#2A9D8F', '#7FCFC3', '#1F7A6E', '#FFFFFF'];
+const REVEAL_GOLD = ['#E8AA3E', '#FFDF9E', '#B87C1C', '#FFFFFF'];
+
+/** 揭曉台中央那一枚：一個有外圈的圓章，獎品本身的圖示壓在上面。 */
+function RevealMedallion({
+  rim,
+  face,
+  edge,
+  children,
+}: {
+  rim: string;
+  face: string;
+  edge: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: 180, height: 180 }}>
+      <svg width={180} height={180} viewBox="0 0 120 120" fill="none" aria-hidden className="absolute inset-0">
+        <circle cx="60" cy="60" r="57" fill={rim} />
+        <circle cx="60" cy="60" r="49" fill={face} stroke={edge} strokeWidth="2" />
+        <circle cx="60" cy="60" r="41" fill="none" stroke={edge} strokeWidth="1.6" opacity="0.45" />
+        <path d="M28 40a36 36 0 0 1 26-22" stroke="#FFFFFF" strokeWidth="5" strokeLinecap="round" opacity="0.6" />
+      </svg>
+      <span className="relative flex items-center justify-center">{children}</span>
+    </div>
+  );
+}
+
+/**
+ * 揭曉台上要說的話，一種獎品一份。
+ *
+ * 跟 DailyClaimReveal 的 stageFor 同一個理由集中在這裡：圖示、彩帶顏色、大字和下面那行要彼此對得
+ * 上，而它們散在樹的四個地方。讀的是 `WheelPrize`（實際存進去的結果），不是轉盤面上寫的承諾 ——
+ * 碎片滿了會變抽獎券、功能卡帶滿了會退券，要慶祝的是真的拿到的東西。
+ */
+function wheelStageFor(prize: WheelPrize): {
+  mark: ReactNode;
+  colors: string[];
+  tone: 'gold' | 'teal';
+  /** 大字的數量；造型這種「重點是名字」的獎品是 null，改印名字。 */
+  amount: number | null;
+  /** 沒有數量時的大字（造型的名字）。 */
+  title: string | null;
+  /** 大字上面那顆小章，例如「史詩造型」。 */
+  badge: { text: string; color: string } | null;
+  note: string;
+  detail: ReactNode | null;
+  /** 史詩造型：多兩門側砲、畫面震一下、音效多一層。 */
+  grand: boolean;
+} {
+  switch (prize.kind) {
+    case 'fragments': {
+      const overflow =
+        prize.overflow > 0
+          ? `多出的 ${prize.overflow} 個${prize.tickets > 0 ? `已換成 ${prize.tickets} 張抽獎券` : '無處可去'}`
+          : null;
+      return {
+        mark: (
+          <RevealMedallion rim="#A9E2D9" face="#E6F6F2" edge="#1F7A6E">
+            <FragmentShard size={104} lit={prize.completed} />
+          </RevealMedallion>
+        ),
+        colors: REVEAL_TEAL,
+        tone: 'teal',
+        amount: prize.amount,
+        title: null,
+        badge: null,
+        note: prize.completed ? '碎片已集滿，可以直接解鎖' : '商品碎片已入袋',
+        detail: (
+          <>
+            <span className="w-8 h-8 rounded-lg bg-white/85 flex items-center justify-center overflow-hidden">
+              <QVersionIcon itemId={prize.itemId} size={28} />
+            </span>
+            <span className="flex flex-col text-left">
+              <span className="text-white/90 text-xs font-black tracking-wide">{fragmentName(prize.itemId)}</span>
+              {overflow && <span className="text-white/70 text-[11px] font-bold">{overflow}</span>}
+            </span>
+          </>
+        ),
+        grand: false,
+      };
+    }
+
+    case 'raffle-ticket':
+      return {
+        mark: (
+          <RevealMedallion rim="#FFE6AC" face="#FDF3D8" edge="#B87C1C">
+            <RaffleTicket size={112} />
+          </RevealMedallion>
+        ),
+        colors: REVEAL_GOLD,
+        tone: 'gold',
+        amount: prize.amount,
+        title: null,
+        badge: null,
+        note: '抽獎券已入袋',
+        detail: prize.fromDuplicate ? (
+          <span className="text-white/90 text-xs font-black tracking-wide">這一階的造型都收齊了，改折抽獎券</span>
+        ) : null,
+        grand: false,
+      };
+
+    case 'outfit': {
+      const item = getItemById(prize.itemId);
+      const spec = RARITY_SPECS[item?.rarity ?? 'rare'];
+      return {
+        mark: (
+          <RevealMedallion rim={spec.edge} face={spec.fieldTop} edge={spec.edge}>
+            <QVersionIcon itemId={prize.itemId} size={118} />
+          </RevealMedallion>
+        ),
+        colors: [spec.edge, spec.fieldCore, spec.fieldTop, '#FFFFFF'],
+        tone: 'teal',
+        amount: null,
+        title: item?.name ?? '新造型',
+        badge: { text: `${spec.label}造型`, color: spec.fieldTop },
+        note: '已放進你的衣櫃',
+        detail: null,
+        grand: item?.rarity === 'epic',
+      };
+    }
+
+    case 'function-card': {
+      const card = getUtilityCard(prize.cardId);
+      const granted = prize.granted > 0;
+      return {
+        mark: (
+          <RevealMedallion rim="#E3DCCB" face="#F7F3EA" edge="#4A6169">
+            <FunctionCardMark size={112} />
+          </RevealMedallion>
+        ),
+        colors: REVEAL_GOLD,
+        tone: granted ? 'teal' : 'gold',
+        amount: granted ? prize.granted : prize.refund,
+        title: null,
+        badge: null,
+        note: granted ? `${card?.name ?? '功能卡'}已放進功能卡背包` : '功能卡帶滿了，退回抽獎券',
+        detail: (
+          <span className="text-white/90 text-xs font-black tracking-wide leading-relaxed max-w-[18rem]">
+            {granted ? card?.effectSummary : FUNCTION_CARD_FULL_NOTE}
+          </span>
+        ),
+        grand: false,
+      };
+    }
+  }
+}
+
+/**
+ * 中獎揭曉 —— 轉盤停下之後，獎品跳出來佔滿整個畫面。
+ *
+ * 原本結果只是轉盤底下一張小卡片，跟一聲通用的獎勵音；轉了一大圈、咔咔咔慢下來，最後的回報卻
+ * 只有郵票大。現在停下 {@link WIN_PAUSE_MS} 之後畫面變暗，獎品從遠處轉著飛進來，著陸那一幀閃光、
+ * 光環、彩帶一起炸開，{@link playWheelJackpot} 的「噹」也剛好落在這一幀。
+ *
+ * 舞台的視覺（`.daily-reveal-*`，index.css）直接沿用每日登入的揭曉：同一個遊戲的「拿到東西」應該
+ * 長同一個樣子，而且那套動畫的時間軸（{@link REVEAL_SETTLE_MS}）已經調好了。
+ *
+ * 不會自己消失：跟每日登入一樣，按「收下」（或點背景）才結束，結束後回到轉盤，底下那張小卡片還在，
+ * 當作收據。
+ */
+function WheelPrizeReveal({ prize, onDone }: { prize: WheelPrize; onDone: () => void }) {
+  const stage = useMemo(() => wheelStageFor(prize), [prize]);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [skippable, setSkippable] = useState(false);
+  const [exiting, setExiting] = useState(false);
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+  const doneRef = useRef(false);
+  const exitTimer = useRef<number | null>(null);
+
+  const finish = useCallback(() => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    playSound(SoundEffect.CLICK);
+    setExiting(true);
+    exitTimer.current = window.setTimeout(() => onDoneRef.current(), REVEAL_EXIT_MS);
+  }, []);
+
+  useEffect(() => {
+    const timers: number[] = [];
+    const later = (fn: () => void, ms: number) => timers.push(window.setTimeout(fn, ms));
+    // 自己的 canvas：canvas-confetti 的全域 canvas 在 z-index 100，會被這層的暗幕蓋住。
+    const canvas = canvasRef.current;
+    const fire = canvas ? confetti.create(canvas, { resize: true }) : null;
+    const ribbon = confetti.shapeFromPath({ path: 'M0 0 H5 V17 H0 Z' });
+
+    const bursts = [
+      { delay: REVEAL_SETTLE_MS, particleCount: 100, spread: 80, startVelocity: 46 },
+      { delay: REVEAL_SETTLE_MS + 150, particleCount: 60, spread: 125, startVelocity: 32 },
+      // 側砲：每一次中獎都有 —— 這是「中獎」，不是每天都來的簽到。
+      { delay: REVEAL_SETTLE_MS + 240, particleCount: 60, spread: 55, startVelocity: 58, angle: 62, origin: { x: 0, y: 0.85 } },
+      { delay: REVEAL_SETTLE_MS + 240, particleCount: 60, spread: 55, startVelocity: 58, angle: 118, origin: { x: 1, y: 0.85 } },
+      ...(stage.grand
+        ? [
+            { delay: REVEAL_SETTLE_MS + 520, particleCount: 50, spread: 110, startVelocity: 42, ribbon: true },
+            { delay: REVEAL_SETTLE_MS + 700, particleCount: 70, spread: 60, startVelocity: 62, angle: 62, origin: { x: 0, y: 0.9 } },
+            { delay: REVEAL_SETTLE_MS + 700, particleCount: 70, spread: 60, startVelocity: 62, angle: 118, origin: { x: 1, y: 0.9 } },
+          ]
+        : []),
+    ];
+    for (const burst of bursts) {
+      later(() => {
+        fire?.({
+          particleCount: burst.particleCount,
+          spread: burst.spread,
+          startVelocity: burst.startVelocity,
+          angle: 'angle' in burst ? burst.angle : undefined,
+          colors: stage.colors,
+          ticks: 130,
+          origin: 'origin' in burst && burst.origin ? burst.origin : { x: 0.5, y: 0.42 },
+          shapes: 'ribbon' in burst && burst.ribbon ? [ribbon] : ['circle', 'square'],
+          disableForReducedMotion: true,
+        });
+      }, burst.delay);
+    }
+
+    // 中獎音效提早開始，讓鈴聲滾奏之後那一下「噹」剛好落在獎品著陸。
+    later(() => playWheelJackpot(0.5, stage.grand), Math.max(0, REVEAL_SETTLE_MS - WHEEL_JACKPOT_HIT_MS));
+    later(() => triggerHaptic(stage.grand ? 'heavy' : 'medium'), REVEAL_SETTLE_MS);
+
+    const root = stage.grand ? document.getElementById('root') : null;
+    if (root) {
+      later(() => root.classList.add('rarity-shake'), REVEAL_SETTLE_MS);
+      later(() => root.classList.remove('rarity-shake'), REVEAL_SETTLE_MS + 700);
+    }
+
+    later(() => setSkippable(true), REVEAL_SKIPPABLE_AT_MS);
+
+    return () => {
+      timers.forEach(window.clearTimeout);
+      if (exitTimer.current !== null) window.clearTimeout(exitTimer.current);
+      root?.classList.remove('rarity-shake');
+      fire?.reset();
+    };
+  }, [stage]);
+
+  return (
+    <ModalOverlay
+      zIndexClassName="z-reveal"
+      scrimClassName="bg-transparent"
+      className={`daily-reveal-layer ${exiting ? 'is-exiting' : ''} overflow-hidden ${skippable ? 'cursor-pointer' : ''}`}
+      onClick={(e) => {
+        // 這層是畫在轉盤面板「上面」的兄弟節點；點擊不能再往下傳到面板的背景，否則一點就把轉盤也關了。
+        e.stopPropagation();
+        if (skippable) finish();
+      }}
+    >
+      <div className="daily-reveal-dim" />
+      <div className="daily-reveal-rays" />
+      <div className="daily-reveal-flash" />
+      <div className="daily-reveal-burst" />
+      <div className="daily-reveal-ring" />
+      <div className="daily-reveal-ring daily-reveal-ring-2" />
+      <div className="daily-reveal-ring daily-reveal-ring-3" />
+
+      <div className="daily-reveal-stage">
+        <div className="relative flex items-center justify-center">
+          <div className="daily-reveal-glow" />
+          <div className="daily-reveal-spin" style={{ '--reveal-turns': stage.grand ? 4 : 3 } as CSSProperties}>
+            <div className="daily-reveal-coin">
+              {stage.mark}
+              <span className="daily-reveal-shine" aria-hidden />
+            </div>
+          </div>
+          {Array.from({ length: 8 }, (_, i) => (
+            <span key={i} className="daily-reveal-spark" style={{ ['--i' as string]: i }} aria-hidden />
+          ))}
+        </div>
+
+        <div className="flex flex-col items-center text-center gap-1.5 px-4">
+          <span
+            className="daily-reveal-line text-white/90 text-sm font-black tracking-[0.3em]"
+            style={{ animationDelay: `${REVEAL_SETTLE_MS}ms` }}
+          >
+            {stage.grand ? '大獎！恭喜中獎' : '幸運轉盤・恭喜中獎'}
+          </span>
+
+          {stage.badge && (
+            <span
+              className="daily-reveal-line mt-1 px-3 py-1 rounded-full text-[11px] font-black tracking-[0.2em] text-island-navy"
+              style={{ background: stage.badge.color, animationDelay: `${REVEAL_SETTLE_MS + 60}ms` }}
+            >
+              {stage.badge.text}
+            </span>
+          )}
+
+          {stage.amount !== null ? (
+            <div
+              className={`daily-reveal-amount ${stage.tone === 'gold' ? 'daily-reveal-amount-gold' : ''}`}
+              style={{ animationDelay: `${REVEAL_SETTLE_MS + 110}ms` }}
+            >
+              +{stage.amount.toLocaleString()}
+            </div>
+          ) : (
+            stage.title && (
+              <div
+                className="daily-reveal-amount !text-[clamp(2rem,8vw,3.2rem)]"
+                style={{ animationDelay: `${REVEAL_SETTLE_MS + 110}ms` }}
+              >
+                {stage.title}
+              </div>
+            )
+          )}
+
+          <span
+            className="daily-reveal-line text-white/85 text-xs font-black tracking-[0.2em]"
+            style={{ animationDelay: `${REVEAL_SETTLE_MS + 220}ms` }}
+          >
+            {stage.note}
+          </span>
+
+          {stage.detail && (
+            <span
+              className="daily-reveal-line mt-3 inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-white/10 border border-white/15 backdrop-blur-sm"
+              style={{ animationDelay: `${REVEAL_SETTLE_MS + 330}ms` }}
+            >
+              {stage.detail}
+            </span>
+          )}
+
+          {skippable && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                finish();
+              }}
+              className="daily-reveal-line mt-4 px-8 py-2.5 rounded-2xl font-black text-sm tracking-[0.2em] text-[#4A3410] bg-gradient-to-b from-[#FFDF9E] to-[#E8AA3E] border border-[#FFF0C8]/60 shadow-[0_8px_24px_rgba(232,170,62,0.35)] transition-all hover:-translate-y-0.5 active:scale-95"
+            >
+              收下
+            </button>
+          )}
+        </div>
+      </div>
+
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
+    </ModalOverlay>
+  );
+}
+
+/**
  * 那條橫槓的顏色。**不是** {@link WEDGE_FILL}，雖然第一版是。
  *
  * 面上的填色是刻意調淡的（半個面都是碎片，淡才留得住一格一格的對比），而淡色放到一條 6px 的槓
@@ -684,6 +1049,12 @@ function WheelPanel({ onClose }: { onClose: () => void }) {
   const stopSpinSound = useRef<(() => void) | null>(null);
   const [prize, setPrize] = useState<WheelPrize | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /**
+   * 全螢幕中獎揭曉。`pending` 是停下來到跳出去之間那 {@link WIN_PAUSE_MS}：這段時間也不能關面板，
+   * 否則揭曉會在面板已經消失之後才跳出來。
+   */
+  const [reveal, setReveal] = useState<'off' | 'pending' | 'on'>('off');
+  const revealTimer = useRef<number | null>(null);
 
   /**
    * A second copy of the face's angle, as a motion value, so the ticker can be driven off it.
@@ -710,16 +1081,17 @@ function WheelPanel({ onClose }: { onClose: () => void }) {
   // player with a balance that did not move: a hub that charges a ticket in its label and then does
   // not take one is the same lie as one that takes a ticket it never mentioned.
   const freeSpins = getFreeSpins(profile);
-  const canSpin = (freeSpins > 0 || tickets >= WHEEL_SPIN_COST) && !spinning;
+  const canSpin = (freeSpins > 0 || tickets >= WHEEL_SPIN_COST) && !spinning && reveal === 'off';
 
   // Closing mid-spin unmounts the animating face, so `onAnimationComplete` never fires and the
   // panel comes back stuck on 轉動中. The prize is already written by then either way — this
-  // protects the UI's own state only, and 3.6s is short enough to sit through.
+  // protects the UI's own state only, and 3.6s is short enough to sit through. 揭曉期間同理：
+  // 揭曉自己有「收下」，Esc 不該越過它把整個轉盤關掉。
   const requestClose = useCallback(() => {
-    if (spinning) return;
+    if (spinning || reveal !== 'off') return;
     playSound(SoundEffect.CLICK);
     onClose();
-  }, [spinning, onClose]);
+  }, [spinning, reveal, onClose]);
 
   useEscapeToClose(requestClose);
 
@@ -779,6 +1151,7 @@ function WheelPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => () => {
     stopSpinSound.current?.();
     spinAnim.current?.stop();
+    if (revealTimer.current !== null) window.clearTimeout(revealTimer.current);
   }, []);
 
   /**
@@ -809,7 +1182,10 @@ function WheelPanel({ onClose }: { onClose: () => void }) {
     ((Math.round(-rotation / WHEEL_SLOT_ANGLE) % WHEEL_SLOTS.length) + WHEEL_SLOTS.length) % WHEEL_SLOTS.length;
   const settled = Boolean(prize) && !spinning;
 
-  /** Fires when the wheel has actually stopped — the prize card and its sound wait for it. */
+  /**
+   * Fires when the wheel has actually stopped. 中獎那一格先亮框 {@link WIN_PAUSE_MS}，然後跳成全螢幕
+   * 的 {@link WheelPrizeReveal} —— 中獎音效和震動都在那裡，對準獎品著陸的那一幀。
+   */
   const handleRest = () => {
     if (!spinning || !prize) return;
     setSpinning(false);
@@ -818,17 +1194,13 @@ function WheelPanel({ onClose }: { onClose: () => void }) {
     // surviving a rounding difference would land underneath it.
     stopSpinSound.current?.();
     stopSpinSound.current = null;
-    const item = prize.kind === 'outfit' ? getItemById(prize.itemId) : null;
-    playSound(
-      item?.rarity === 'epic'
-        ? SoundEffect.EPIC_REVEAL
-        : prize.kind === 'outfit'
-          ? SoundEffect.RARE_REVEAL
-          : prize.kind === 'function-card' && prize.granted === 0
-            ? SoundEffect.TICK
-            : SoundEffect.REWARD,
-    );
-    triggerHaptic('medium');
+    playSound(SoundEffect.TICK);
+    triggerHaptic('light');
+    setReveal('pending');
+    revealTimer.current = window.setTimeout(() => {
+      revealTimer.current = null;
+      setReveal('on');
+    }, WIN_PAUSE_MS);
   };
 
   return (
@@ -1150,6 +1522,12 @@ function WheelPanel({ onClose }: { onClose: () => void }) {
           </div>
         </ModalShell>
       </ModalOverlay>
+
+      {/* 中獎揭曉。是面板的兄弟而不是孩子：ModalShell 進場時帶著 transform，fixed/absolute 的孩子
+          會被困在它的框裡，蓋不滿整個畫面。 */}
+      {reveal === 'on' && prize && (
+        <WheelPrizeReveal key={`reveal-${spinNo}`} prize={prize} onDone={() => setReveal('off')} />
+      )}
     </FloatingPanelPortal>
   );
 }
