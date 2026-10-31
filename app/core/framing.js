@@ -300,7 +300,7 @@ export function cameraHeightHint(frame, { threshold = CAMERA_HIGH_RATIO, visMin 
     high: ratio < threshold,
     ratio,
     text: ratio < threshold
-      ? '鏡頭位置偏高 —— 這樣下蹲深度會被低估，可能蹲到底也不算次數。建議把鏡頭放低一些（約與胸口同高），或往後站遠一點'
+      ? '鏡頭位置偏高 —— 下蹲深度會被低估，可能蹲到底也不算次數。請把裝置放低，放在地上或矮凳上，鏡頭大約在膝蓋到腰的高度'
       : '',
   };
 }

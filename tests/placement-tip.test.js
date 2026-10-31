@@ -13,11 +13,16 @@ test('深蹲要放低、高抬腿要放腰高，其他動作沒有擺放提示',
   for (const id of Object.keys(EXERCISES)) if (id !== 'squat' && id !== 'highknees') eq(EXERCISES[id].meta.placementTip, undefined, id);
 });
 
-test('開始前畫面與語音都會用到擺放提示', () => {
+test('開始前畫面顯示擺放提示；語音改在取景時、等說明念完才念（不再被打斷）', () => {
   const src = readFileSync(new URL('../app/features/workout/workout.js', import.meta.url), 'utf8');
   const pre = src.slice(src.indexOf('async function preStart'), src.indexOf('/* Slice3 R3 取景就緒判定'));
-  assert(/lv-ps-tip">\$\{ex\.meta\.placementTip/.test(pre), '提示框要顯示 placementTip');
-  assert(/coach\.say\([^)]*placementTip/.test(pre), '語音要念 placementTip');
+  assert(/lv-ps-tip">\$\{ex\.meta\.placementTip/.test(pre), '開始前提示框要顯示 placementTip');
+  // 2026-10-31：說明很長，接在後面一起念時，4.6 秒後取景以最高優先打斷，擺放提示永遠沒念到
+  assert(!/coach\.say\([^)]*placementTip/.test(pre), '開始前的語音不該再夾帶擺放提示（會被取景打斷）');
+  const gate = src.slice(src.indexOf('const placeTip = run.ex.meta?.placementTip'), src.indexOf('async function runCountdown'));
+  assert(/sayWhenIdle\(placeTip, gating/.test(gate), '取景開始要等前一句念完再念擺放提示');
+  assert(/Date\.now\(\) - lastTipAt > 15000/.test(gate), '一直沒就位要每 15 秒再提醒');
+  assert(/camHighFor\(run\)/.test(gate), '深蹲鏡頭偏高要念出來');
 });
 
 test('取景卡顯示各動作自己的擺放提示（深蹲放低，不再是「筆電放桌上、鏡頭平視」）', () => {

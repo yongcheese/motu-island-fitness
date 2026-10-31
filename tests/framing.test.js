@@ -702,6 +702,7 @@ test('cameraHint: 頭肩段比例偏低 → 提醒鏡頭偏高', () => {
   const r = cameraHeightHint(sk);
   assert(r.high, `頭肩比 ${r.ratio?.toFixed(3)} 應判為鏡頭偏高`);
   assert(/放低|後站|遠/.test(r.text), '提醒必須給出可執行的動作');
+  assert(r.text.includes('膝蓋到腰') && !r.text.includes('胸口'), '說法要和深蹲擺放提示一致（膝蓋到腰），不再說胸口');
 });
 
 test('cameraHint: 正常機位不得誤報', () => {

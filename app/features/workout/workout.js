@@ -606,8 +606,10 @@ async function preStart(statusEl, run) {
       <p>${ex.meta.voiceIntro || ex.meta.desc}</p>
       <div class="lv-ps-tip">${ex.meta.placementTip || '請站到鏡頭中、全身入鏡，準備開始'}</div>
     </div>`;
-  // placementTip：動作對機位有要求時（深蹲要放低、高抬腿要放腰高）接在說明後面一起念，不另開一句，免得被語音優先序蓋掉
-  if (run.voice && ex.meta.voiceIntro) CTX.coach.say(ex.meta.voiceIntro + (ex.meta.placementTip ? `${ex.meta.placementTip}。` : ''), 'mid');
+  // 擺放提示改在取景開始時、等這段說明念完才念（見 waitForFraming）。
+  // 2026-10-31 實測：以前接在說明後面一起念，但這段很長，4.6 秒後取景以最高優先念「請站入鏡頭範圍」
+  // 把它打斷 —— 擺放提示排在最後，永遠沒念到。
+  if (run.voice && ex.meta.voiceIntro) CTX.coach.say(ex.meta.voiceIntro, 'mid');
   await sleep(ex.meta.placementTip ? 4600 : 2600);   // 讓使用者讀說明、就定位；有擺放提示時多留 2 秒搬裝置
   if (live !== run) return false;
   // Slice3 R3 取景關卡（僅 camera 路徑；demo 合成幀永遠可見故跳過——已申報）
@@ -686,7 +688,15 @@ function waitForFraming(run) {
     gate.hidden = false;
     if (live?.hud?.next) { live.hud.next.hidden = true; live.hud.next.textContent = ''; }   // 關卡期間不顯示動作指引，避免疊字
     run.skipGate = false;
-    if (run.voice) CTX.coach.say('請站入鏡頭範圍，保持全身入鏡', 'high');
+    // 取景開始：有擺放提示的動作（深蹲放低、高抬腿放腰高）念擺放提示 —— 等動作說明念完再念，不打斷；
+    // 沒有的動作照舊念「請站入鏡頭範圍」。一直沒就位時每 15 秒再提醒一次怎麼擺。
+    const placeTip = run.ex.meta?.placementTip;
+    const gating = () => live === run && !gate.hidden;
+    if (run.voice) {
+      if (placeTip) sayWhenIdle(placeTip, gating, 20000);
+      else CTX.coach.say('請站入鏡頭範圍，保持全身入鏡', 'high');
+    }
+    let lastTipAt = Date.now(), camHintSaid = false;
     let readyMs = 0, gateMs = 0, last = performance.now();
     // Slice 12：取景期間深度量表沒有意義，還會在小螢幕蓋到狀態卡 → 關卡期間隱藏
     const wrap = root?.querySelector('#lv-wrap');
@@ -734,7 +744,7 @@ function waitForFraming(run) {
                 : !report.ok ? ['ruler', report.text]
                   : !stab.stable ? ['hourglass', '請站穩不動，正在鎖定您的位置…']
                     : people > 1 ? ['map-pin', `已就位（畫面中有 ${people} 人，已鎖定最靠近鏡頭的您）`]
-                      : (run.camHint && run.camHint.high) ? ['ruler-dimension-line', run.camHint.text]
+                      : (camHighFor(run)) ? ['ruler-dimension-line', run.camHint.text]
                         : ['map-pin', '已就位，準備開始'];
           // 左上狀態列已拿掉（使用者 09-29 要求），取景訊息改顯示在中間的提示框
           setCoach(msg, allOk ? 'good' : 'mid');
@@ -743,6 +753,12 @@ function waitForFraming(run) {
             if (miss.length) CTX.coach.say(`看不到你的${miss[0]}，請調整位置`, 'mid');
             else if (!report.ok && report.text) CTX.coach.say(report.text, 'mid');
           }
+          // 一直沒就位：每 15 秒再提醒一次擺放方式（使用者可能還沒把裝置放對）
+          if (run.voice && placeTip && !allOk && Date.now() - lastTipAt > 15000) {
+            if (CTX.coach.say(placeTip, 'mid')) lastTipAt = Date.now();
+          }
+          // 深蹲鏡頭偏高：畫面上的提示也念出來（每次取景只念一次）
+          if (run.voice && !camHintSaid && camHighFor(run)) { if (CTX.coach.say(run.camHint.text, 'mid')) camHintSaid = true; }
         }
         readyMs = allOk ? readyMs + dt : 0;
         if (bar) bar.style.width = Math.min(100, readyMs / 20) + '%';
@@ -889,6 +905,10 @@ function liveShell(ex) {
 /** 取景卡的擺放說明：動作有自己的擺放提示就用它（深蹲放低、高抬腿放腰高），否則用通用說明。
  *  2026-10-31 實測回報：深蹲取景時顯示的是通用的「筆電放桌上、鏡頭平視前方」，與深蹲要放低的建議相反，
  *  而 placementTip 只在取景前閃過約 4 秒 —— 使用者調整位置時看不到。 */
+/** 鏡頭偏高的提醒只給深蹲：它講的是「下蹲深度被低估」，高抬腿本來就建議腰高。 */
+function camHighFor(run) {
+  return !!(run.camHint && run.camHint.high && run.ex?.id === 'squat');
+}
 export function gateTipOf(ex) {
   return ex?.meta?.placementTip || '筆電放桌上也可以：螢幕立直讓鏡頭平視前方，人往後退到頭到腳都在畫面裡';
 }
