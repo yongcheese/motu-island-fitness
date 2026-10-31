@@ -1019,10 +1019,12 @@ function enterRest(run) {
 /* ---------------- AI 教練評語（組間休息、結算）----------------
    每一下的即時糾正維持預先寫好的口令（要 0.1 秒內講出來）；休息與結算不趕時間，
    由後端 Gemini 依這次的成績即時生成一兩句話，失敗或逾時就用預設句子（見 core/coachLine.js）。 */
-// 目前累積的錯誤（沒算到的原因＋可以更好的提醒），轉成顯示名稱、次數多的在前
-function coachFaults(summary) {
+// 目前累積的錯誤（沒算到的原因＋可以更好的提醒），轉成 [顯示名稱, 次數, 官方糾正口令]、次數多的在前。
+// 糾正口令與訓練中「這一下為什麼沒算」講的是同一句（rejectHint）：Gemini 只能改寫它，建議才會和判定標準一致。
+function coachFaults(summary, ex) {
   const all = { ...(summary.faultCounts || {}), ...(summary.advisoryCounts || {}) };
-  return Object.entries(all).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).map(([k, n]) => [faultName(k), n]);
+  return Object.entries(all).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => [faultName(k), n, rejectHint(k, ex)]);
 }
 // 語音模組在講話時會丟掉新的普通句子 → 等前一句講完再講（最多等 waitMs），條件不成立（已離開這一刻）就放棄
 function sayWhenIdle(text, stillValid, waitMs = 8000) {
@@ -1044,7 +1046,7 @@ function requestRestCoach(run) {
   const sum = run.detector.summary();
   const payload = buildCoachPayload('rest', run.ex, {
     setIdx: idx, totalSets: set.total, setValid: set.setEndValid - set.baseValid, setTarget: set.target,
-    totalValid: sum.validReps, totalInvalid: sum.invalidReps, faults: coachFaults(sum),
+    totalValid: sum.validReps, totalInvalid: sum.invalidReps, faults: coachFaults(sum, run.ex),
   });
   const still = () => live === run && run.set.phase === 'REST' && run.set.idx === idx;
   fetchCoachLine(payload).then((line) => {
@@ -1058,7 +1060,7 @@ function requestSummaryCoach(ex, summary, session) {
   if (!el) return;
   const payload = buildCoachPayload('summary', ex, {
     totalValid: summary.validReps, totalInvalid: summary.invalidReps, durationSec: session.durationSec,
-    faults: coachFaults(summary),
+    faults: coachFaults(summary, ex),
   });
   const still = () => el.isConnected;
   fetchCoachLine(payload).then((line) => {

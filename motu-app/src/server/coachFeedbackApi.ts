@@ -36,7 +36,9 @@ export interface CoachPayload {
   exercise: string;
   totalValid: number;
   totalInvalid: number;
-  faults: { name: string; count: number }[];
+  faults: { name: string; count: number; tip: string }[];
+  /** 系統評等（與結算頁同一套：S 完美／A 很棒／B 不錯／C 再加油／none 尚無完成動作）。Gemini 不得自行評好壞。 */
+  level: 'S' | 'A' | 'B' | 'C' | 'none';
   setIdx?: number;
   totalSets?: number;
   setValid?: number;
@@ -50,6 +52,10 @@ const int = (v: unknown, max: number): number | null => {
 };
 // 名稱只允許中英數與常見標點，長度 1–20：擋掉換行、指令式字串
 const NAME_RE = /^[\p{Script=Han}A-Za-z0-9 ／/（）()、・·-]{1,20}$/u;
+// 糾正口令：判定引擎的 cues 原文（例：「站著做 —— 支撐的那隻腳要打直，不要坐著或蹲著抬腿」），可空白
+const TIP_RE = /^[\p{Script=Han}A-Za-z0-9 ，、。！？—「」（）()／/・·-]{0,50}$/u;
+const LEVELS = ['S', 'A', 'B', 'C', 'none'] as const;
+export const LEVEL_NAME: Record<CoachPayload['level'], string> = { S: '完美', A: '很棒', B: '不錯', C: '再加油', none: '尚無完成動作' };
 
 /** 逐欄檢查並只留已知欄位；不合格回傳 null。 */
 export function validateCoachPayload(body: unknown): CoachPayload | null {
@@ -63,10 +69,13 @@ export function validateCoachPayload(body: unknown): CoachPayload | null {
   const faults: CoachPayload['faults'] = [];
   for (const f of b.faults) {
     const name = (f as Record<string, unknown>)?.name, count = int((f as Record<string, unknown>)?.count, 9999);
+    const tip = (f as Record<string, unknown>)?.tip ?? '';
     if (typeof name !== 'string' || !NAME_RE.test(name) || count === null) return null;
-    faults.push({ name, count });
+    if (typeof tip !== 'string' || !TIP_RE.test(tip)) return null;
+    faults.push({ name, count, tip });
   }
-  const p: CoachPayload = { kind: b.kind, exercise: b.exercise, totalValid, totalInvalid, faults };
+  if (!LEVELS.includes(b.level as CoachPayload['level'])) return null;
+  const p: CoachPayload = { kind: b.kind, exercise: b.exercise, totalValid, totalInvalid, faults, level: b.level as CoachPayload['level'] };
   if (b.kind === 'rest') {
     const setIdx = int(b.setIdx, 20), totalSets = int(b.totalSets, 20), setValid = int(b.setValid, 9999), setTarget = int(b.setTarget, 9999);
     if (setIdx === null || totalSets === null || setValid === null || setTarget === null) return null;
@@ -81,26 +90,35 @@ export function validateCoachPayload(body: unknown): CoachPayload | null {
 
 const SYSTEM = `你是健身遊戲「島底動不動」裡的教練阿肌，正在使用者旁邊陪他訓練。
 用繁體中文、口語、溫暖有活力，像真人教練當場說話。
-只能根據提供的數據說話，不要編造數據裡沒有的內容。
-不可以提到熱量、卡路里、體重、減肥、醫療診斷或受傷風險。
-不要用表情符號、條列、Markdown 或引號，直接輸出要說的話。`;
+規則（一定要遵守）：
+1. 表現好壞以「系統評等」為準，不可以自己判斷好壞；評等是「完美」「很棒」就明確稱讚，「不錯」「再加油」就肯定努力並鼓勵。不要說出「系統評等」「評等」這些字，直接用自然的話稱讚或鼓勵。
+2. 任何情況都不可以用負面或貶低的字眼（例如爛、差、失敗、不行），做不好也只說繼續加油。
+3. 動作建議只能改寫「修正要點」裡的句子，不可以自己增加其他動作建議；沒有修正要點時就只鼓勵。
+4. 只能使用提供的數字，不要自己計算或推估其他數字。
+5. 不可以提到熱量、卡路里、體重、減肥、醫療診斷或受傷風險。
+6. 不要用表情符號、條列、Markdown 或引號，直接輸出要說的話。`;
 
 /** 依時機組出要給模型的指示與數據。 */
 export function buildCoachPrompt(p: CoachPayload): { system: string; user: string } {
   const faults = p.faults.length
     ? p.faults.map((f) => `${f.name} ${f.count} 次`).join('、')
     : '沒有被判無效的動作';
+  // 只取次數最多那一項的口令，一次只給一個重點
+  const tip = p.faults.find((f) => f.tip)?.tip;
+  const tipLine = tip ? `修正要點：${tip}` : '修正要點：無（只鼓勵）';
+  const levelLine = `系統評等：${LEVEL_NAME[p.level]}`;
   if (p.kind === 'rest') {
     return {
-      system: `${SYSTEM}\n現在是組間休息。用一到兩句、不超過 40 個字：先具體肯定剛完成的這一組，再給下一組一個重點（有錯誤就針對次數最多的那一個）。`,
-      user: `動作：${p.exercise}\n剛完成：第 ${p.setIdx} 組（共 ${p.totalSets} 組）\n這組有效：${p.setValid} 下（目標 ${p.setTarget} 下）\n到目前為止：有效 ${p.totalValid} 下、沒算到 ${p.totalInvalid} 下\n沒算到的主要原因：${faults}`,
+      system: `${SYSTEM}\n現在是組間休息。用一到兩句、不超過 40 個字：先依系統評等回應剛完成的這一組，再用修正要點提醒下一組。`,
+      user: `動作：${p.exercise}\n剛完成：第 ${p.setIdx} 組（共 ${p.totalSets} 組）\n這組有效：${p.setValid} 下（目標 ${p.setTarget} 下）\n到目前為止：有效 ${p.totalValid} 下、沒算到 ${p.totalInvalid} 下\n${levelLine}\n沒算到的主要原因：${faults}\n${tipLine}`,
     };
   }
   const total = p.totalValid + p.totalInvalid;
-  const rate = total ? Math.floor((p.totalValid / total) * 100) : 0;
+  // 與畫面同一種取整（core/rewards.js ratePct）：無條件捨去，+1e-9 抵銷浮點誤差
+  const rate = total ? Math.floor((p.totalValid / total) * 100 + 1e-9) : 0;
   return {
-    system: `${SYSTEM}\n訓練剛結束。用兩到三句、不超過 80 個字：總結這次的表現，點出最需要注意的一件事並給下次一個具體建議，最後鼓勵他。`,
-    user: `動作：${p.exercise}\n訓練時間：${Math.round((p.durationSec ?? 0) / 60)} 分鐘\n有效：${p.totalValid} 下、沒算到 ${p.totalInvalid} 下（達標率 ${rate}%）\n沒算到的主要原因：${faults}`,
+    system: `${SYSTEM}\n訓練剛結束。用兩到三句、不超過 80 個字：依系統評等總結這次的表現，用修正要點給下次一個建議，最後鼓勵他。`,
+    user: `動作：${p.exercise}\n訓練時間：${Math.round((p.durationSec ?? 0) / 60)} 分鐘\n有效：${p.totalValid} 下、沒算到 ${p.totalInvalid} 下（達標率 ${rate}%）\n${levelLine}\n沒算到的主要原因：${faults}\n${tipLine}`,
   };
 }
 
