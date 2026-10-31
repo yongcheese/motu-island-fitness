@@ -56,6 +56,7 @@ console.log('\n指示內容');
   ok('一律繁體中文、不提熱量與醫療', r.system.includes('繁體中文') && r.system.includes('熱量') && r.system.includes('醫療'));
   ok('休息：組數與這組成績帶進去', r.user.includes('第 1 組') && r.user.includes('26 下') && r.user.includes('目標 30'));
   ok('休息：錯誤原因帶進去', r.user.includes('動作半程未達標 3 次'));
+  ok('休息：附上與畫面相同算法的達標率（26/30＝86%，無條件捨去），規則要求照抄', r.user.includes('達標率 86%') && r.system.includes('只能照抄提供的達標率'));
   ok('系統評等帶進去（A → 很棒），規則寫明不可自行評好壞', r.user.includes('系統評等：很棒') && r.system.includes('不可以自己判斷好壞'));
   ok('只給次數最多那項的官方口令，規則寫明不可自創建議', r.user.includes('修正要點：大腿再抬高一點') && !r.user.includes('上半身站直') && r.system.includes('只能改寫「修正要點」'));
   ok('規則禁止負面字眼、禁止自己算數字', r.system.includes('負面或貶低') && r.system.includes('只能使用提供的數字'));

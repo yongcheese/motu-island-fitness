@@ -1,7 +1,7 @@
 // AI 教練評語（app/core/coachLine.js）：送出的內容只有數字與錯誤名稱、失敗一定退回預設句子、回覆會被整理成一段話。
 import { test, eq, assert } from './harness.js';
 import { buildCoachPayload, fallbackLine, cleanCoachText, fetchCoachLine, COACH_LINE_MAX, COACH_LINE_ENDPOINT,
-  levelOf, numbersIn, parseCnNumber, allowedNumbers, verifyCoachText } from '../app/core/coachLine.js';
+  levelOf, numbersIn, parseCnNumber, allowedNumbers, verifyCoachText, rateOf, percentsIn } from '../app/core/coachLine.js';
 
 const ex = { name: '高抬腿' };
 const restStats = { setIdx: 1, totalSets: 3, setValid: 26, setTarget: 30, totalValid: 26, totalInvalid: 4,
@@ -91,7 +91,7 @@ test('國字數字解析（AI 常寫「二十六下」）', () => {
 test('數字核對：只接受成績本身與直接推得的數字（總次數、達標率、還差幾下、下一組…）', () => {
   const p = buildCoachPayload('rest', ex, restStats);   // 第 1 組 26/30，累積 26 有效 4 無效
   const allow = allowedNumbers(p);
-  for (const n of [26, 30, 4, 1, 3, 2, 86]) assert(allow.has(n), `${n} 應允許（26/30→86%、還差 4 下、第 2 組、剩 2 組）`);
+  for (const n of [26, 30, 4, 1, 3, 2]) assert(allow.has(n), `${n} 應允許（還差 4 下、第 2 組、剩 2 組）`);
   assert(verifyCoachText('第一組二十六下，很棒！第二組大腿再抬高一點。', p).ok);
   const bad = verifyCoachText('第一組做了二十八下！', p);
   assert(!bad.ok && bad.reason.includes('28'), bad.reason);
@@ -112,4 +112,16 @@ test('Gemini 回覆核對不過（數字錯、負面字眼）→ 不採用，改
     const r = await fetchCoachLine(p, { fetchImpl: async () => ({ ok: true, json: async () => ({ text: reply }) }) });
     eq(r.source, 'preset', reply); eq(r.text, fallbackLine(p));
   }
+});
+
+test('百分比只能是畫面上的達標率（實測：畫面 85%、AI 念 86%）', () => {
+  const p = buildCoachPayload('rest', ex, { setIdx: 2, totalSets: 3, setValid: 26, setTarget: 30, totalValid: 30, totalInvalid: 5, faults: [] });
+  eq(rateOf(p), 85, '30/35＝85.7% → 與畫面一樣無條件捨去為 85');
+  eq(JSON.stringify(percentsIn('達標率 85%，第二組百分之八十六')), JSON.stringify([85, 86]));
+  assert(verifyCoachText('目前達標率 85%，很穩！', p).ok);
+  assert(verifyCoachText('達標率百分之八十五，繼續加油！', p).ok);
+  const r = verifyCoachText('目前達標率 86%，很穩！', p);
+  assert(!r.ok && r.reason.includes('86'), '四捨五入的 86% 要擋下');
+  assert(!verifyCoachText('這組完成了百分之八十六，很棒！', p).ok, '這組完成率（26/30）也不能用百分比講，會跟畫面打架');
+  assert(!verifyCoachText('達標率 50%', buildCoachPayload('rest', ex, { setIdx: 1, totalSets: 3, setValid: 0, setTarget: 30, totalValid: 0, totalInvalid: 0 })).ok, '沒有任何一下時不能講百分比');
 });

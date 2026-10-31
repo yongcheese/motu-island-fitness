@@ -794,7 +794,7 @@ function cameraErrorMsg(err) {
 
 /* ---------------- Live 版型元件（Slice3 R2：純模板，吃資料回字串；接線歸 R3） ---------------- */
 // 取景檢查關卡（R3 接 gateLandmarks 後由 framingReady 驅動檢查燈；R2 為 R1 靜態內容原樣）
-function gateHtml() {
+function gateHtml(ex) {
   // Slice 12：原本「提示字」「檢查項」「跳過鈕」都是同一種白色膠囊，使用者分不出哪個是狀態、哪個要按。
   // 改成一張狀態卡：上半是狀態（檢查清單＋2 秒進度條，都不可按），分隔線下才是唯一的操作（附後果說明的次要文字鈕）。
   return `<div class="lv-gate" id="lv-gate" hidden>
@@ -808,7 +808,7 @@ function gateHtml() {
               <li class="lv-gate-chk">膝蓋</li>
             </ul>
             <div class="lv-gate-s">全部打勾並站穩 2 秒，就會<b>自動開始</b></div>
-            <div class="lv-gate-tip">筆電放桌上也可以：螢幕立直讓鏡頭平視前方，人往後退到頭到腳都在畫面裡；深蹲正面、側身都能計次</div>
+            <div class="lv-gate-tip">${escHtml(gateTipOf(ex))}</div>
             <div class="lv-gate-bar" aria-hidden="true"><i></i></div>
             <div class="lv-gate-alt" hidden>
               <span>偵測一直過不了？</span>
@@ -868,7 +868,7 @@ function liveShell(ex) {
       <div class="lv-repflash" id="lv-repflash"></div>
       <div class="lv-status" id="lv-status"></div>
       <!-- Slice3 R1 靜態版型（預設 hidden、零邏輯；gate 判定/組數切換歸 R3 接線輪） -->
-      ${gateHtml()}
+      ${gateHtml(ex)}
       ${restHtml({ setIdx: 1, totalSets: 3, restSec: 45, nextReps: 12 })}
       <div class="lv-hud">
         <div class="lv-metric"><div class="m-v" id="m-time">0:00</div><div class="m-k">時間</div></div>
@@ -884,6 +884,13 @@ function liveShell(ex) {
         <button class="lv-btn lv-pause" id="lv-pause" type="button">${pauseHtml(false)}</button>
       </div>
     </div>`;
+}
+
+/** 取景卡的擺放說明：動作有自己的擺放提示就用它（深蹲放低、高抬腿放腰高），否則用通用說明。
+ *  2026-10-31 實測回報：深蹲取景時顯示的是通用的「筆電放桌上、鏡頭平視前方」，與深蹲要放低的建議相反，
+ *  而 placementTip 只在取景前閃過約 4 秒 —— 使用者調整位置時看不到。 */
+export function gateTipOf(ex) {
+  return ex?.meta?.placementTip || '筆電放桌上也可以：螢幕立直讓鏡頭平視前方，人往後退到頭到腳都在畫面裡';
 }
 
 /** 深度量表上「達標線」該畫的位置（0..1 的 progress）。

@@ -94,7 +94,7 @@ const SYSTEM = `你是健身遊戲「島底動不動」裡的教練阿肌，正�
 1. 表現好壞以「系統評等」為準，不可以自己判斷好壞；評等是「完美」「很棒」就明確稱讚，「不錯」「再加油」就肯定努力並鼓勵。不要說出「系統評等」「評等」這些字，直接用自然的話稱讚或鼓勵。
 2. 任何情況都不可以用負面或貶低的字眼（例如爛、差、失敗、不行），做不好也只說繼續加油。
 3. 動作建議只能改寫「修正要點」裡的句子，不可以自己增加其他動作建議；沒有修正要點時就只鼓勵。
-4. 只能使用提供的數字，不要自己計算或推估其他數字。
+4. 只能使用提供的數字，不要自己計算或推估其他數字；提到達標率時只能照抄提供的達標率，不可以自己算或四捨五入。
 5. 不可以提到熱量、卡路里、體重、減肥、醫療診斷或受傷風險。
 6. 不要用表情符號、條列、Markdown 或引號，直接輸出要說的話。`;
 
@@ -105,12 +105,15 @@ export function buildCoachPrompt(p: CoachPayload): { system: string; user: strin
     : '沒有被判無效的動作';
   // 只取次數最多那一項的口令，一次只給一個重點
   const tip = p.faults.find((f) => f.tip)?.tip;
+  // 達標率與畫面同一算法（core/rewards.js ratePct：無條件捨去，+1e-9 抵銷浮點誤差）
+  const tot = p.totalValid + p.totalInvalid;
+  const rateText = tot ? `${Math.floor((p.totalValid / tot) * 100 + 1e-9)}%` : '尚無';
   const tipLine = tip ? `修正要點：${tip}` : '修正要點：無（只鼓勵）';
   const levelLine = `系統評等：${LEVEL_NAME[p.level]}`;
   if (p.kind === 'rest') {
     return {
       system: `${SYSTEM}\n現在是組間休息。用一到兩句、不超過 40 個字：先依系統評等回應剛完成的這一組，再用修正要點提醒下一組。`,
-      user: `動作：${p.exercise}\n剛完成：第 ${p.setIdx} 組（共 ${p.totalSets} 組）\n這組有效：${p.setValid} 下（目標 ${p.setTarget} 下）\n到目前為止：有效 ${p.totalValid} 下、沒算到 ${p.totalInvalid} 下\n${levelLine}\n沒算到的主要原因：${faults}\n${tipLine}`,
+      user: `動作：${p.exercise}\n剛完成：第 ${p.setIdx} 組（共 ${p.totalSets} 組）\n這組有效：${p.setValid} 下（目標 ${p.setTarget} 下）\n到目前為止：有效 ${p.totalValid} 下、沒算到 ${p.totalInvalid} 下（達標率 ${rateText}）\n${levelLine}\n沒算到的主要原因：${faults}\n${tipLine}`,
     };
   }
   const total = p.totalValid + p.totalInvalid;

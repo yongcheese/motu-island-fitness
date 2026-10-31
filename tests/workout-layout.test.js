@@ -47,7 +47,7 @@ test('Slice 11：結束鈕仍是可聚焦、≥44px 的按鈕，有 aria-label',
 });
 
 /* ---------- Slice 12：取景關卡 ---------- */
-const gate = js.slice(js.indexOf('function gateHtml()'), js.indexOf('// 組間休息卡'));
+const gate = js.slice(js.indexOf('function gateHtml('), js.indexOf('// 組間休息卡'));
 
 test('Slice 12：跳過鈕只在「偵測一直過不了？」說明區塊裡，且附後果說明', () => {
   const alt = gate.slice(gate.indexOf('class="lv-gate-alt"'));

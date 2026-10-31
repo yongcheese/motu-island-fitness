@@ -137,16 +137,31 @@ export function allowedNumbers(p) {
   if (total) add(ratePct(p.totalValid / total));
   if (p.kind === 'rest') {
     [p.setIdx, p.totalSets, p.setValid, p.setTarget, p.setIdx + 1, p.totalSets - p.setIdx, p.setTarget - p.setValid].forEach(add);
-    if (p.setTarget) add(ratePct(Math.min(1, p.setValid / p.setTarget)));
   } else {
     [p.durationSec, Math.floor(p.durationSec / 60), Math.ceil(p.durationSec / 60), Math.round(p.durationSec / 60)].forEach(add);
   }
   return s;
 }
-/** 回覆是否可用：沒有負面字眼、所有數字都對得上成績。回傳 { ok, reason }。 */
+/** 畫面上的達標率（與 HUD／結算頁同一算法：有效 ÷（有效＋沒算到），無條件捨去）；尚無動作時為 null。 */
+export function rateOf(p) {
+  const total = p.totalValid + p.totalInvalid;
+  return total ? ratePct(p.totalValid / total) : null;
+}
+/** 回覆中的百分比（「86%」「86 %」「百分之八十六」）。 */
+export function percentsIn(text) {
+  const t = String(text || ''); const out = [];
+  for (const m of t.matchAll(/(\d+)\s*[%％]/g)) out.push(Number(m[1]));
+  for (const m of t.matchAll(/百分之([零〇一二兩三四五六七八九十百]+)/g)) out.push(parseCnNumber(m[1]));
+  return out.filter(Number.isFinite);
+}
+/** 回覆是否可用：沒有負面字眼、百分比只能是畫面上的達標率、其他數字都對得上成績。回傳 { ok, reason }。
+ *  2026-10-31 實測回報：畫面達標率 85%，AI 卻念 86%（自己用次數四捨五入），故百分比另外從嚴核對。 */
 export function verifyCoachText(text, p) {
   const bad = BANNED_WORDS.find(w => text.includes(w));
   if (bad) return { ok: false, reason: `負面字眼「${bad}」` };
+  const rate = rateOf(p);
+  const pct = percentsIn(text).find(n => n !== rate);
+  if (pct !== undefined) return { ok: false, reason: `百分比 ${pct}% 與畫面達標率 ${rate ?? '—'}% 不同` };
   const allow = allowedNumbers(p);
   const wrong = numbersIn(text).find(n => !allow.has(n));
   if (wrong !== undefined) return { ok: false, reason: `數字 ${wrong} 對不上成績` };
