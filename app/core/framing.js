@@ -130,7 +130,7 @@ function fail(issue, parts, text, span = 0) { return { ok: false, issue, parts, 
 export function framingReport(frame, opts = {}) {
   const {
     gateLandmarks = [], gatePairs = [], visMin = FRAMING.visMin, tol = FRAMING.outTol,
-    requireHead = true, needsHeadroom = false,
+    requireHead = true, needsHeadroom = false, headroomText = null,
     maxSpan = FRAMING.maxSpan, minSpan = FRAMING.minSpan,
     headroom = FRAMING.headroom, footroom = FRAMING.footroom,
     baselineSpan = null,
@@ -215,7 +215,7 @@ export function framingReport(frame, opts = {}) {
   //    上下緣分開回報 —— 問題在腳卻叫使用者「讓頭頂留空間」，使用者只會愈調愈錯。
   if (needsHeadroom) {
     if (box.top < headroom) {
-      return fail('no_headroom', [], '這個動作會跳起來 —— 請再後退一點，讓頭頂上方留出約一個頭的空間', box.span);
+      return fail('no_headroom', [], headroomText || '這個動作會跳起來 —— 請再後退一點，讓頭頂上方留出約一個頭的空間', box.span);
     }
     if (box.bottom > 1 - footroom) {
       return fail('no_footroom', [], '腳快超出畫面下緣了 —— 請把鏡頭往上抬一點，或再後退一步', box.span);
@@ -300,7 +300,7 @@ export function cameraHeightHint(frame, { threshold = CAMERA_HIGH_RATIO, visMin 
     high: ratio < threshold,
     ratio,
     text: ratio < threshold
-      ? '鏡頭位置偏高 —— 這樣下蹲深度會被低估，可能蹲到底也不算次數。建議把鏡頭放低一些（約與胸口同高），或往後站遠一點'
+      ? '鏡頭位置偏高 —— 下蹲深度會被低估，可能蹲到底也不算次數。請把裝置放低，放在地上或矮凳上，鏡頭大約在膝蓋到腰的高度'
       : '',
   };
 }

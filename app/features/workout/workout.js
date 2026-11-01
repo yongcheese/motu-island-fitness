@@ -1,5 +1,5 @@
 // Tab2 訓練（核心）：分類 → 清單 → 簡介 → 即時偵測 → 結算。
-import { EXERCISES, PLANNED, GROUPS } from '../../core/exercises/index.js';
+import { EXERCISES, PLANNED, GROUPS, LOCKED } from '../../core/exercises/index.js';
 import { coinsFor, ratePct } from '../../core/rewards.js';
 import { safetyPanelHtml, exerciseGuideHtml, bindSafetyPanel } from './safety.js';
 import { GATE_PROGRESS as SQUAT_GATE_PROGRESS } from '../../core/exercises/squat.js';
@@ -16,6 +16,7 @@ import { framingReport, createStabilityTracker, landmarkOk, HEAD_LANDMARKS, came
 import { sampleVideoLuma, lightingReport } from '../../core/lighting.js';   // 光線品質：量出來並告知，不放寬判定門檻
 import { ALL_FRAME, displaySegments, gaugeColor, phaseCueText } from '../../ui/display-colors.js';   // 顏色語意（純函式，可單測）
 import { icon } from '../../ui/icons.js';   // 合體 Slice 3：Lucide 線條圖示，取代 emoji
+import { buildCoachPayload, fetchCoachLine } from '../../core/coachLine.js';   // AI 教練評語（組間休息、結算；Gemini 失敗退回預設句）
 
 let CTX = null;
 let root = null;
@@ -140,7 +141,7 @@ function beep(freq = 640, dur = 0.12, vol = 0.2) {
 export default {
   id: 'workout', label: '訓練', icon: 'dumbbell',   // 分頁列實際讀 main.js 的 TABS，這裡只是 Lucide 名稱註記
   mount(el, ctx) { CTX = ctx; root = el; renderMenu(); },
-  unmount() { stopLive(); cancelAnimationFrame(demoRaf); disposeIntroAv(); stopCardAnims(); disposeCardAv();
+  unmount() { silence(); stopLive(); cancelAnimationFrame(demoRaf); disposeIntroAv(); stopCardAnims(); disposeCardAv();
     // 獎勵儀式的 timer 與掛在 body 上的金幣、彩帶都要清 —— 它們不會隨 #view.innerHTML 一起消失，
     // 切頁後會變成畫面上擦不掉的殘影。rwClear 一併處理（Slice 13）。
     rwClear();
@@ -150,13 +151,14 @@ export default {
 
 /* ---------------- 選單 ---------------- */
 function renderMenu(activeGroup = 'all') {
+  silence();   // 從結算頁回到清單：還在念的 AI 總評要停（2026-10-31 實測回報）
   CTX.setChrome(true);
   cancelAnimationFrame(demoRaf);
   disposeIntroAv();
   const groups = ['all', ...Object.keys(GROUPS)];
   const groupName = (g) => g === 'all' ? '全部' : GROUPS[g];
   const all = [
-    ...Object.values(EXERCISES).map(e => ({ ...e, ready: true })),
+    ...Object.values(EXERCISES).map(e => ({ ...e, ready: !LOCKED.has(e.id) })),
     ...PLANNED.map(e => ({ ...e, ready: false })),
   ];
   const list = activeGroup === 'all' ? all : all.filter(e => e.group === activeGroup);
@@ -172,14 +174,14 @@ function renderMenu(activeGroup = 'all') {
       <div class="wk-filters">
         <div class="wk-search">
           <span class="wk-search-ic">${icon('search')}</span>
-          <input id="wk-q" class="wk-input" aria-label="搜尋動作" placeholder="搜尋動作（深蹲、開合跳…）" />
+          <input id="wk-q" class="wk-input" aria-label="搜尋動作" placeholder="搜尋動作（深蹲、高抬腿…）" />
         </div>
         <div class="wk-groups">
           ${groups.map(g => `<button class="wk-chip ${g === activeGroup ? 'on' : ''}" data-g="${g}">${groupName(g)}</button>`).join('')}
         </div>
       </div>
       <div class="wk-grid stagger" id="wk-list"></div>
-      ${exerciseGuideHtml(Object.values(EXERCISES).map(guideOf))}
+      ${exerciseGuideHtml(Object.values(EXERCISES).filter(e => !LOCKED.has(e.id)).map(guideOf))}
     </div>`;
 
   bindSafetyPanel(root, root.querySelector('#wk-guide-open'), 'wk-guide');
@@ -190,7 +192,7 @@ function renderMenu(activeGroup = 'all') {
       `<p class="sub" style="grid-column:1/-1">找不到符合的動作</p>`;
     listEl.querySelectorAll('[data-id]').forEach(c => {
       c.onclick = () => {
-        const ex = EXERCISES[c.dataset.id];
+        const ex = LOCKED.has(c.dataset.id) ? null : EXERCISES[c.dataset.id];
         if (ex) renderIntro(ex); else CTX.toast('此動作開發中，敬請期待');
       };
     });
@@ -219,7 +221,7 @@ function renderMenu(activeGroup = 'all') {
   // 推薦卡：hook 只用 data-rec-id（與型錄卡 [data-id]/.wk2 完全隔離）；innerHTML 後綁定＋null-guard
   const recEl = root.querySelector('[data-rec-id]');
   if (recEl) {
-    const goRec = () => { const ex = EXERCISES[recEl.dataset.recId]; if (ex) renderIntro(ex); };
+    const goRec = () => { const ex = LOCKED.has(recEl.dataset.recId) ? null : EXERCISES[recEl.dataset.recId]; if (ex) renderIntro(ex); };
     recEl.onclick = goRec;
     recEl.onkeydown = (ev) => {
       if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); goRec(); }
@@ -367,6 +369,7 @@ function exIcon(id, size) {
 
 /* ---------------- 簡介 ---------------- */
 function renderIntro(ex) {
+  silence();   // 結算頁按「再一次」：同上
   CTX.setChrome(true);
   stopCardAnims();
   const s = CTX.store.getState();
@@ -433,7 +436,7 @@ function judgeText(id) {
   return {
     squat: '髖部需低於膝蓋高度、起身回穩；排除只彎腰、半蹲。',
     jumpingjack: '雙手過肩且雙腳張開超過肩寬；排除只揮手或只張腳。',
-    highknees: '大腿抬到接近水平（與鉛直約 55°）、左右交替；排除坐著抬腿、不交替。',
+    highknees: '大腿抬到接近水平（約 75°，鏡頭放腰的高度）、左右交替；排除坐著抬腿、不交替。',
     pushup: '手肘下壓達標、身體保持一直線；排除半程、塌腰。',
   }[id] || '';
 }
@@ -605,8 +608,16 @@ async function preStart(statusEl, run) {
       <p>${ex.meta.voiceIntro || ex.meta.desc}</p>
       <div class="lv-ps-tip">${ex.meta.placementTip || '請站到鏡頭中、全身入鏡，準備開始'}</div>
     </div>`;
-  // placementTip：動作對機位有要求時（目前只有深蹲要放低）接在說明後面一起念，不另開一句，免得被語音優先序蓋掉
-  if (run.voice && ex.meta.voiceIntro) CTX.coach.say(ex.meta.voiceIntro + (ex.meta.placementTip ? `${ex.meta.placementTip}。` : ''), 'mid');
+  // 擺放提示改在取景開始時、等這段說明念完才念（見 waitForFraming）。
+  // 2026-10-31 實測：以前接在說明後面一起念，但這段很長，4.6 秒後取景以最高優先念「請站入鏡頭範圍」
+  // 把它打斷 —— 擺放提示排在最後，永遠沒念到。
+  // 2026-10-31 實測回報：「取景第一句就要說請先將裝置放在安全地面上，不然我完全不知道」
+  // → 有擺放語音的動作，第一句先講擺放，動作說明等它念完再講。
+  const placeVoice = ex.meta.placementVoice;
+  if (run.voice && placeVoice) {
+    CTX.coach.say(placeVoice, 'high');
+    if (ex.meta.voiceIntro) sayWhenIdle(ex.meta.voiceIntro, () => live === run, 30000);
+  } else if (run.voice && ex.meta.voiceIntro) CTX.coach.say(ex.meta.voiceIntro, 'mid');
   await sleep(ex.meta.placementTip ? 4600 : 2600);   // 讓使用者讀說明、就定位；有擺放提示時多留 2 秒搬裝置
   if (live !== run) return false;
   // Slice3 R3 取景關卡（僅 camera 路徑；demo 合成幀永遠可見故跳過——已申報）
@@ -670,7 +681,7 @@ function waitForFraming(run) {
       gateLandmarks: run.ex.gateLandmarks || run.ex.requiredLandmarks || [],
       gatePairs: run.ex.gatePairs || [],
       requireHead: true,
-      needsHeadroom: !!run.ex.needsHeadroom,
+      needsHeadroom: !!run.ex.needsHeadroom, headroomText: run.ex.headroomText || null,
     };
     // 依 spec 動態填充檢查燈（R1 靜態三列僅預設殼）
     const checksWrap = gate.querySelector('.lv-gate-checks');
@@ -685,7 +696,13 @@ function waitForFraming(run) {
     gate.hidden = false;
     if (live?.hud?.next) { live.hud.next.hidden = true; live.hud.next.textContent = ''; }   // 關卡期間不顯示動作指引，避免疊字
     run.skipGate = false;
-    if (run.voice) CTX.coach.say('請站入鏡頭範圍，保持全身入鏡', 'high');
+    // 有擺放語音的動作（深蹲放低、高抬腿放腰高）：開始前第一句已講擺放；取景期間一直沒就位時，
+    // 距上次念出 25 秒再提醒一次怎麼擺（擺放提示本身約念 12 秒）。沒有的動作照舊念「請站入鏡頭範圍」。
+    const placeTip = run.ex.meta?.placementVoice || run.ex.meta?.placementTip;
+    // 必須在 sayWhenIdle 之前宣告：當下沒在講話時 onSaid 會立刻同步執行
+    // 擺放語音已在開始前第一句講過；取景期間只在一直沒就位時，距上次 25 秒再提醒
+    let lastTipAt = Date.now(), camHintSaid = false;
+    if (run.voice && !placeTip) CTX.coach.say('請站入鏡頭範圍，保持全身入鏡', 'high');
     let readyMs = 0, gateMs = 0, last = performance.now();
     // Slice 12：取景期間深度量表沒有意義，還會在小螢幕蓋到狀態卡 → 關卡期間隱藏
     const wrap = root?.querySelector('#lv-wrap');
@@ -733,7 +750,7 @@ function waitForFraming(run) {
                 : !report.ok ? ['ruler', report.text]
                   : !stab.stable ? ['hourglass', '請站穩不動，正在鎖定您的位置…']
                     : people > 1 ? ['map-pin', `已就位（畫面中有 ${people} 人，已鎖定最靠近鏡頭的您）`]
-                      : (run.camHint && run.camHint.high) ? ['ruler-dimension-line', run.camHint.text]
+                      : (camHighFor(run)) ? ['ruler-dimension-line', run.camHint.text]
                         : ['map-pin', '已就位，準備開始'];
           // 左上狀態列已拿掉（使用者 09-29 要求），取景訊息改顯示在中間的提示框
           setCoach(msg, allOk ? 'good' : 'mid');
@@ -742,6 +759,12 @@ function waitForFraming(run) {
             if (miss.length) CTX.coach.say(`看不到你的${miss[0]}，請調整位置`, 'mid');
             else if (!report.ok && report.text) CTX.coach.say(report.text, 'mid');
           }
+          // 一直沒就位：距上次念出 25 秒再提醒一次擺放方式（使用者可能還沒把裝置放對）
+          if (run.voice && placeTip && !allOk && Date.now() - lastTipAt > 25000) {
+            if (CTX.coach.say(placeTip, 'mid')) lastTipAt = Date.now();
+          }
+          // 深蹲鏡頭偏高：畫面上的提示也念出來（每次取景只念一次）
+          if (run.voice && !camHintSaid && camHighFor(run)) { if (CTX.coach.say(run.camHint.text, 'mid')) camHintSaid = true; }
         }
         readyMs = allOk ? readyMs + dt : 0;
         if (bar) bar.style.width = Math.min(100, readyMs / 20) + '%';
@@ -793,7 +816,7 @@ function cameraErrorMsg(err) {
 
 /* ---------------- Live 版型元件（Slice3 R2：純模板，吃資料回字串；接線歸 R3） ---------------- */
 // 取景檢查關卡（R3 接 gateLandmarks 後由 framingReady 驅動檢查燈；R2 為 R1 靜態內容原樣）
-function gateHtml() {
+function gateHtml(ex) {
   // Slice 12：原本「提示字」「檢查項」「跳過鈕」都是同一種白色膠囊，使用者分不出哪個是狀態、哪個要按。
   // 改成一張狀態卡：上半是狀態（檢查清單＋2 秒進度條，都不可按），分隔線下才是唯一的操作（附後果說明的次要文字鈕）。
   return `<div class="lv-gate" id="lv-gate" hidden>
@@ -807,7 +830,7 @@ function gateHtml() {
               <li class="lv-gate-chk">膝蓋</li>
             </ul>
             <div class="lv-gate-s">全部打勾並站穩 2 秒，就會<b>自動開始</b></div>
-            <div class="lv-gate-tip">筆電放桌上也可以：螢幕立直讓鏡頭平視前方，人往後退到頭到腳都在畫面裡；深蹲正面、側身都能計次</div>
+            <div class="lv-gate-tip">${escHtml(gateTipOf(ex))}</div>
             <div class="lv-gate-bar" aria-hidden="true"><i></i></div>
             <div class="lv-gate-alt" hidden>
               <span>偵測一直過不了？</span>
@@ -826,6 +849,7 @@ function restHtml({ setIdx, totalSets, restSec, nextReps }) {
           <div class="lv-rest-ring"><b>${restSec}</b><span>秒</span></div>
           <div class="lv-rest-next">下一組：第 ${setIdx + 1} 組 · ${nextReps} 下</div>
           <div class="lv-rest-s">深呼吸，放鬆一下</div>
+          <div class="lv-rest-ai" id="lv-rest-ai" aria-live="polite">${icon('sparkles', { size: 16 })}<span>AI 教練整理這組表現中…</span></div>
           <button class="btn secondary lv-rest-skip" type="button">跳過休息</button>
         </div>
       </div>`;
@@ -866,7 +890,7 @@ function liveShell(ex) {
       <div class="lv-repflash" id="lv-repflash"></div>
       <div class="lv-status" id="lv-status"></div>
       <!-- Slice3 R1 靜態版型（預設 hidden、零邏輯；gate 判定/組數切換歸 R3 接線輪） -->
-      ${gateHtml()}
+      ${gateHtml(ex)}
       ${restHtml({ setIdx: 1, totalSets: 3, restSec: 45, nextReps: 12 })}
       <div class="lv-hud">
         <div class="lv-metric"><div class="m-v" id="m-time">0:00</div><div class="m-k">時間</div></div>
@@ -884,12 +908,24 @@ function liveShell(ex) {
     </div>`;
 }
 
+/** 取景卡的擺放說明：動作有自己的擺放提示就用它（深蹲放低、高抬腿放腰高），否則用通用說明。
+ *  2026-10-31 實測回報：深蹲取景時顯示的是通用的「筆電放桌上、鏡頭平視前方」，與深蹲要放低的建議相反，
+ *  而 placementTip 只在取景前閃過約 4 秒 —— 使用者調整位置時看不到。 */
+/** 鏡頭偏高的提醒只給深蹲：它講的是「下蹲深度被低估」，高抬腿本來就建議腰高。 */
+function camHighFor(run) {
+  return !!(run.camHint && run.camHint.high && run.ex?.id === 'squat');
+}
+export function gateTipOf(ex) {
+  return ex?.meta?.placementTip || '筆電放桌上也可以：螢幕立直讓鏡頭平視前方，人往後退到頭到腳都在畫面裡';
+}
+
 /** 深度量表上「達標線」該畫的位置（0..1 的 progress）。
  *  有品質 gate 的動作以 gate 為準；其餘動作沒有獨立的 gate，退回相位門檻。
  *  ⚠️ 新增動作若也有「達到相位但仍可能被 gate 擋下」的設計，必須在此登記，
  *     否則畫面會再度對使用者說謊。 */
 export function gaugeTargetOf(ex) {
   if (ex?.id === 'squat') return SQUAT_GATE_PROGRESS;
+  if (Number.isFinite(ex?.gaugeTarget)) return ex.gaugeTarget;   // 深度條換了刻度的動作（高抬腿），達標線跟著換
   return ex?.thresholds?.targetEnter ?? 1;
 }
 
@@ -1010,6 +1046,65 @@ function enterRest(run) {
   emitPhase('rest', set, run.ex);
   beep(720, 0.16);
   if (run.voice) CTX.coach.say(`第 ${set.idx} 組完成，休息 ${set.restSec} 秒`, 'mid');
+  requestRestCoach(run);
+}
+
+/* ---------------- AI 教練評語（組間休息、結算）----------------
+   每一下的即時糾正維持預先寫好的口令（要 0.1 秒內講出來）；休息與結算不趕時間，
+   由後端 Gemini 依這次的成績即時生成一兩句話，失敗或逾時就用預設句子（見 core/coachLine.js）。 */
+// 目前累積的錯誤（沒算到的原因＋可以更好的提醒），轉成 [顯示名稱, 次數, 官方糾正口令]、次數多的在前。
+// 糾正口令與訓練中「這一下為什麼沒算」講的是同一句（rejectHint）：Gemini 只能改寫它，建議才會和判定標準一致。
+function coachFaults(summary, ex) {
+  const all = { ...(summary.faultCounts || {}), ...(summary.advisoryCounts || {}) };
+  return Object.entries(all).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => [faultName(k), n, rejectHint(k, ex)]);
+}
+// 語音模組在講話時會丟掉新的普通句子 → 等前一句講完再講（最多等 waitMs），條件不成立（已離開這一刻）就放棄
+// 離開畫面時停止語音：已經在念的立刻停、還在排隊（sayWhenIdle）的全部作廢。
+// 2026-10-31 實測回報：切到主畫面後 AI 總評還在念 —— 訓練結束後 live 已清空，stopLive 不會再停語音。
+let speechGen = 0;
+function silence() { speechGen++; try { CTX?.coach?.stop(); } catch { } }
+function sayWhenIdle(text, stillValid, waitMs = 8000, onSaid = null) {
+  const t0 = Date.now(), gen = speechGen;
+  const tryNow = () => {
+    if (gen !== speechGen || !stillValid()) return;
+    if (CTX.coach.say(text, 'mid')) { onSaid?.(); return; }
+    if (Date.now() - t0 < waitMs) setTimeout(tryNow, 300);
+  };
+  tryNow();
+}
+function showCoachLine(el, line) {
+  if (!el) return;
+  el.dataset.src = line.source;                 // gemini／preset：畫面樣式一樣，留給測試與除錯辨識
+  const span = el.querySelector('span'); if (span) span.textContent = line.text;
+}
+function requestRestCoach(run) {
+  const set = run.set, idx = set.idx;
+  const sum = run.detector.summary();
+  const payload = buildCoachPayload('rest', run.ex, {
+    setIdx: idx, totalSets: set.total, setValid: set.setEndValid - set.baseValid, setTarget: set.target,
+    totalValid: sum.validReps, totalInvalid: sum.invalidReps, faults: coachFaults(sum, run.ex),
+  });
+  const still = () => live === run && run.set.phase === 'REST' && run.set.idx === idx;
+  fetchCoachLine(payload).then((line) => {
+    if (!still()) return;
+    showCoachLine(root.querySelector('#lv-rest-ai'), line);
+    if (run.voice) sayWhenIdle(line.text, still);
+  });
+}
+function requestSummaryCoach(ex, summary, session) {
+  const el = root.querySelector('#wk-sum-ai');
+  if (!el) return;
+  const payload = buildCoachPayload('summary', ex, {
+    totalValid: summary.validReps, totalInvalid: summary.invalidReps, durationSec: session.durationSec,
+    faults: coachFaults(summary, ex),
+  });
+  const still = () => el.isConnected;
+  fetchCoachLine(payload).then((line) => {
+    if (!still()) return;
+    showCoachLine(el, line);
+    if (CTX.store.getState().prefs.voice) sayWhenIdle(line.text, still);
+  });
 }
 // REST → WORK：baseValid 固定用 snapshot
 function enterWork(run) {
@@ -1242,7 +1337,7 @@ function handleResult(res, now, lm) {
     // 追蹤狀態膠囊與動作週期步驟條已拿掉（使用者 09-29 要求：左上只留動作名與結束鈕）；
     // 看不到人的原因由下方教練提示框講（res.cue）。
     // 3) 深度量表：訊號即時填充 + 四段色（藍準備 → 黃進行中 → 綠達標 → 紅錯誤）
-    const gpct = Math.round(Math.max(0, Math.min(1, res.signal)) * 100);
+    const gpct = Math.round(Math.max(0, Math.min(1, res.gauge ?? res.signal)) * 100);   // 高抬腿依大腿角度顯示（見 highknees.js liftGauge）
     hud.gfill.style.height = gpct + '%';
     hud.gfill.classList.toggle('empty', gpct === 0);   // Slice 9：0% 時描邊會縮成一顆深藍點，交給 CSS 拿掉
     hud.gfill.dataset.c = gaugeColor(res, live.ex);
@@ -1579,6 +1674,11 @@ function renderResult(ex, summary, session, setReps = []) {
         </div>
       </section>`}
 
+      <section class="card wk-sum-ai" id="wk-sum-ai" aria-label="AI 教練總評" aria-live="polite">
+        <div class="wk-sum-sec-t">${icon('sparkles', { size: 16 })} AI 教練總評</div>
+        <p class="wk-sum-ai-t"><span>正在整理這次的表現…</span></p>
+      </section>
+
       <section class="card wk-sum-notes" aria-label="下次怎麼更好">
         ${faults.length ? `
         <div class="wk-sum-sec-t">${icon('triangle-alert', { size: 16 })} 沒算到的原因</div>
@@ -1599,8 +1699,9 @@ function renderResult(ex, summary, session, setReps = []) {
       ${empty ? '' : `<button class="wk-sum-link" id="wk-rw-done" type="button">回到動作清單</button>`}
     </div>`;
   root.querySelector('#wk-again').onclick = () => { rwClear(); renderIntro(ex); };
-  const go = root.querySelector('#wk-rw-go'); if (go) go.onclick = () => { rwClear(); CTX.navigate('island'); };
+  const go = root.querySelector('#wk-rw-go'); if (go) go.onclick = () => { rwClear(); silence(); CTX.navigate('island'); };
   root.querySelector('#wk-rw-done').onclick = () => { rwClear(); renderMenu(); };
+  requestSummaryCoach(ex, summary, session);
 
   // ── 演出：彩帶 → 金幣滾動 → 飛向島嶼目標 → 進度推進 ──
   // 純表現層：store 早在 finishLive 就 commit 完了，演出只是把「已經發生的事」畫出來。

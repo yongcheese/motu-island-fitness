@@ -7,6 +7,7 @@
  *   3. renderer 緩衝取所有點的最大寬高、只長不縮；每個點從左下角那一塊取圖；
  *   4. 視角依動作；瘦長的框改以寬度取景（390 寬推薦卡的草帽帽簷不被裁）；
  *   5. 腿彎膝蓋（limbBend.ts）：膝蓋以上不動、以下繞膝蓋轉、腳底位置正確；不改共用的原始幾何，卸載換回。
+ *   6. 島上第一人稱把共用材質淡出成透明時，健身頁畫主角前還原、畫完改回（islandFade.ts）。
  *
  *   npm run test:fitness
  */
@@ -15,6 +16,8 @@ import {
 } from '../src/components/fitness/characterViews';
 import { BoxGeometry, CylinderGeometry, Group, Mesh, SphereGeometry } from 'three';
 import { createArmStretcher, createLegBender, measureArm, minStretch } from '../src/components/fitness/limbBend';
+import { liftIslandFade } from '../src/components/fitness/islandFade';
+import { MeshStandardMaterial } from 'three';
 
 let checks = 0;
 let failures = 0;
@@ -171,6 +174,26 @@ console.log('\n腿彎膝蓋');
   ok('伸縮歸零＝回到原形', (hand.geometry.getAttribute('position').array as Float32Array).every((v, i) => Math.abs(v - src[i]) < 1e-6));
   s.dispose();
   ok('卸載換回原本的幾何', hand.geometry === handGeo);
+}
+
+console.log('\n島上淡出不影響健身頁主角');
+{
+  // 模擬 Avatar.tsx 第一人稱後的狀態：皮膚材質 opacity 改成 0、原值記在 userData；衣服沒被動過
+  const skin = new MeshStandardMaterial(); skin.userData.originalOpacity = 1; skin.transparent = true; skin.opacity = 0;
+  const cloth = new MeshStandardMaterial();
+  const glass = new MeshStandardMaterial(); glass.userData.originalOpacity = 0.5; glass.transparent = true; glass.opacity = 0.2;
+  const root = new Group();
+  const head = new Mesh(new SphereGeometry(), skin);
+  const hand = new Mesh(new SphereGeometry(), skin);   // 同一個材質掛在兩個零件上
+  root.add(head, hand, new Mesh(new BoxGeometry(), cloth), new Mesh(new BoxGeometry(), [glass, cloth]));
+  const restore = liftIslandFade(root);
+  ok('繪製時皮膚還原成原本的不透明', skin.opacity === 1);
+  ok('原本就半透明的材質還原成它自己的原值（0.5），不是 1', glass.opacity === 0.5);
+  ok('沒被淡出的材質不動', cloth.opacity === 1 && cloth.userData.originalOpacity === undefined);
+  ok('不切換 transparent（避免每幀重編著色器）', skin.transparent === true && glass.transparent === true);
+  restore();
+  ok('畫完改回島上設定的值（第一人稱照樣隱藏）', skin.opacity === 0 && glass.opacity === 0.2);
+  ok('沒有淡出時呼叫也不改任何東西', (() => { const r = liftIslandFade(new Group().add(new Mesh(new BoxGeometry(), cloth))); r(); return cloth.opacity === 1; })());
 }
 
 console.log(`\n${checks - failures}/${checks} 通過`);

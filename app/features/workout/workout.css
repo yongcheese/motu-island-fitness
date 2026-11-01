@@ -609,6 +609,9 @@
 .lv-rest-ring span { font-size: 12px; color: var(--motu-color-text-muted); }
 .lv-rest-next { font-size: 14px; font-weight: 800; color: var(--motu-color-text); }
 .lv-rest-s { font-size: 13px; color: var(--motu-color-text-muted); }
+.lv-rest-ai { display: flex; gap: 6px; align-items: flex-start; max-width: 300px; margin-inline: auto; font-size: 14px; font-weight: 700; line-height: 1.5; color: var(--motu-color-text); text-align: left; }
+.lv-rest-ai .icon { flex: none; margin-top: 2px; color: var(--motu-gold-text); }
+.wk-sum-ai-t { margin: 8px 0 0; font-size: 15px; line-height: 1.7; color: var(--motu-color-text); }
 
 /* 倒數欄雙態（成對切換版型；R3 才接切換邏輯） */
 .lv-set-progress { font-variant-numeric: tabular-nums; }

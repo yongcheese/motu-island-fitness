@@ -177,6 +177,10 @@ export function FitnessHost() {
     workout.mount(view, ctx);
     return () => {
       workout.unmount();
+      // 關掉健身頁 = 這次的語音教練整個作廢：停止正在念的、之後任何延遲的呼叫也講不出來
+      // （2026-10-31 使用者回報：離開健身頁後語音還在講）。每次進健身頁都會建立新的教練，所以不影響下次。
+      coachRef.current?.setEnabled(false);
+      coachRef.current?.stop();
       window.clearTimeout(toastTimer);
       appRef.current.setIsWorkoutActive(false);
       coachRef.current = null;

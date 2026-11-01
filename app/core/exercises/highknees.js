@@ -47,21 +47,67 @@ export const TORSO_UPRIGHT_RATIO = 0.80;
 //    對外不得宣稱本項已驗證。真人測試時應優先確認此值。
 // ⚠️ 隨之更新對外文案：不再宣稱「膝蓋抬到髖部高度」，改為「大腿抬到接近水平」——
 //    實際門檻是 55°（見上方 2026-09-19 的更正），就不該說成 90°。
-export const THIGH_LIFT_TARGET = 0.50;
-export const THIGH_LIFT_ENTER = 0.13;   // θ≈30°，開始算一次嘗試
+//
+// ⚠️ 2026-10-31 使用者決定：計次標準拉高到「接近水平（約 75°）」，並規定高抬腿鏡頭放在腰的高度。
+//    成因（立體玩偶針孔投影模擬，髖高 0.9m、大腿 0.45m、距離 2m）：鏡頭放低（膝蓋高）時，
+//    膝蓋往前抬到約 77° 就在畫面上與髖重疊，縮短率提早到頂、再抬反而變小 —— 深度條不可能「水平才滿」。
+//    鏡頭在腰的高度（約 0.9m）時，縮短率剛好在 90° 到 1.00，量測與真實角度一致。
+//    同一模擬：腰高鏡頭、距離 1.5／2.0／2.5m，真實 75° 的縮短率為 0.636／0.669／0.687 → 計次門檻取 0.65。
+//      計次門檻 = 0.13 + 0.80×(0.78−0.13) = 0.65（量測 θ≈69.5°，腰高鏡頭下約真實 75°）
+//      起算門檻 = 0.13 + 0.30×(0.78−0.13) = 0.325（量測 θ≈47.5°）
+//    真人影片（MediaPipe 實跑）：抬到水平的三段全數計入；公園那位抬約 70° 的 31 下只剩 4 下 —— 這是刻意的嚴格。
+//    ⚠️ 仍是幾何推導＋使用者決策，不是以標註資料標定的，對外不得宣稱已驗證。
+export const THIGH_LIFT_TARGET = 0.78;
+export const THIGH_LIFT_ENTER = 0.13;   // norm 的下端點（θ≈30°）；實際起算門檻見上方 0.325
+
+// —— 深度條（只管顯示，不影響計次）——
+// 2026-10-29 實機回報：「才抬一點點、整隻腳都還沒抬起來，深度條就整個拉滿」。
+// 成因：深度條原本直接顯示計次用的 progress，而 progress 只在 30°→60° 這一小段從 0 走到 1
+// （上面 norm 的映射端點），玩偶實測：30° 以下 0%、40° 24%、50° 54%、60° 86%、65° 起就滿格，
+// 所以使用者一抬就衝到頂。
+// 改成依「大腿與鉛直線的夾角」顯示：θ = arccos(1 − 縮短率)。
+//   GAUGE_START_DEG 以下為 0：站著時的骨架抖動（縮短率約 0.03 → 14°）不會讓深度條跳動；
+//   GAUGE_FULL_DEG（90°）才滿格：大腿真的抬到水平才滿。
+//   GAUGE_CURVE 1.5：前段慢、後段快 —— 2026-10-30 使用者實測線性版（15°→75°）「還是太快到頂」，
+//   改成曲線後玩偶：30° 8%、45° 23%、60° 41%、85° 63%；真人影片：膝抬一半的踏步 17%，
+//   完整高抬腿每下約 65–95%，只有接近水平才滿。
+// 計次門檻（55°）不變；白色達標線改畫在同一把尺上的 55° 位置（GAUGE_TARGET），
+// 深度條過線變綠的那一刻仍然就是會計次的那一刻（顏色由 progress 判斷，兩者單調對應同一門檻）。
+export const GAUGE_START_DEG = 15;
+export const GAUGE_FULL_DEG = 90;
+export const GAUGE_CURVE = 1.5;
+const THRESHOLDS = { attemptEnter: 0.30, targetEnter: 0.80, readyReturn: 0.25 };
+/** 縮短率 → 深度條 0..1（依大腿夾角，前慢後快的曲線）。 */
+export function liftGauge(fore) {
+  const f = Math.min(1, Math.max(0, fore || 0));
+  const deg = Math.acos(1 - f) * 180 / Math.PI;
+  return Math.min(1, Math.max(0, (deg - GAUGE_START_DEG) / (GAUGE_FULL_DEG - GAUGE_START_DEG))) ** GAUGE_CURVE;
+}
+/** 計次門檻（targetEnter）換算到深度條上的位置。 */
+export const GAUGE_TARGET = liftGauge(THIGH_LIFT_ENTER + THRESHOLDS.targetEnter * (THIGH_LIFT_TARGET - THIGH_LIFT_ENTER));
 
 export const highknees = {
   id: 'highknees', name: '高抬腿', group: 'cardio',
   met: 8.0, baseCoinPerRep: 5, intensity: 1.1,
   mode: 'alternating',
+  // 平滑視窗改用時間（100ms）而非引擎預設的 5 幀 —— 5 幀在 15fps 時等於 333ms，
+  // 會把一下只有 0.3–0.4 秒的抬腿峰值抹平到門檻以下（engine.js smooth 的註解有實測數據）。
+  // 2026-10-29 以 MediaPipe 實跑真人正面影片標定：70／100／140ms 結果相近，取中間值 100ms。
+  smoothMs: 100,
   requiredLandmarks: [LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE, LM.LEFT_ANKLE, LM.RIGHT_ANKLE],
   // 入鏡判定不含腳踝：核心訊號是大腿投影縮短率（只需髖+膝）；腳踝僅用於支撐腳打直檢查
   gateLandmarks: [LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE],
-  // 高抬腿是原地彈跳的有氧動作，跟開合跳同類：騰空超過畫面高 0.12 時頭會衝出上緣，
-  // 逐幀的頭部把關就會讓整組計不到次（實測 0.12 → valid 0/4、112 幀中斷）。
-  // 在取景關卡先要求上緣留白，就不會發生。
-  needsHeadroom: true,
-  thresholds: { attemptEnter: 0.30, targetEnter: 0.80, readyReturn: 0.25 },
+  // 2026-10-31 拿掉上緣留白（needsHeadroom）。使用者實測「已經全身入鏡，卻一直不讓我開始」：
+  // 留白要求頭頂離上緣 18% 畫面高（依開合跳騰空高度訂），鏡頭放腰高時得站很遠才過得了。
+  // 當初要留白的理由是「頭衝出上緣 → 逐幀頭部把關讓整組計不到次」，但下方 requireHead:false
+  // 已讓訓練中不看頭（判定只用髖與膝），那個理由不再成立；高抬腿也不會跳（使用者確認）。
+  // 測試鎖住：頭頂貼上緣、抬膝時頭短暫出框，仍照常計次（framing.test.js）。
+  needsHeadroom: false,
+  // 2026-10-31 使用者回報：「一直提醒我要跟地面平行，但我平行時深度條已經滿了」——
+  // 是抬升途中的 deeper 口令逐下觸發；改成只在沒抬到的那一下提醒（見 engine.js）。
+  liveDeeperCue: false,
+  thresholds: THRESHOLDS,
+  gaugeTarget: GAUGE_TARGET,   // 深度條上的達標線位置（見 liftGauge）
   // 訓練中不強制看到頭：本動作的判定只用到髖與膝（見 gateLandmarks），
   // 而原地抬膝時頭部常會短暫衝出畫面上緣 —— 逐幀要求看到頭會讓整組計不到次。
   // 開始前的取景關卡仍硬性要求頭部（workout.js 寫死 requireHead:true），
@@ -75,7 +121,7 @@ export const highknees = {
   //  · 每句都是可直接執行的指令，不用抽象詞。
   cues: {
     no_support: { text: '站著做 —— 支撐的那隻腳要打直，不要坐著或蹲著抬腿', priority: 'high' },
-    deeper: { text: '大腿再抬高一點，抬到接近與地面平行', priority: 'mid' },
+    deeper: { text: '大腿再抬高一點，抬到與地面平行', priority: 'mid' },
     torso_lean: { text: '上半身站直，不要往前彎腰', priority: 'mid' },
   },
   phaseCues: {
@@ -86,7 +132,10 @@ export const highknees = {
   },
   meta: { desc: '原地站著，左右輪流把大腿抬到接近水平', target: '核心、髖屈肌', sets: 3, repsPerSet: 30, restSec: 20, difficulty: 2,
     tempo: 'fast',              // 節奏快 → 抑制閒聊型語音，改以字卡提示（Bug2(c)）
-    voiceIntro: '開始高抬腿。站直，原地左右輪流抬腿，大腿抬到接近與地面平行，上半身保持挺直。手怎麼擺都可以，不會影響判定。' },
+    voiceIntro: '開始高抬腿。站直，原地左右輪流抬腿，大腿抬到接近與地面平行，上半身保持挺直。手怎麼擺都可以，不會影響判定。',
+    // 2026-10-31：高抬腿要腰高機位（見 THIGH_LIFT_TARGET 的模擬）；與深蹲相反，深蹲要放低
+    placementTip: '高抬腿請把裝置放在桌上或椅子上並放穩，鏡頭大約在腰的高度，再往後退到全身入鏡',
+    placementVoice: '請先將裝置放在桌上或椅子上並放穩，鏡頭大約在腰的高度，再往後退到全身入鏡' },
   evaluate(f, s) {
     const hipC = midpoint(f[LM.LEFT_HIP], f[LM.RIGHT_HIP]);
     // 抬膝高度：改用「大腿投影縮短率」，理由與實測數據見上方 THIGH_LIFT_TARGET 註解。
@@ -127,6 +176,7 @@ export const highknees = {
       torso: gatePass ? 'green' : 'red',
       leftLeg: lc(progressL), rightLeg: lc(progressR), leftArm: 'green', rightArm: 'green',
     };
-    return { progressL, progressR, side, gatePass, faults, segments };
+    const gauge = liftGauge(Math.max(s.thighForeL ?? 0, s.thighForeR ?? 0));
+    return { progressL, progressR, side, gatePass, faults, segments, gauge };
   },
 };

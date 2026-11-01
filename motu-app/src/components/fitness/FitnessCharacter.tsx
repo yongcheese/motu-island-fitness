@@ -62,6 +62,7 @@ import { BASE_FOV, atlasSize, createViewRegistry, drawable, fovFor, growAtlas, p
 import { demoPose } from '@fitness/core/synth.js';
 import { useMotionPlan } from './perfGuard';
 import { createArmStretcher, createLegBender, measureArm, minStretch, type ArmShape, type ArmStretcher } from './limbBend';
+import { liftIslandFade } from './islandFade';
 
 /** 一下動作的秒數（與我方示範模式的節奏相近，縮圖裡看得清楚）。 */
 const REP_SECONDS = 1.8;
@@ -599,6 +600,8 @@ function Blitter() {
     const cam = camera as PerspectiveCamera;
     gl.setClearColor(0x000000, 0);
     gl.setScissorTest(true);
+    // 島上拉近成第一人稱時會把共用材質淡出成透明，畫健身頁主角前先還原、畫完改回（見 islandFade.ts）
+    const restoreIslandFade = liftIslandFade(scene);
     for (const m of list) {
       const { w, h } = pixelSize(m, dpr);
       m.group!.visible = true;
@@ -617,6 +620,7 @@ function Blitter() {
       }
       m.ctx!.drawImage(gl.domElement, ...sourceRect(s.atlas.h, w, h), 0, 0, w, h);
     }
+    restoreIslandFade();
     gl.setScissorTest(false);
     for (const m of all) if (m.group) m.group.visible = true;
   }, 1);
