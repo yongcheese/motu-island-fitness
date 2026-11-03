@@ -192,7 +192,18 @@ export async function updateDoc(reference: unknown, data: DocumentData) {
     localSaveStore.update(uid, reference.path, data as Record<string, unknown>);
     return;
   }
-  return firestoreUpdateDoc(reference as never, data as never);
+  try {
+    return await firestoreUpdateDoc(reference as never, data as never);
+  } catch (error) {
+    // A rules refusal names neither the rule nor the fields, and handleFirestoreError only gets
+    // the path. Which top-level keys the write touched is what decides which `hasOnly` clause of
+    // firestore.rules it had to match, so it is logged here, the one place that still knows.
+    if ((error as { code?: unknown } | null)?.code === 'permission-denied') {
+      const keys = [...new Set(Object.keys(data).map((key) => key.split('.')[0]))];
+      console.error('[firestore] 被規則拒絕的更新，寫入的欄位：', keys.join(', '), (reference as { path?: string }).path ?? '');
+    }
+    throw error;
+  }
 }
 
 export async function setDoc(

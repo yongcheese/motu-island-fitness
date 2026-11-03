@@ -261,13 +261,12 @@ service cloud.firestore {
     }
 
     function isValidWorkoutLog(data) {
-       return data.keys().hasAll(['logId', 'userId', 'type', 'duration', 'counts', 'calories', 'goldEarned', 'timestamp'])
+       return data.keys().hasAll(['logId', 'userId', 'type', 'duration', 'counts', 'goldEarned', 'timestamp'])
         && data.userId == request.auth.uid
         && data.logId is string && data.logId.size() <= 100
         && data.type is string && data.type.size() <= 100
         && data.duration is number && data.duration >= 0
         && data.counts is number && data.counts >= 0
-        && data.calories is number && data.calories >= 0.0
         && data.goldEarned is number && data.goldEarned >= 0
         && data.timestamp is string;
     }

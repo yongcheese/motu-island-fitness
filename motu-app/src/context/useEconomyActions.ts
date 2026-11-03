@@ -54,6 +54,7 @@
 import { db, doc, updateDoc, increment, handleFirestoreError, OperationType } from '../lib/firebase';
 import type { AuthUser } from '../auth/types';
 import { UserProfile } from '../types';
+import { reseatIslandPlacements } from '../lib/placementSurfaces';
 import { vibrateGoldEarned, vibrateTerritoryExpanded } from '../lib/vibration';
 import { playerBus, publishLoginBonus } from '../lib/playerBus';
 import {
@@ -519,6 +520,26 @@ export function useEconomyActions(
     return true;
   };
 
+  /**
+   * The placements, re-seated on the terrain of territory level `level` — as a patch to write in the
+   * SAME update as the level change, or an empty one when nothing moved.
+   *
+   * The ground under every placement is a function of the territory level (constants/terrain.ts
+   * scales the plateau and the beach by it), while a placement's height is a saved number. Changing
+   * the level without this is how a pier built out over the sea ended up inside the new, larger
+   * island — boards below the grass, walked across and through — and how a torch on the old beach
+   * sank into the new plateau. See reseatIslandPlacements for the rule (it only ever lifts).
+   *
+   * One write rather than two, so there is never a saved state in which the island has grown and
+   * what stands on it has not.
+   */
+  const reseatForTerritory = (level: number): { islandPlacements?: UserProfile['islandPlacements'] } => {
+    // The same derivation every island view uses (Scene, Avatar, PlacementGhost, useIslandLife).
+    const islandScale = 1 + (level - 1) * 0.4;
+    const reseated = reseatIslandPlacements(profile?.islandPlacements || [], islandScale);
+    return reseated ? { islandPlacements: reseated } : {};
+  };
+
   const expandTerritory = async () => {
     if (!user || !profile) return;
 
@@ -533,7 +554,8 @@ export function useEconomyActions(
     try {
       const profileRef = doc(db, 'users', user.uid);
       await updateDoc(profileRef, {
-        territoryLevel: increment(1)
+        territoryLevel: increment(1),
+        ...reseatForTerritory(territoryLevel + 1),
       });
       vibrateTerritoryExpanded();
       playerBus.happyReactionCount = (playerBus.happyReactionCount || 0) + 1;
@@ -555,7 +577,8 @@ export function useEconomyActions(
     try {
       const profileRef = doc(db, 'users', user.uid);
       await updateDoc(profileRef, {
-        territoryLevel: increment(-1)
+        territoryLevel: increment(-1),
+        ...reseatForTerritory(territoryLevel - 1),
       });
     } catch (error) {
       console.error('Territory shrink failed:', error);

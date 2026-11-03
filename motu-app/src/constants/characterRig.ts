@@ -125,11 +125,9 @@ export interface CharacterSkeleton {
      * outside the model has to know, and measuring the mesh to find it out is exactly what
      * this file exists to avoid.
      *
-     * Its consumer is the lying pose (constants/furnitureInteractions.ts). A body turned on
-     * its side about its own feet ends up entirely at the root's height, so how high that
-     * root has to be held for the body to rest ON a mattress rather than IN it is half this
-     * number — which is what lets a slimmer model lie correctly on the same bed with no
-     * furniture retuned.
+     * The lying pose used to read this as the body's depth; it now reads the declared body
+     * volumes (`volumes.torso.depth`, see {@link BodyVolumes}), which are measured as worn and
+     * front-to-back rather than across the shoulders.
      */
     halfWidth: number;
   };
@@ -143,6 +141,64 @@ export interface CharacterSkeleton {
    * a hairline gap showing between sole and terrain on a slope.
    */
   soleY: number;
+  /** The space the body OCCUPIES, part by part. See {@link BodyVolumes}. */
+  volumes: BodyVolumes;
+}
+
+/**
+ * THE BODY'S SOLID — what the character occupies, as the simplest volumes that enclose each part,
+ * each in its own JOINT's space (see COORDINATE RULES). Used for FITTING, never drawn.
+ *
+ * ## Why the skeleton has to say this
+ *
+ * The joints above say where the body BENDS. Nothing said how THICK it is, and every piece of
+ * furniture the player gets onto needs exactly that:
+ *
+ *   a seat      the leg is a 0.14-world-thick capsule hanging off the hip. Putting the hip JOINT on
+ *               the cushion — which is what the seat maths used to do — buries half the thigh in
+ *               the cushion and runs the leg down through the seat's front edge. On 木製鞦韆, whose
+ *               seat is a 10 cm plank, the leg came straight out of its underside.
+ *   a bed       the skull is twice as deep as the back. A body laid "flat" on its back puts the
+ *               head 20 cm into the mattress.
+ *   an audit    `npm run audit:interactions` poses these volumes on every piece in the catalog and
+ *               measures how far any of them ends up inside the piece's meshes.
+ *
+ * Measured off the model AS WORN, not chosen: the outermost surface of the default outfit on each
+ * part — the trousers' waistband on the thigh, the shirt's hem on the torso — because that is what
+ * a seat actually touches, and a volume drawn to the bare body let the clothes through (the first
+ * version did: a swing's plank came 4 cm into the shirt). The authored model's numbers are checked
+ * against its .glb parts by `npm run audit:character`. A new model states its own here and every
+ * seat, bed, bath and swing in the game fits it — nothing in the furniture catalog changes.
+ *
+ * What they do NOT enclose is a garment that flares away from the body — the wide-leg trousers'
+ * hem, the grass skirt. Those are drawn loose on purpose and are not what the body rests on.
+ *
+ * All four hang along their joint's own −Y at rest, which is how every limb in the rig is built.
+ */
+export interface BodyVolumes {
+  /** The skull, as a sphere. `y` is its centre relative to the neck joint (not always zero). */
+  head: { y: number; radius: number };
+  /**
+   * The torso, as a capsule along its own Y through the torso joint. `radius` is its half-WIDTH
+   * (across the shoulders); `depth` its half-THICKNESS front to back, which is also the radius
+   * its two ends are rounded with — the profile a seat back or a mattress actually meets.
+   */
+  torso: { halfLength: number; radius: number; depth: number };
+  /**
+   * One leg, as a TAPERED capsule on the hip joint's axis: from `top` (leg-local y; positive is
+   * ABOVE the hip, up inside the torso) down to `bottom` (the end nearest the sole). `radius` is
+   * its thickness at the top — the thigh, with the trousers' waistband on it, which is what a seat
+   * edge meets — and `footRadius` at the bottom, where it has to end ON the sole.
+   */
+  leg: { top: number; bottom: number; radius: number; footRadius: number };
+  /**
+   * One arm: the upper arm as a capsule on the shoulder's axis (sleeve included), plus the hand as
+   * a sphere. `restZ` is the outward splay the arm hangs at when its joint is at zero — the LEFT
+   * arm's value; the right mirrors it. The authored model's arms are modelled splayed and the pose
+   * is re-applied under the joint (see AUTHORED_ARM_REST_Z), so aiming a hand at something has to
+   * know it.
+   */
+  arm: { top: number; bottom: number; radius: number; hand: { y: number; radius: number }; restZ: number };
 }
 
 /** Crown height above the ground contact point — invariant 2. */
@@ -185,6 +241,20 @@ export const LEGACY_SKELETON: CharacterSkeleton = {
   shoulder: { y: 0.42 + LEG_LENGTHEN, x: 0.138 },
   hip: { y: 0.22 + LEG_LENGTHEN, x: 0.065 },
   soleY: -0.005,
+  // The primitives character/legacy/index.tsx draws, as worn:
+  //   head   sphereGeometry(0.26) on the neck joint
+  //   torso  the 0.138 shirt over the 0.135 capsule, and the pelvis fill (constants/
+  //          characterForm.ts) that hangs to -0.211 below the torso joint — lower than the capsule
+  //   leg    capsuleGeometry(0.055, 0.14 + LEG_LENGTHEN) centred at -0.10 - LEG_LENGTHEN / 2; 0.071 at
+  //          the top is the trousers' waistband and 0.064 at the bottom their turned-up cuff, which
+  //          is what a lying body's heels rest on — the cap is set to end on the sole at that radius
+  //   arm    capsuleGeometry(0.040, 0.10 + ARM_LENGTHEN) under a 0.048 sleeve, and the 0.08 fist
+  volumes: {
+    head: { y: 0, radius: 0.26 },
+    torso: { halfLength: 0.073, radius: 0.138, depth: 0.138 },
+    leg: { top: -0.035, bottom: -0.1777, radius: 0.071, footRadius: 0.064 },
+    arm: { top: -0.02, bottom: -0.1311, radius: 0.048, hand: { y: -0.1711, radius: 0.08 }, restZ: 0 },
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -215,11 +285,39 @@ export const V2_SKELETON: CharacterSkeleton = {
   shoulder: { y: 0.44 + LEG_LENGTHEN, x: 0.135 },
   hip: { y: 0.2283 + LEG_LENGTHEN, x: 0.055 },
   soleY: -0.005,
+  // character/CharacterModelV2.tsx's primitives. The head is a rounded CUBE (half 0.21); the
+  // sphere that stands in for it is its inscribed one, which is exact on every face — the back of
+  // the head on a pillow, the crown under a beam — and only short at the eight rounded corners.
+  // The leg ends on the oval FOOT's half-HEIGHT, so the capsule stops on the sole; the foot is
+  // wider (0.075) and longer than that, which a capsule cannot enclose without sinking the body.
+  // v2 renders bare (no wardrobe), so these are the body itself.
+  volumes: {
+    head: { y: 0, radius: 0.21 },
+    torso: { halfLength: 0.03, radius: 0.12, depth: 0.10 },
+    leg: { top: -0.03, bottom: -0.208, radius: 0.045, footRadius: 0.042 },
+    arm: { top: -0.02, bottom: -0.16, radius: 0.028, hand: { y: -0.205, radius: 0.075 }, restZ: -0.16 },
+  },
 };
 
 // ---------------------------------------------------------------------------
 // AUTHORED — the hand-made 3D model, imported one part at a time.
 // ---------------------------------------------------------------------------
+
+/**
+ * The authored arms' REST POSE: the splay the modeller gave them, in radians about z, as
+ * measured off the `Arm_L` empty in the source file. The left arm takes this, the right its
+ * negative.
+ *
+ * It lives here rather than in the .glb because it is a POSE, not geometry. The controller
+ * writes `rotation` on the arm joint every frame, so an angle baked into the joint would be
+ * overwritten on the first frame; and an angle baked into the MESH would move the arm without
+ * moving the sleeve drawn beside it. Stated once, it is applied by `slots.tsx` to the mesh and
+ * to everything worn on the arm together — see AuthoredPart.transform.
+ *
+ * ⚠️ GENERATED with the skeleton below. Same script, same rule. Declared ahead of it because the
+ * skeleton's arm volume hangs at this splay too.
+ */
+export const AUTHORED_ARM_REST_Z = -0.5249;
 
 /**
  * THE HAND-MADE MODEL's skeleton — MEASURED off the asset, not chosen here.
@@ -260,22 +358,22 @@ export const AUTHORED_SKELETON: CharacterSkeleton = {
   shoulder: { y: 0.4519, x: 0.1168 },
   hip: { y: 0.2467, x: 0.0581 },
   soleY: -0.005,
+  // Measured off the six .glb parts as worn (`npm run audit:character` re-measures the bare parts
+  // and fails if one pokes out of what is declared here):
+  //   head   the skull hangs 0.0538 BELOW the neck joint — the same offset every head socket in
+  //          AUTHORED_ATTACHMENTS carries — and reaches 0.2404 from that centre
+  //   torso  the bare torso is 0.2378 across and 0.2046 deep; the fitted shirt stands 1.6 cm proud
+  //          of it front and back and flares to 0.164 at the hem
+  //   leg    the capsule runs +0.106 .. -0.2517 about the hip with a 0.063 radius; the trousers'
+  //          waistband is 0.083 out and their cuff 0.075, and the bottom cap ends on the sole
+  //   arm    a 0.05 upper arm under a 1.1753-scaled sleeve, and the mitt hand, widest at -0.185
+  volumes: {
+    head: { y: -0.0538, radius: 0.2404 },
+    torso: { halfLength: 0.02, radius: 0.164, depth: 0.12 },
+    leg: { top: 0.03, bottom: -0.1767, radius: 0.083, footRadius: 0.075 },
+    arm: { top: 0.0, bottom: -0.10, radius: 0.0564, hand: { y: -0.180, radius: 0.0845 }, restZ: AUTHORED_ARM_REST_Z },
+  },
 };
-
-/**
- * The authored arms' REST POSE: the splay the modeller gave them, in radians about z, as
- * measured off the `Arm_L` empty in the source file. The left arm takes this, the right its
- * negative.
- *
- * It lives here rather than in the .glb because it is a POSE, not geometry. The controller
- * writes `rotation` on the arm joint every frame, so an angle baked into the joint would be
- * overwritten on the first frame; and an angle baked into the MESH would move the arm without
- * moving the sleeve drawn beside it. Stated once, it is applied by `slots.tsx` to the mesh and
- * to everything worn on the arm together — see AuthoredPart.transform.
- *
- * ⚠️ GENERATED with the skeleton above. Same script, same rule.
- */
-export const AUTHORED_ARM_REST_Z = -0.5249;
 
 // ---------------------------------------------------------------------------
 // ATTACHMENT POINTS — where things that are NOT the body mount.
@@ -782,6 +880,23 @@ export function assertRigInvariants(name: string, s: CharacterSkeleton): void {
 
   if (s.head.y <= s.torso.y) problems.push(`head joint (${s.head.y}) is not above the torso (${s.torso.y}).`);
   if (s.hip.y >= s.shoulder.y) problems.push(`hip (${s.hip.y}) is not below the shoulder (${s.shoulder.y}).`);
+
+  // The volumes have to END where the envelope does. A leg volume that stops short of the sole
+  // lets a seat's front edge through the shin unnoticed; one that overshoots sinks every seated
+  // and lying body by the difference. Same for the skull and the crown under a swing's beam.
+  const VOLUME_TOLERANCE = 0.006;
+  const v = s.volumes;
+  const legEnd = s.hip.y + v.leg.bottom - v.leg.footRadius;
+  if (Math.abs(legEnd - s.soleY) > VOLUME_TOLERANCE) {
+    problems.push(`the leg volume ends at ${legEnd.toFixed(4)}, not on the sole (${s.soleY}).`);
+  }
+  const skullTop = s.head.y + v.head.y + v.head.radius;
+  if (Math.abs(skullTop - crownY(s)) > VOLUME_TOLERANCE) {
+    problems.push(`the head volume's top is at ${skullTop.toFixed(4)}, not on the crown (${crownY(s).toFixed(4)}).`);
+  }
+  if (v.leg.top <= v.leg.bottom || v.arm.top <= v.arm.bottom) {
+    problems.push('a limb volume runs upward — `top` must be above `bottom`.');
+  }
 
   if (problems.length > 0) {
     throw new Error(`[characterRig] ${name} breaks the rig contract:\n  - ${problems.join('\n  - ')}`);

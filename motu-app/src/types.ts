@@ -278,6 +278,10 @@ export interface UserProfile {
    * 只存**定義**。目前進度永遠是從 `workout_logs` 重新算出來的（constants/weeklyTasks.ts），所
    * 以存檔裡沒有任何一個可能跟實際運動紀錄不同步的進度數字。
    *
+   * 同一個 map 裡還有 `rewardClaims`：這一週領過哪些任務的完成獎勵
+   * （constants/weeklyTaskRewards.ts）。它跟任務定義分開寫（`weeklyTasks.tasks` 與
+   * `weeklyTasks.rewardClaims` 各自是一條 dotted path），所以編輯任務不會蓋掉領取紀錄。
+   *
    * 在這個功能之前寫下的每一份存檔都沒有這個欄位，而那跟一個還沒建過任務的新玩家是同一件事：兩
    * 者都沒有任務。不需要 migration。
    */
@@ -306,7 +310,6 @@ export interface WorkoutLog {
   type: string;
   duration: number;
   counts: number;
-  calories: number;
   goldEarned: number;
   timestamp: string;
 }

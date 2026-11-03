@@ -23,6 +23,8 @@ import {
   getFootprint,
   makeObb,
   registerFootprint,
+  standTreadTop,
+  STAND_RULES,
 } from './furniturePlacement';
 import { getPlacementStep, quantize } from './placementSession';
 
@@ -133,8 +135,15 @@ export function getSurfaceAt(
   placements: PlacedItem[],
   islandScale: number,
   ignoreInstanceId?: string | null,
+  /**
+   * The height the asking body is standing at now, when it has one. A deck tread is then only an
+   * answer if it is within a step of it (STAND_RULES in lib/furniturePlacement.ts) — the other
+   * half of the rule that makes the deck's side a wall. Omitted, the answer is simply the highest
+   * tread under the point, which is what everything without a body of its own wants.
+   */
+  fromY?: number | null,
 ): SurfaceHit {
-  return topSurfaceAt(x, z, placements, islandScale, ignoreInstanceId, false);
+  return topSurfaceAt(x, z, placements, islandScale, ignoreInstanceId, false, fromY);
 }
 
 /**
@@ -174,6 +183,7 @@ function topSurfaceAt(
   islandScale: number,
   ignoreInstanceId: string | null | undefined,
   includeDisplaySurfaces: boolean,
+  fromY?: number | null,
 ): SurfaceHit {
   const info = getTerrainInfo(x, z, islandScale);
   let best: SurfaceHit = {
@@ -182,6 +192,7 @@ function topSurfaceAt(
     surface: null,
     isSolid: isLandTerrain(info.terrain),
   };
+  const reachTop = fromY == null ? Infinity : fromY + STAND_RULES.maxStepUp;
 
   for (const p of placements) {
     if (ignoreInstanceId && p.instanceId === ignoreInstanceId) continue;
@@ -193,20 +204,21 @@ function topSurfaceAt(
     const fp = getFootprint(p.itemId);
     if (!fp) continue;
 
-    if (!footprintContainsPoint(fp, p.position[0], p.position[2], p.rotation || 0, x, z)) continue;
-
-    // THE WALKING SURFACE, NOT THE TOP OF THE MODEL. For a bare platform they are the same
-    // number; for anything with a railing they are not, and reading `maxY` put the player on
-    // top of 小型觀景平台’s handrails — 0.84 world units above its boards. `standY` is measured
-    // off the model exactly the way every other collider dimension is
-    // (lib/furniturePlacement.ts’ measureStandTop); it falls back to `maxY` only for a piece
-    // whose surface could not be measured, which is the old behaviour and errs high rather
-    // than dropping a body through the deck.
-    //
-    // A tabletop keeps `maxY`: what an OBJECT rests on is the top of the model, and no
-    // display surface in the catalog has anything standing up out of it.
-    const top = p.position[1] + (surface ? (fp.standY ?? fp.maxY) : fp.maxY);
-    if (top <= best.y) continue;
+    let top: number | null;
+    if (surface && fp.standParts) {
+      // THE TREAD UNDER THE FOOT, NOT THE OUTLINE OF THE MODEL. A deck is its boards and its
+      // stair treads, each at its own height; its railings, posts and fascia are not floor, and
+      // the air between its stairs and its corners is not either. See standTreadTop.
+      top = standTreadTop(p, x, z, reachTop);
+    } else {
+      if (!footprintContainsPoint(fp, p.position[0], p.position[2], p.rotation || 0, x, z)) continue;
+      // A tabletop keeps `maxY`: what an OBJECT rests on is the top of the model, and no display
+      // surface in the catalog has anything standing up out of it. A standable piece only gets
+      // here when it was declared as a plain box, whose top is its surface by construction.
+      top = p.position[1] + (surface ? (fp.standY ?? fp.maxY) : fp.maxY);
+      if (top > reachTop) top = null;
+    }
+    if (top === null || top <= best.y) continue;
     best = { y: top, supportId: p.instanceId, surface, isSolid: true };
   }
 
@@ -225,8 +237,14 @@ export function isGroundedAt(
   z: number,
   placements: PlacedItem[],
   islandScale: number,
+  /**
+   * Where the body is standing (or floating) now — see {@link getSurfaceAt}. A swimmer alongside
+   * a deck they cannot climb is still swimming; declaring them "on the deck" here while the walk
+   * resolve pushes them off its side would flip the swim state every frame.
+   */
+  fromY?: number | null,
 ): boolean {
-  const hit = getSurfaceAt(x, z, placements, islandScale);
+  const hit = getSurfaceAt(x, z, placements, islandScale, null, fromY);
   return hit.isSolid && hit.y > WATER_SURFACE_Y;
 }
 
@@ -245,11 +263,128 @@ export function resolvePlacementY(
   placements: PlacedItem[],
   islandScale: number,
   ignoreInstanceId?: string | null,
+  rotation = 0,
 ): number {
   const hit = getSupportAt(x, z, placements, islandScale, ignoreInstanceId);
-  if (hit.isSolid) return hit.y;
-  return isStandableItem(itemId) ? Math.max(hit.y, WATER_SURFACE_Y) : hit.y;
+  const centred = hit.isSolid ? hit.y : isStandableItem(itemId) ? Math.max(hit.y, WATER_SURFACE_Y) : hit.y;
+
+  // A DECK'S BOARDS ARE NEVER BELOW THE GROUND UNDER THEM. A deck is five metres across and is
+  // exactly the piece players run out over the shoreline — the one place the ground is not flat —
+  // and it used to be seated from its centre alone. A pier whose middle was over the sea sat at
+  // the waterline with its landward boards inside the beach: the sand came up through them, and
+  // the player walked on the sand ABOVE the deck, i.e. straight through it.
+  //
+  // So a deck on the ground is seated from its centre as before, and then lifted by exactly as much
+  // as it takes for every point of its walking surface to clear the ground directly under that
+  // point — no more. "No more" matters: seating it on the highest ground under it instead lifted a
+  // platform that merely overlapped the mound by that mound's 10 cm, which pushed its boards past a
+  // step above the grass on every other side and walled the player out of it.
+  //
+  // Only for the ground. A deck set down on another deck or a table rests on that support's top,
+  // which the corner test in evaluateIslandPlacement already requires to be under all of it.
+  if (isStandableItem(itemId) && !hit.supportId) {
+    const fp = getFootprint(itemId);
+    if (fp?.standSurface) {
+      return Math.max(centred, lowestBaseClearOfGround(fp.standSurface, x, z, rotation, islandScale));
+    }
+  }
+  return centred;
 }
+
+/** How far above the ground under it a deck's walking surface is kept — clear of the terrain's own faces. */
+const DECK_GROUND_CLEARANCE = 0.01;
+
+/**
+ * The lowest base height at which every sampled point of a deck's walking surface
+ * (Footprint.standSurface) stands clear of the terrain directly under it.
+ */
+function lowestBaseClearOfGround(
+  surface: Float32Array,
+  x: number,
+  z: number,
+  rotation: number,
+  islandScale: number,
+): number {
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  let base = -Infinity;
+  for (let i = 0; i < surface.length; i += 3) {
+    const lx = surface[i], lz = surface[i + 1], top = surface[i + 2];
+    const ground = getTerrainInfo(x + lx * cos + lz * sin, z - lx * sin + lz * cos, islandScale).targetY;
+    const needed = ground + DECK_GROUND_CLEARANCE - top;
+    if (needed > base) base = needed;
+  }
+  return base;
+}
+
+/**
+ * Every placement re-seated on the island as it is NOW — or `null` when every one already is.
+ *
+ * ## Why this exists
+ *
+ * A placement's height is saved as a number, while the ground it stands on is a function of the
+ * TERRITORY LEVEL (constants/terrain.ts scales every radius by `islandScale`). Expanding the
+ * territory grows the plateau and the beach outwards under whatever is already standing there, and
+ * nothing used to move with it:
+ *
+ *  - a pier seated on the sea surface (y −0.5, boards at −0.1) ended up INSIDE the new grass
+ *    (0.3). Its boards were below the ground the player walks on, so the player walked across the
+ *    top of the island through it — the deck was still drawn where it poked out past the new
+ *    shoreline, and could not be stood on anywhere;
+ *  - a torch on the old beach sank into the new grass by the height the beach rose.
+ *
+ * ## The rule
+ *
+ * Each placement is put back through the SAME height rule a new one is placed with
+ * ({@link resolvePlacementY}), lowest first so a prop is re-seated on its deck after the deck has
+ * moved, and is only ever LIFTED: a piece whose ground has dropped away (the territory shrank)
+ * keeps its height, which for a deck is simply a pier on its posts and for everything else is what
+ * shrinking has always done. Lifting only is also what makes this safe to run at any time — it can
+ * correct a piece that is buried and cannot disturb one that is not.
+ *
+ * ## Only what was UNDER it
+ *
+ * A piece is re-seated against the pieces that were saved BELOW it, never against the ones above.
+ * It used to be resolved against the whole list, and a stack of two supports — a picnic table on a
+ * 木製平台, two overlapping decks — then never settled: the deck, asking what was under its centre,
+ * found the table standing on it and was lifted onto the table's top; the table, now the lower of
+ * the two, was lifted onto the deck; and so on, one tabletop higher on every call. Nothing ever
+ * returned `null`, and IslandPlacements (Three/PlacementGhost.tsx) re-ran this on every new list,
+ * so each lift was a save, each save a snapshot, and each snapshot another lift — a write loop that
+ * also re-rendered the whole island on every turn. What rests on a piece is never its support, so
+ * leaving it out is simply the correct question, and it makes a second call on the result `null`.
+ */
+export function reseatIslandPlacements(
+  placements: PlacedItem[],
+  islandScale: number,
+): PlacedItem[] | null {
+  const order = placements
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => a.p.position[1] - b.p.position[1]);
+  const out = placements.slice();
+  /** Every piece seen so far, as re-seated, with the height it was SAVED at. */
+  const seen: { saved: number; placed: PlacedItem }[] = [];
+  let changed = false;
+  for (const { p, i } of order) {
+    // Resolved against what was below it, as re-seated SO FAR, so a prop finds its deck at the
+    // deck's new height. Pieces saved at the same height stand side by side, not on each other.
+    const beneath = seen
+      .filter((s) => s.saved < p.position[1] - RESEAT_TOLERANCE)
+      .map((s) => s.placed);
+    const ground = resolvePlacementY(
+      p.itemId, p.position[0], p.position[2], beneath, islandScale, p.instanceId, p.rotation || 0,
+    );
+    if (ground > p.position[1] + RESEAT_TOLERANCE) {
+      out[i] = { ...p, position: [p.position[0], quantize(ground, 1e-6), p.position[2]] as [number, number, number] };
+      changed = true;
+    }
+    seen.push({ saved: p.position[1], placed: out[i] });
+  }
+  return changed ? out : null;
+}
+
+/** How far below its ground a piece may sit before re-seating lifts it — float noise, not a gap. */
+const RESEAT_TOLERANCE = 0.01;
 
 /** Why a spot was refused, in the order the checks run. */
 export type PlacementBlockReason = 'noGround' | 'offEdge' | 'overlap';
@@ -331,7 +466,7 @@ export function evaluateIslandPlacement({
     }
   }
 
-  const y = resolvePlacementY(itemId, x, z, placements, islandScale, excludeInstanceId);
+  const y = resolvePlacementY(itemId, x, z, placements, islandScale, excludeInstanceId, rotation);
   const base: Omit<PlacementVerdict, 'ok' | 'reason'> = { x, z, y, supportId: hit.supportId };
 
   // 1. There has to be something to stand on. A deck is its own exception, and the only one:

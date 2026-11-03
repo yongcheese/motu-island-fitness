@@ -1,13 +1,20 @@
-import React, { useEffect, useRef, useMemo } from 'react';
-import { useApp } from '../../context/AppContext';
+import React, { useEffect, useRef, useMemo, useSyncExternalStore } from 'react';
+import { useAppPick } from '../../context/AppContext';
 import { TREASURE_REWARD_FRAGMENTS, TREASURE_REWARD_XP } from '../../context/useEconomyActions';
-import { WeatherType } from '../../types';
+import { PlacedItem, WeatherType } from '../../types';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { findNearestValidPlacement, findRandomValidPlacement, HomeObstacle } from '../../utils/placementRules';
+import { findNearestValidPlacement, HomeObstacle } from '../../utils/placementRules';
 import { getWeatherSwayFactors } from '../../utils/weatherSway';
 import { tintableInstances } from './instanceColor';
 import { usePlayerHome } from '../../hooks/usePlayerHome';
+import { DECOR_SEEDS, layoutFlora, layoutRocks, pieceRng } from '../../lib/islandDecorLayout';
+import {
+  footprintDistanceToPoint,
+  getFootprint,
+  getFootprintVersion,
+  subscribeFootprints,
+} from '../../lib/furniturePlacement';
 import {
   DECAL_DEPTH_BIAS,
   getIslandDecalY,
@@ -23,19 +30,63 @@ const DUMMY = new THREE.Object3D();
 const OFFSET = new THREE.Vector3();
 const FLORA_COLOR = new THREE.Color();
 
-// Slab facings are rolled once at module load. They used to call Math.random() inline in the JSX,
-// so every re-render of the zone gave each slab a new rotation - a visible twitch plus a matrix
+/*
+ * Every piece of natural decoration here is SEEDED, not rolled — see lib/islandDecorLayout.ts for
+ * why (it is what used to make the flowers and rocks re-generate on every save).
+ */
+
+// Slab facings are drawn once per slab. They used to call Math.random() inline in the JSX, so
+// every re-render of the zone gave each slab a new rotation - a visible twitch plus a matrix
 // recompute for no reason.
 const GARDEN_SLABS = ([[-1.2, 0, -1], [-0.4, 0, -0.6], [0.4, 0, -0.2], [1.2, 0, 0.2]] as const).map(
-  (pos) => ({ pos, spin: Math.random() })
+  (pos, i) => ({ pos, spin: pieceRng(DECOR_SEEDS.slab, i)() })
 );
+
+/* ------------------------------------------------------------------ what is covered */
+
+/** A point on the ground and how wide the thing standing there is. */
+interface GroundPoint {
+  position: [number, number, number];
+  radius: number;
+}
+
+/**
+ * Which natural pieces are standing where the player has put something down.
+ *
+ * The decorations are sited around the Home and nothing else, so a well, a bench or a deck could
+ * be placed straight on top of a rock and the rock would poke up through it — through the well's
+ * water, out of a picnic blanket. They are NOT re-sited around placements (that would make moving
+ * a bench reshuffle the flowers across the island); instead the pieces a placement covers are
+ * simply not drawn, and come back when it is moved away. That is also what the ground under a
+ * real object looks like.
+ *
+ * Measured against each piece's real collider outline (lib/furniturePlacement.ts), which only
+ * exists once that model has been drawn — hence the footprint version in the memo. Until then a
+ * piece counts as covering nothing, rather than guessing.
+ */
+function useCoveredMask(points: readonly GroundPoint[], placements: PlacedItem[] | undefined): boolean[] {
+  const footprintVersion = useSyncExternalStore(subscribeFootprints, getFootprintVersion);
+  return useMemo(() => {
+    const list = placements ?? [];
+    return points.map((pt) =>
+      list.some((p) => {
+        const fp = getFootprint(p.itemId);
+        if (!fp) return false;
+        const gap = footprintDistanceToPoint(fp, p.position[0], p.position[2], p.rotation || 0, pt.position[0], pt.position[2]);
+        return gap < pt.radius;
+      })
+    );
+    // footprintVersion is the dependency that says "a model has been measured since".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [points, placements, footprintVersion]);
+}
 
 function GardenZone({
   position,
   scale = 1,
   islandScale,
 }: { position: [number, number, number], scale?: number, islandScale: number }) {
-  const { weather } = useApp();
+  const { weather } = useAppPick('weather');
   // The whole zone sits on whatever the terrain is under its centre, not on a
   // constant. At territory level 2 this zone lands on the raised mound, where a
   // hard-coded plateau height sank the trees and flowers 0.1 into the hillside
@@ -133,7 +184,7 @@ function SmallStone({
   home: HomeObstacle | null;
   islandScale: number;
 }) {
-  const { profile, claimIslandTreasure, showIslandAlert } = useApp();
+  const { profile, claimIslandTreasure, showIslandAlert } = useAppPick('profile', 'claimIslandTreasure', 'showIslandAlert');
   const [isFound, setIsFound] = React.useState(false);
 
   const resolvedPosition = useMemo(() => {
@@ -144,6 +195,13 @@ function SmallStone({
       islandScale
     );
   }, [position, home, islandScale]);
+
+  // Under something the player placed: not drawn and not clickable — see useCoveredMask.
+  const groundPoint = useMemo(
+    () => [{ position: resolvedPosition, radius: 0.3 * scale }],
+    [resolvedPosition, scale]
+  );
+  const covered = useCoveredMask(groundPoint, profile?.islandPlacements)[0];
 
   /**
    * 島嶼秘寶 — pays 碎片 through the Economy Service, not 金幣 through a `updateDoc` right here.
@@ -159,7 +217,8 @@ function SmallStone({
    * after paying out is a repeatable currency faucet. It has always behaved this way.
    */
   const handleInteract = async () => {
-    if (!profile || isFound) return;
+    // `covered` too: three's raycaster does not skip invisible meshes.
+    if (!profile || isFound || covered) return;
     setIsFound(true);
     const paid = await claimIslandTreasure();
     showIslandAlert(
@@ -170,24 +229,25 @@ function SmallStone({
   };
 
   return (
-    <mesh 
-      position={[resolvedPosition[0], 0.3 + (0.3 * scale), resolvedPosition[2]]} 
+    <mesh
+      visible={!covered}
+      position={[resolvedPosition[0], 0.3 + (0.3 * scale), resolvedPosition[2]]}
       scale={isFound ? [0, 0, 0] : [scale, scale, scale]} 
       rotation={rotation}
-      onClick={(e) => {
+      // No handlers at all while covered: an invisible stone still answers the raycast, and its
+      // stopPropagation would swallow the click meant for the object standing over it.
+      onClick={covered ? undefined : (e) => {
         e.stopPropagation();
         handleInteract();
       }}
-      onPointerEnter={() => (document.body.style.cursor = 'pointer')}
-      onPointerLeave={() => (document.body.style.cursor = 'auto')}
+      onPointerEnter={covered ? undefined : () => (document.body.style.cursor = 'pointer')}
+      onPointerLeave={covered ? undefined : () => (document.body.style.cursor = 'auto')}
     >
       <dodecahedronGeometry args={[0.3]} />
       <meshStandardMaterial color="#94a3b8" roughness={0.8} />
     </mesh>
   );
 }
-
-const FLOWER_COLORS = ["#ef4444", "#f59e0b", "#ec4899", "#8b5cf6", "#3b82f6"];
 
 /**
  * Per-weather surface response, previously recomputed inline for every flower on every render.
@@ -243,30 +303,15 @@ function ScatteredFlora({
   home: HomeObstacle | null;
   islandScale: number;
 }) {
-  const { weather } = useApp();
+  const { weather, profile } = useAppPick('weather', 'profile');
   const stemRef = useRef<THREE.InstancedMesh>(null);
   const budRef = useRef<THREE.InstancedMesh>(null);
   const capRef = useRef<THREE.InstancedMesh>(null);
   const isSnow = weather === WeatherType.SNOW;
 
-  const seeds = useMemo(() => {
-    return Array.from({ length: count }).map(() => {
-      const resolved = findRandomValidPlacement(
-        'Flower',
-        home,
-        islandScale,
-        [],
-        0.35
-      );
-      return {
-        position: resolved,
-        color: FLOWER_COLORS[Math.floor(Math.random() * FLOWER_COLORS.length)],
-        scale: 0.3 + Math.random() * 0.4,
-        rotationOffset: Math.random() * Math.PI,
-        swaySpeed: 0.8 + Math.random() * 1.2
-      };
-    });
-  }, [count, home, islandScale]);
+  // Seeded per flower — see lib/islandDecorLayout.ts.
+  const seeds = useMemo(() => layoutFlora(count, home, islandScale), [count, home, islandScale]);
+  const covered = useCoveredMask(seeds, profile?.islandPlacements);
 
   const { stemGeo, budGeo, capGeo, stemMat, budMat, capMat } = useMemo(() => ({
     stemGeo: new THREE.CylinderGeometry(0.02, 0.02, 0.3),
@@ -320,7 +365,9 @@ function ScatteredFlora({
         0,
         Math.sin(t * s.swaySpeed * speedMult + s.rotationOffset) * 0.1 * angleMult
       );
-      DUMMY.scale.setScalar(s.scale);
+      // A covered flower keeps its slot (and its looks) with a zero scale, so a placement coming
+      // and going never changes the instance count or shifts any other flower.
+      DUMMY.scale.setScalar(covered[i] ? 0 : s.scale);
 
       // Stem/bud/cap sat at local +0.1 / +0.25 / +0.34 inside the swaying flower's own frame, so
       // each offset has to ride the lean - hence rotating it rather than just adding it to Y.
@@ -366,36 +413,15 @@ function IslandRocks({
   home: HomeObstacle | null;
   islandScale: number;
 }) {
-  const { weather } = useApp();
+  const { weather, profile } = useAppPick('weather', 'profile');
   const rockRef = useRef<THREE.InstancedMesh>(null);
   const capRef = useRef<THREE.InstancedMesh>(null);
   const isWet = weather === WeatherType.RAINY || weather === WeatherType.STORM;
   const isSnow = weather === WeatherType.SNOW;
 
-  const rocks = useMemo(() => {
-    const coords: [number, number, number][] = [];
-    return Array.from({ length: count }).map(() => {
-      const resolved = findRandomValidPlacement(
-        'IslandRock',
-        home,
-        islandScale,
-        coords,
-        0.35
-      );
-      coords.push(resolved);
-      return {
-        position: resolved,
-        scale: 0.2 + Math.random() * 0.5,
-        rotation: [ Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI ] as [number, number, number],
-        hasWindEffect: Math.random() > 0.6,
-        swayOffset: Math.random() * Math.PI,
-        swayFreq: 0.5 + Math.random() * 0.5,
-        // The wind rocks used to accumulate `rotation.y += 0.005` straight onto their Object3D;
-        // an instanced rock has no Object3D of its own, so the spin lives here instead.
-        spin: 0,
-      };
-    });
-  }, [count, home, islandScale]);
+  // Seeded per rock — see lib/islandDecorLayout.ts.
+  const rocks = useMemo(() => layoutRocks(count, home, islandScale), [count, home, islandScale]);
+  const covered = useCoveredMask(rocks, profile?.islandPlacements);
 
   const { rockGeo, capGeo, rockMat, capMat } = useMemo(() => ({
     rockGeo: new THREE.DodecahedronGeometry(0.3),
@@ -426,10 +452,12 @@ function IslandRocks({
       const y = r.hasWindEffect
         ? 0.35 + Math.sin(t * r.swayFreq + r.swayOffset) * 0.05
         : r.position[1];
+      // Under a placement: zero scale in its own slot, as ScatteredFlora does.
+      const s = covered[i] ? 0 : r.scale;
 
       DUMMY.position.set(r.position[0], y, r.position[2]);
       DUMMY.rotation.set(r.rotation[0], r.rotation[1] + r.spin, r.rotation[2]);
-      DUMMY.scale.setScalar(r.scale);
+      DUMMY.scale.setScalar(s);
       DUMMY.updateMatrix();
       rock.setMatrixAt(i, DUMMY.matrix);
 
@@ -437,7 +465,7 @@ function IslandRocks({
         // Snow cap sat at local +0.22 with no rotation of its own, squashed flat.
         DUMMY.position.set(r.position[0], y + 0.22 * r.scale, r.position[2]);
         DUMMY.rotation.set(0, 0, 0);
-        DUMMY.scale.set(r.scale, r.scale * 0.4, r.scale);
+        DUMMY.scale.set(s, s * 0.4, s);
         DUMMY.updateMatrix();
         cap.setMatrixAt(i, DUMMY.matrix);
       }
@@ -473,7 +501,7 @@ function Pathways({
   useEffect(() => () => { geometry.dispose(); material.dispose(); }, [geometry, material]);
 
   const points = useMemo(() => {
-    return PATHWAY_BASE_POINTS.map((p) => {
+    return PATHWAY_BASE_POINTS.map((p, i) => {
       const originalPos: [number, number, number] = [
         p[0] * islandScale,
         ISLAND_SURFACE_Y,
@@ -499,8 +527,9 @@ function Pathways({
         ] as [number, number, number],
         // Drawn once per stone, not re-rolled on every render. Calling Math.random() inline in
         // the JSX gave each stone a new facing every time this component re-rendered, which both
-        // made the path visibly twitch and forced a matrix recompute for all ten.
-        spin: Math.random() * Math.PI,
+        // made the path visibly twitch and forced a matrix recompute for all ten. Seeded per stone
+        // as well, so a rebuild (the Home moved) or a reload does not turn every stone either.
+        spin: pieceRng(DECOR_SEEDS.path, i)() * Math.PI,
       };
     });
   }, [home, islandScale]);
@@ -520,8 +549,19 @@ function Pathways({
   );
 }
 
+/**
+ * The three 島嶼秘寶 stones. Module constants rather than inline literals: an inline `[4.5, …]` is
+ * a new array on every render, which re-ran each stone's placement solve every time the island
+ * re-rendered.
+ */
+const TREASURE_STONES: { position: [number, number, number]; scale: number }[] = [
+  { position: [4.5, 0.1, -4.5], scale: 1.2 },
+  { position: [-5, 0.1, 4.2], scale: 0.8 },
+  { position: [3, 0.1, 5.5], scale: 1 },
+];
+
 export function IslandDecorations() {
-  const { profile } = useApp();
+  const { profile } = useAppPick('profile');
   const territoryLevel = profile?.territoryLevel || 1;
   const islandScale = 1 + (territoryLevel - 1) * 0.4;
 
@@ -531,13 +571,14 @@ export function IslandDecorations() {
 
   return (
     <group>
-      <ScatteredFlora count={40 * (1 + territoryLevel * 0.2)} home={home} islandScale={islandScale} />
-      <IslandRocks count={20 * (1 + territoryLevel * 0.1)} home={home} islandScale={islandScale} />
+      {/* Whole numbers: 20 * 1.1 is 22.000000000000004, and a piece count is a count. */}
+      <ScatteredFlora count={Math.round(40 * (1 + territoryLevel * 0.2))} home={home} islandScale={islandScale} />
+      <IslandRocks count={Math.round(20 * (1 + territoryLevel * 0.1))} home={home} islandScale={islandScale} />
       <Pathways home={home} islandScale={islandScale} />
 
-      <SmallStone position={[4.5, 0.1, -4.5]} scale={1.2} home={home} islandScale={islandScale} />
-      <SmallStone position={[-5, 0.1, 4.2]} scale={0.8} home={home} islandScale={islandScale} />
-      <SmallStone position={[3, 0.1, 5.5]} scale={1} home={home} islandScale={islandScale} />
+      {TREASURE_STONES.map((stone, i) => (
+        <SmallStone key={i} position={stone.position} scale={stone.scale} home={home} islandScale={islandScale} />
+      ))}
 
       {/* Unlockable Zones — anchor positions are chosen to stay within the flat Grass Terrain
           radius (5.7 * islandScale) even at the moment each zone first unlocks, so they never

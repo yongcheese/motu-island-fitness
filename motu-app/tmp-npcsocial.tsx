@@ -6,7 +6,7 @@
  *
  * window.__player(x, z)   move the stand-in player
  * window.__talk()          press 「聊天」 exactly as the E key / badge do
- * window.__bus             the live player bus (npcTarget, npcSpeech)
+ * window.__bus             the live player bus (npcTargets, npcSpeech)
  */
 import { createRoot } from 'react-dom/client';
 import { Canvas, useFrame } from '@react-three/fiber';
@@ -73,7 +73,7 @@ function Hud() {
   useEffect(() => {
     let raf = 0;
     const tick = () => {
-      const t = playerBus.npcTarget;
+      const t = playerBus.npcTargets.values().next().value;
       const s = playerBus.npcSpeech;
       setText(`target: ${t ? `${t.label}${t.talking ? ' (talking)' : ''}` : '—'}   |   speech: ${s ? `${s.name}：${s.text}` : '—'}`);
       raf = requestAnimationFrame(tick);

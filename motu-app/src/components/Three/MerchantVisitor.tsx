@@ -6,8 +6,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useApp } from '../../context/AppContext';
-import { clampFrameDelta, playerBus } from '../../lib/playerBus';
+import { useAppPick } from '../../context/AppContext';
+import { clampFrameDelta, playerBus, type MerchantInteractionTarget } from '../../lib/playerBus';
 import { publishWorldSolids } from '../../lib/worldSolids';
 import { MERCHANTS, getMerchantDockFor, type MerchantSpec } from '../../constants/merchants';
 import { merchantVisitAt } from '../../constants/merchantVisit';
@@ -188,6 +188,10 @@ function MerchantVisitorEntity({ spec, islandScale }: { spec: MerchantSpec; isla
   const schedule = useRef<{ open: boolean; polledAt: number }>({ open: false, polledAt: 0 });
   /** 提示的錨點。每幀重寫同一顆，不是每幀 new 一顆——見 playerBus 上其他欄位的同一句話。 */
   const anchor = useRef(new THREE.Vector3());
+  /** 登記在 playerBus.merchantTargets 的那一筆，同一顆物件每幀就地改寫。 */
+  const targetRecord = useRef<MerchantInteractionTarget>({
+    merchantId: spec.id, anchor: anchor.current, reach: 0, label: spec.prompt,
+  });
   /**
    * 這艘船這一幀的碰撞盒，世界座標。
    *
@@ -200,7 +204,10 @@ function MerchantVisitorEntity({ spec, islandScale }: { spec: MerchantSpec; isla
 
   // 卸下這個實體時把它的碰撞盒一起收走。useFrame 停了就不會再有人撤銷它們，而一組留在登記
   // 表裡、再也不會更新的盒子，就是一面停在最後一幀位置上的隱形牆。
-  useEffect(() => () => { publishWorldSolids(spec.id, null); }, [spec.id]);
+  useEffect(() => () => {
+    publishWorldSolids(spec.id, null);
+    playerBus.merchantTargets.delete(spec.id);
+  }, [spec.id]);
 
   useFrame((state, rawDelta) => {
     const group = groupRef.current;
@@ -263,8 +270,8 @@ function MerchantVisitorEntity({ spec, islandScale }: { spec: MerchantSpec; isla
     }
 
     if (!present || !group) {
-      // 不在場的商人談不到。這一行同時關掉提示與動作鍵——見 playerBus.merchantTarget。
-      if (playerBus.merchantTarget?.merchantId === spec.id) playerBus.merchantTarget = null;
+      // 不在場的商人談不到。這一行同時關掉提示與動作鍵——見 playerBus.merchantTargets。
+      playerBus.merchantTargets.delete(spec.id);
       // 也不擋路。船開走了碰撞盒必須跟著走，否則海上會留下一塊看不見卻游不過去的水。
       publishWorldSolids(spec.id, null);
       return;
@@ -387,18 +394,16 @@ function MerchantVisitorEntity({ spec, islandScale }: { spec: MerchantSpec; isla
 
     // --- 談不談得到 ---------------------------------------------------------
     if (stage.current !== 'docked') {
-      if (playerBus.merchantTarget?.merchantId === spec.id) playerBus.merchantTarget = null;
+      playerBus.merchantTargets.delete(spec.id);
       return;
     }
 
     // 錨點就掛在上面量出來的那個位置上——提示指著的、感知距離量的，是同一個人。
     anchor.current.set(standX, moored.y + bob.y + BOAT_PROMPT_HEIGHT, standZ);
-    playerBus.merchantTarget = {
-      merchantId: spec.id,
-      anchor: anchor.current,
-      reach,
-      label: spec.prompt,
-    };
+    const target = targetRecord.current;
+    target.reach = reach;
+    target.label = spec.prompt;
+    playerBus.merchantTargets.set(spec.id, target);
   });
 
   if (!dock) return null;
@@ -433,7 +438,7 @@ function MerchantVisitorEntity({ spec, islandScale }: { spec: MerchantSpec; isla
  * 商人的名單是資料（constants/merchants.ts）。要加第二位商人不必改這個檔案。
  */
 export const MerchantVisitors = React.memo(function MerchantVisitors() {
-  const { profile } = useApp();
+  const { profile } = useAppPick('profile');
   // 跟島上其他元件同一條式子（Island.tsx、Avatar.tsx、IslandNpcs.tsx…）。
   const islandScale = 1 + ((profile?.territoryLevel || 1) - 1) * 0.4;
 

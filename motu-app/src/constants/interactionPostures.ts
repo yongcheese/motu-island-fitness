@@ -39,10 +39,10 @@
  * one existing posture, and not one line of the pose maths, has to change. Nothing in this
  * file knows the character is currently a chibi made of capsules.
  *
- * Angles that depend on the character's PROPORTIONS are deliberately NOT here: a seat's leg
- * swing is derived at runtime from the rig and the measured furniture
- * (lib/interactionPosture.ts), for the same reason a seat height is not typed into a pose.
- * What is here is body LANGUAGE — the part that is a choice rather than a measurement.
+ * Anything that depends on the character's PROPORTIONS is deliberately NOT here: where the hips
+ * go on a seat, how high a lying head is held, where a hand has to be to hold a rope. Those are
+ * solved from the rig's body volumes (lib/occupantFit.ts), for the same reason a seat height is
+ * not typed into a pose. What is here is body LANGUAGE — the part that is a choice.
  */
 
 /**
@@ -106,38 +106,36 @@ export interface PostureMotion {
 export type PostureEnvelope = 'pulse' | 'hold';
 
 /**
- * How a posture's root height comes off the anchor it is given. Pairing a rule here with the
- * rig is what lets one catalog number (where the cushion is) serve every character model —
- * see `poseRootHeight` in constants/furnitureInteractions.ts.
+ * Which point of the body is fastened to the piece — the PIVOT everything else turns about.
+ * Pairing a rule here with the rig's body volumes is what lets one catalog number (where the
+ * cushion is) serve every character model; see lib/occupantFit.ts.
  *
- *   `hips`   the body's HIP JOINT rests on the anchor surface. Sitting, and bathing.
- *   `side`   the body is turned onto its side about its feet, so it rests on its own
- *            half-thickness above the surface. Lying.
+ *   `hips`   the hip joint. Sitting and bathing: the body sits ON the seat, its lowest volume
+ *            resting on the surface (or its leg resting on the lip, for legs over an edge).
+ *   `side`   the soles. Lying: the body tips back about its feet onto the surface, the head held
+ *            up just enough to rest level with the rest of it.
  *   `stand`  no anchor surface at all: the body stays on the floor it is standing on, and
  *            the posture is played at the piece rather than on it.
  */
 export type PostureAnchoring = 'hips' | 'side' | 'stand';
 
 /**
- * What the legs do once the body is on the piece. The three cases are genuinely different
- * GEOMETRY problems, not three sets of numbers:
+ * What the legs do once the body is on the piece. Genuinely different GEOMETRY problems, not
+ * different numbers — each is solved from the rig's body volumes by lib/occupantFit.ts:
  *
- *   `reachFloor`     swing down until they reach the floor, or until they clear the piece's
- *                    own front edge — whichever is the wider swing. A dining chair plants
- *                    its feet; a deep sofa lets them hang. Both derived at runtime.
- *   `extendForward`  straight out along the piece, level with the hips. What legs do in a
- *                    bathtub, where there is no floor to reach and the far end is metres away.
- *   `climbOver`      swung up and over an edge while getting on, relaxed once settled. The
- *                    hammock's, and every bed's.
- *   `dangle`         hanging free, straight down from the hip, and left there for the piece's
- *                    own motion to swing. The one case where the legs must NOT be solved: a
- *                    swing seat is 0.70 above the ground against a 0.54 leg, so `reachFloor`
- *                    would peg at "straight down" anyway — but the swing's measured box reaches
- *                    0.90 ahead of the seat (its A-frame straddles the rider), and the "clear
- *                    the piece's front edge" constraint would read that as a metre-deep cushion
- *                    and kick both legs out horizontal. Saying "they hang" is not a shortcut
- *                    past the solver; it is the correct answer that the solver's two
- *                    constraints cannot express.
+ *   `reachFloor`     hang over the seat's front lip (the row's `seatFront`) at the posture's
+ *                    `legHang`, or further forward if that is what it takes to put the feet on
+ *                    the floor. A chair or a sofa.
+ *   `dangle`         hang over the lip at `legHang` and never reach for the floor, because the
+ *                    seat is MOVING — a swing, a hanging chair. Feet planted under a swinging seat
+ *                    would be dragged through the ground at the end of every arc.
+ *   `extendForward`  straight out along the surface the body sits ON, level with it. What legs do
+ *                    in a bathtub or on a lounger, where the far end is metres away.
+ *   `climbOver`      swung up and over an edge while getting on, relaxed along the body once
+ *                    settled. The hammock's, and every bed's.
+ *
+ * The two that hang are placed so the leg's own SURFACE rests on the lip, which is the only
+ * place a knee-less leg can hang from without passing through the seat — see `fitOverEdge`.
  */
 export type PostureLegs = 'reachFloor' | 'extendForward' | 'climbOver' | 'dangle';
 
@@ -170,6 +168,13 @@ export interface PostureSpec {
   anchoring: PostureAnchoring;
   /** Occupying postures only. */
   legs?: PostureLegs;
+  /**
+   * How far forward hanging legs hang, radians off straight down — body LANGUAGE, the one number
+   * about a seated body's legs that is a choice rather than a measurement. A dining chair's
+   * sitter lets them fall nearly straight; a swing's rider keeps them out in front. Where the
+   * hips then go to keep that leg clear of the seat is solved, not stated (lib/occupantFit.ts).
+   */
+  legHang?: number;
   /** Occupying postures on a piece that moves. See {@link PostureRideResponse}. */
   ride?: PostureRideResponse;
   /** The characteristic pose, at full extension. */
@@ -181,6 +186,10 @@ export interface PostureSpec {
    * so unlike a `torso` entry it carries the arms and legs with it (the torso joint is a
    * sibling of the limbs, not their parent — see Avatar.tsx's CELEBRATE note). This is the
    * axis that makes someone read as leaning over a hob rather than standing at one.
+   *
+   * An OCCUPYING posture leans about the body's pivot — the hip joint of a seated body, the soles
+   * of a lying one — not about the root origin, which for a seated body is a point in mid-air
+   * half a metre under the cushion: turning about that slid the hips 6.7 cm along every seat.
    */
   lean?: number;
   /** Non-occupying postures: seconds. Occupying ones run until the player gets up. */
@@ -245,6 +254,9 @@ export const POSTURES = {
     occupies: true,
     anchoring: 'hips',
     legs: 'reachFloor',
+    // A little forward of straight down — the legs of someone sitting on the edge of a seat,
+    // which on a knee-less body is where the hips have to be. See PostureLegs.
+    legHang: 0.42,
     lean: 0.12,
     hold: {
       leftArm: { x: -0.30, z: -0.16 },
@@ -268,14 +280,15 @@ export const POSTURES = {
    * Read against `sit`, which is the posture it is nearest to, because the differences are the
    * whole point — a person on a swing is not a person on a chair that happens to be moving:
    *
-   *   the HANDS      grip the ropes, so the arms go UP and slightly out rather than resting on
-   *                  the thighs. This is the single most legible thing in the silhouette; with
-   *                  the arms down, the pose reads as sitting on a plank.
-   *   the LEGS       hang (`dangle`) instead of being solved to the floor. The seat is above
-   *                  standing leg length, and the piece's own box is not a cushion — see
-   *                  `dangle` for why the solver gets the wrong answer here.
-   *   the LEAN       is backward, not forward. You lean back on a swing; you lean forward in a
-   *                  chair to keep an oversized head off the backrest, and a swing has none.
+   *   the HANDS      hold the ropes. The piece says where its ropes are (the catalog row's `grip`)
+   *                  and the arms are AIMED at them every frame, so the hands stay on the ropes
+   *                  as the body leans and the seat swings. `hold` below is only what a piece
+   *                  with no ropes to hold would get.
+   *   the LEGS       hang out in front (`dangle`, a wide `legHang`) and never reach for the
+   *                  ground — the seat moves.
+   *   the LEAN       is backward, not forward: you sit at the front of a swing and lean back on
+   *                  the ropes. It is also what carries the chibi's head back under the beam
+   *                  instead of out in front of it.
    *   `ride`         exists at all. It is what makes the body answer the arc rather than being
    *                  carried by it.
    *
@@ -286,11 +299,9 @@ export const POSTURES = {
     occupies: true,
     anchoring: 'hips',
     legs: 'dangle',
-    lean: -0.06,
+    legHang: 0.62,
+    lean: -0.16,
     hold: {
-      // Hands up on the ropes. `z` opens the elbows out to where the ropes actually are
-      // (±0.45 local, about a shoulder and a half apart), mirrored left/right per the sign
-      // convention at the top of this file.
       leftArm: { x: -1.02, z: -0.30 },
       rightArm: { x: -1.02, z: 0.30 },
       leftLeg: { z: -0.05 },
@@ -299,7 +310,8 @@ export const POSTURES = {
     ride: {
       // The legs trail the seat: at the back of the arc they are still swinging forward. A real
       // rider's legs lead the arc at the front and trail it at the back, which one signed
-      // multiple of the tilt captures well enough at this scale.
+      // multiple of the tilt captures well enough at this scale. Clamped to the swing that keeps
+      // them clear of the plank (lib/occupantFit.ts's legSlack), so it can only ever be a pump.
       legTrail: -0.55,
       leanBack: 0.22,
       armBrace: 0.14,
@@ -582,11 +594,8 @@ export const POSTURES = {
   /**
    * 推動. Both hands out, leaning in, pushing away and drawing back.
    *
-   * This is a swing, and it is deliberately NOT a sit: the seat of a swing is a MOVING anchor
-   * and this system's interaction points are static in the piece's own frame, so "sit on it"
-   * is a promise the runtime cannot keep yet. Pushing one is a real thing a person does with
-   * a swing, and it is honest about what the model does — the seat is already animated to
-   * swing harder when triggered.
+   * What 木製鞦韆 used to offer, back when an interaction point could only be static in the
+   * piece's frame. The swing is now got ON (`swing`); this stays for anything else that is pushed.
    */
   push: {
     occupies: false,
@@ -644,6 +653,7 @@ export const POSTURES = {
     occupies: true,
     anchoring: 'hips',
     legs: 'dangle',
+    legHang: 0.40,
     lean: 0.02,
     hold: {
       leftArm: { x: -0.22, z: -0.18 },

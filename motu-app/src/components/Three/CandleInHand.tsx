@@ -56,7 +56,7 @@ const CANDLE_WORLD = new THREE.Vector3();
 const PARENT_QUAT = new THREE.Quaternion();
 
 export function CandleInHand({ hand }: { hand: AttachmentPoint }) {
-  const { camera } = useThree();
+  const camera = useThree((s) => s.camera);
   /** 反轉父層旋轉的那一層。位置由手決定，姿態由這裡奪回來。 */
   const uprightRef = useRef<THREE.Group>(null);
   /** 整根蠟燭，燈亮著的時候縮到看不見。 */

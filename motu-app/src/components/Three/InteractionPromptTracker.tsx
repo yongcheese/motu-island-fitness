@@ -6,69 +6,60 @@
 import { useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useApp } from '../../context/AppContext';
-import { View } from '../../types';
+import { useAppPick } from '../../context/AppContext';
+import { PlacedItem, View } from '../../types';
 import { playerBus, clampFrameDelta } from '../../lib/playerBus';
-import { usePlayerHome, getHomeDoorPosition } from '../../hooks/usePlayerHome';
-import { getHouseVisualHeight } from './HouseModel';
+import {
+  usePlayerHome, getHomeInteractionPoint, homeEntryDistance, HOME_ENTRY_RADIUS,
+} from '../../hooks/usePlayerHome';
+import {
+  HOME_CANDIDATE_ID, fillFurnitureCandidate, fillHomeCandidate, furnitureCandidateId, homeSolidObstacle,
+  makeCandidate,
+} from '../../lib/interactionSources';
+import { HOME_ENTRY_TARGET } from './characterMovement';
 import { SIGHTLINE_OCCLUDER_LAYER } from '../../constants/layers';
 import { findTidyTarget } from '../../lib/islandOvergrowth';
 import { nearestLightSwitch } from '../../lib/interiorLights';
 import { getIslandSurfaceY } from '../../constants/terrain';
+import { TIDY_HOME_RADIUS, TIDY_RADIUS } from '../../constants/islandReturn';
+import { buildWallSegments, toShellRooms } from '../../constants/interiorShell';
+import { parseUnlockedRooms } from '../../constants/rooms';
+import { getItemById, isStandableItem } from '../../constants/items';
+import { petCompanionNoun } from '../../constants/pets';
+import { PROMPT_BADGE_STACK } from '../../constants/hudLayout';
+import { getFootprint, getFootprintVersion, makeObb, type Obb2 } from '../../lib/furniturePlacement';
+import {
+  selectInteractionTarget,
+  segmentCrossesWalls,
+  type InteractionAction,
+  type InteractionCandidate,
+  type InteractionTargetKind,
+  type TargetingObstacles,
+} from '../../lib/interactionTargeting';
 
-// Matches PettingMiniGame.tsx's own pet-dog trigger radius - kept in sync manually since the
-// dog's proximity isn't tracked in AppContext like nearbyBuilding/nearbyInteractable are.
-const DOG_TRIGGER_DIST = 2.5;
-
-// Fixed "above the bounding box" anchor heights per target type, added on top of each object's
-// own base world position. These are hand-tuned approximations of each model's actual height
-// (small dog) rather than a real THREE.Box3 computed from the mesh - good enough for a floating
-// nameplate and far simpler than plumbing mesh refs for every target type through to this
-// component.
-//
-// Two exceptions, both because a hardcoded height that lands INSIDE the object puts the anchor
-// where the occlusion raycast hits the object's own surface, and the prompt then silently never
-// appears:
-//   the Home        - derived from its House Style footprint (see homeAnchorHeight below);
-//   any furniture   - already measured off the model by lib/furnitureInteraction.ts and published
-//                     on the bus as a complete world point, so this file adds nothing to it. That
-//                     replaced a flat 1.3 that was written for a hammock and would have sat two
-//                     thirds of the way up a wardrobe.
-const DOG_ANCHOR_HEIGHT = 0.75;
+/**
+ * How close the player must be to their companion to be offered it. Matches PettingMiniGame's own
+ * radius; the companion is only a candidate at all once it has settled (Three/IslandPet.tsx).
+ */
+const PET_INTERACT_REACH = 2.5;
 
 // 離線環境變化 (Three/IslandOvergrowth.tsx). Two heights, because one press clears two very
 // different things: a patch of weeds at the players feet, and the vines hanging off the eaves.
-// The wall height is measured to just under the roofline and the anchor itself sits OUTSIDE the
-// wall (see findTidyTarget), so the occlusion cast below does not hit the house it is pointing at.
-const TIDY_ANCHOR_HEIGHT = 0.8;
-const TIDY_WALL_ANCHOR_HEIGHT = 2.5;
+// The wall point sits OUTSIDE the wall (see findTidyTarget), level with where the vines hang.
+const TIDY_POINT_HEIGHT = 0.5;
+const TIDY_WALL_POINT_HEIGHT = 2.5;
 
-/** Floats the badge clear of the roofline of whatever style the Home currently wears. */
-const HOME_ANCHOR_CLEARANCE = 0.6;
-
-// Occlusion raycast is capped just short of the target's own distance so the target's own
-// surface (the thing the ray is aimed at) never registers as "something in the way".
+// Occlusion raycast (Q badge and speech bubble only) is capped just short of the target's own
+// distance so the target's own surface never registers as "something in the way".
 const OCCLUSION_SLACK = 0.4;
 // Small margin so a target that's just past the edge of the frustum doesn't pop out the instant
 // its projected point crosses the exact viewport boundary.
 const OFFSCREEN_MARGIN = 60;
 
-type Candidate = { key: string; distance: number; anchor: THREE.Vector3 };
-
-// Scratch objects. This runs every frame, and the three candidate anchors plus the two vectors
-// the occlusion cast needs used to be freshly allocated each time - ~6 THREE.Vector3 per frame
-// thrown straight at the GC. The candidate list is fixed (building / interactable / dog), so each
-// one owns a reusable anchor instead.
-const ANCHOR_SCRATCH: Record<string, THREE.Vector3> = {
-  building: new THREE.Vector3(),
-  interactable: new THREE.Vector3(),
-  dog: new THREE.Vector3(),
-  tidy: new THREE.Vector3(),
-  merchant: new THREE.Vector3(),
-  lightswitch: new THREE.Vector3(),
-  npc: new THREE.Vector3(),
-  speech: new THREE.Vector3(),
-};
+/** Scratch vectors — this runs every frame. */
+const SCRATCH_LIGHTSWITCH = new THREE.Vector3();
+const SCRATCH_SPEECH = new THREE.Vector3();
+const SCRATCH_POINT = new THREE.Vector3();
 
 /** 居民泡泡的螢幕座標，發佈到 playerBus.npcSpeechPrompt 的那一個物件 —— 就地改寫，不是每幀一個。 */
 const SPEECH_SCREEN = { x: 0, y: 0, visible: false };
@@ -76,13 +67,13 @@ const toTarget = new THREE.Vector3();
 const ndc = new THREE.Vector3();
 
 /**
- * 一次投影的結果。模組層級重複使用，呼叫端當場讀完就算 —— 這個檔案每幀跑兩次投影（E 那格和
- * Q 那格），沒有理由每幀丟兩個物件給 GC。
+ * 一次投影的結果。模組層級重複使用，呼叫端當場讀完就算 —— 這個檔案每幀跑好幾次投影，沒有理由
+ * 每幀丟物件給 GC。
  */
 const PROJECTION = { x: 0, y: 0, visible: false };
 
 // Walks up from a raycast hit to see if it landed on the player's own avatar (tagged in
-// Avatar.tsx) - such hits don't count as occlusion, see isOccluded below for why.
+// Avatar.tsx) - such hits don't count as occlusion, see projectToScreen below for why.
 function isPlayerAvatarHit(object: THREE.Object3D): boolean {
   let node: THREE.Object3D | null = object;
   while (node) {
@@ -95,9 +86,11 @@ function isPlayerAvatarHit(object: THREE.Object3D): boolean {
 /**
  * 一個世界點 → 螢幕座標 + 它現在看不看得見，寫進 {@link PROJECTION}。
  *
- * 抽出來是因為現在有兩個徽章要用同一套規則：排名第一的那個互動（E），和牆上的電燈開關（Q）。
- * 「看得見」在這裡永遠是同一件事 —— 在視錐裡、沒有被牆擋住 —— 而那正是不該有兩份的東西：
- * 兩份就會有一天只有一邊被修好。
+ * 給牆上的電燈開關（Q）和居民的對話泡泡用。它們是「顯示」：被牆擋住時藏起來是對的。
+ *
+ * E 那格不用這個 —— 見 {@link projectPinned}。E 的目標是不是搆得到，是由玩家到互動點之間有沒有
+ * 牆決定的（lib/interactionTargeting.ts），不是由鏡頭看不看得到決定的；而一個搆得到、按了會動的
+ * 東西，提示就必須在畫面上。
  *
  * Occlusion: 從鏡頭往目標打一條射線，任何落在目標之前（扣掉 OCCLUSION_SLACK）的命中都算被擋。
  * 打到玩家自己身上的不算 —— 第三人稱時角色幾乎永遠在鏡頭和目標之間，那不是牆。
@@ -132,49 +125,143 @@ function projectToScreen(
 }
 
 /**
- * Lives inside the exterior <Canvas> (see Scene.tsx) so it can project the single nearest
- * interactable's world position into screen space every frame, with real camera-frustum and
- * line-of-sight (occlusion) checks - neither of which the HTML overlay (InteractionPrompt.tsx)
- * can do on its own, since it never sees the THREE.Camera or scene graph.
+ * The selected target's point → screen, ALWAYS placeable: a point behind the camera is mirrored
+ * and pushed past the edge in its own direction, so the overlay's safe-area clamp pins it to the
+ * side of the screen the target is on. No occlusion test — see projectToScreen for why.
+ */
+function projectPinned(
+  point: THREE.Vector3,
+  camera: THREE.Camera,
+  width: number,
+  height: number,
+): typeof PROJECTION {
+  ndc.copy(point).project(camera);
+  let nx = ndc.x;
+  let ny = ndc.y;
+  if (ndc.z > 1) {
+    // Behind the camera: projection inverts. Flip back and push to the frame edge.
+    nx = -nx;
+    ny = -ny;
+    const m = Math.max(Math.abs(nx), Math.abs(ny), 1e-6);
+    nx = (nx / m) * 1.2;
+    ny = (ny / m) * 1.2;
+  }
+  PROJECTION.x = (nx * 0.5 + 0.5) * width;
+  PROJECTION.y = (-ny * 0.5 + 0.5) * height;
+  PROJECTION.visible = true;
+  return PROJECTION;
+}
+
+/** What a placed piece looks like to the line-of-reach test: its id and its walk box. */
+type PropBox = { id: string; box: Obb2 };
+
+/**
+ * THE INTERACTION TARGET SYSTEM for one world — the per-frame driver of
+ * lib/interactionTargeting.ts.
  *
- * Writes its result into playerBus (see playerBus.ts) rather than React state/context so this
- * never triggers a React re-render on this fast a cadence; InteractionPrompt.tsx polls
- * playerBus.interactionPrompt itself via requestAnimationFrame and applies it as a direct
- * transform, the same "mutate outside React" pattern already used for playerPos/dogPos etc.
+ * Every frame, inside the Canvas (it needs the camera to project):
+ *
+ *   1. GATHER every candidate in this scope, each with its own Interaction Point:
+ *        furniture   every piece in reach (Three/Avatar.tsx publishes them, described)
+ *        residents   playerBus.npcTargets          (Three/NpcWalker.tsx)
+ *        the Home    its front door                (hooks/usePlayerHome.ts)
+ *        the pet     over its head                 (Three/IslandPet.tsx)
+ *        merchants   playerBus.merchantTargets     (Three/MerchantVisitor.tsx)
+ *        整理        the nearest patch of overgrowth (lib/islandOvergrowth.ts)
+ *   2. SELECT one (selectInteractionTarget): in reach, not behind a wall or the house, then the
+ *      best mix of proximity and facing, with hysteresis against last frame's choice.
+ *   3. PUBLISH it as playerBus.interactionTarget, and where its point lands on screen as
+ *      playerBus.interactionPrompt.
+ *
+ * The badge (UI/InteractionPrompt.tsx) and the action key (Three/Avatar.tsx's handleAction) both
+ * read that ONE object. Neither searches for anything.
+ *
+ * Also owns the Q slot (the wall light switch — its own key, its own badge, never ranked against
+ * E) and projects the residents' speech bubbles.
  *
  * Renders nothing - this is a logic-only Canvas child, like CameraController.
  */
 export function InteractionPromptTracker({ scope = 'island' }: {
   /**
-   * Which world this tracker is projecting for.
-   *
-   * `'island'` ranks everything outdoors: the Home's door, the furniture in reach, the pet, a
-   * patch of overgrowth. `'interior'` runs inside the house's own Canvas (a second WebGL context
-   * with its own camera and scene) and has exactly one kind of candidate — the furniture the
-   * player is standing next to. None of the others exist indoors: there is no door to enter from
-   * the inside, the pet stays out on the island, and nothing grows on the floorboards.
+   * Which world this tracker is targeting for. `'interior'` runs inside the house's own Canvas (a
+   * second WebGL context with its own camera and scene); only furniture, residents and the wall
+   * switches exist there.
    */
   scope?: 'island' | 'interior';
 } = {}) {
-  const { camera, scene, size } = useThree();
-  const { currentView, nearbyBuilding, profile, isWorkoutActive } = useApp();
-  // The one structure the player can enter. Avatar.tsx resolves the same Home for its own
-  // proximity check; there is no list to search any more.
+  const camera = useThree((s) => s.camera);
+  const scene = useThree((s) => s.scene);
+  const size = useThree((s) => s.size);
+  const { currentView, profile, isWorkoutActive, pendingPetFood } = useAppPick(
+    'currentView', 'profile', 'isWorkoutActive', 'pendingPetFood',
+  );
   const home = usePlayerHome(profile);
-  // Only tests objects that opted into SIGHTLINE_OCCLUDER_LAYER - see constants/layers.ts. Without
-  // this mask the cast brute-forced every triangle in the world, ocean planes included.
+  // The Q badge's and the speech bubble's camera-occlusion cast. Only tests objects that opted
+  // into SIGHTLINE_OCCLUDER_LAYER - see constants/layers.ts.
   const raycaster = useMemo(() => {
     const r = new THREE.Raycaster();
     r.layers.set(SIGHTLINE_OCCLUDER_LAYER);
     return r;
   }, []);
+
+  // --- The world's fixed obstacles, rebuilt only when the world changes ----------------------
+  const homeGeometry = useMemo(() => {
+    if (scope !== 'island' || !home) return null;
+    return {
+      point: getHomeInteractionPoint(home),
+      solid: homeSolidObstacle(home),
+    };
+  }, [scope, home]);
+  const unlockedRooms = profile?.interiorData?.unlockedRooms;
+  const walls = useMemo(
+    () => (scope === 'interior' ? buildWallSegments(toShellRooms(parseUnlockedRooms(unlockedRooms))) : null),
+    [scope, unlockedRooms],
+  );
+  const placements = scope === 'interior' ? profile?.interiorData?.placements : profile?.islandPlacements;
+  /**
+   * Placed pieces as line-of-reach props. Keyed on the save's placement list AND the footprint
+   * registry's version: a piece's box only exists once its model has measured it, a frame after
+   * it mounts.
+   */
+  const propsCache = useRef<{ placements: readonly PlacedItem[] | undefined; version: number; props: PropBox[] }>({
+    placements: undefined, version: -1, props: [],
+  });
+  const obstacles = useRef<TargetingObstacles>({});
+
+  /** Candidate records by id, reused across frames; `list` is this frame's gathered set. */
+  const pool = useRef(new Map<string, InteractionCandidate>());
+  const list = useRef<InteractionCandidate[]>([]);
+  const previousId = useRef<string | null>(null);
+
   // Persists across frames so the on-screen position can ease toward its target instead of
-  // snapping every frame (smoothing), while still snapping instantly the moment the *nearest*
-  // target actually changes (switching from e.g. the dog to a building shouldn't visibly slide
-  // the badge across the screen from one to the other).
+  // snapping every frame, while still snapping instantly the moment the target itself changes.
   const smoothedRef = useRef<{ x: number; y: number; key: string | null }>({ x: 0, y: 0, key: null });
   /** 開關那格自己的平滑狀態。`live` 是「上一幀有沒有在畫」，用來決定要不要瞬移過去。 */
   const switchSmoothedRef = useRef<{ x: number; y: number; live: boolean }>({ x: 0, y: 0, live: false });
+
+  /** Gets (or makes) the pooled record for `id` and puts it in this frame's list. */
+  const take = (id: string, kind: InteractionTargetKind): InteractionCandidate => {
+    let c = pool.current.get(id);
+    if (!c) {
+      c = makeCandidate(id, kind, scope);
+      pool.current.set(id, c);
+    }
+    c.contact = 0;
+    c.priority = 0;
+    c.locked = false;
+    c.ownerId = null;
+    list.current.push(c);
+    return c;
+  };
+
+  const eventAction = (c: InteractionCandidate, name: string): Record<string, unknown> => {
+    // Reuse the action record when it is already this event; the detail object is the caller's
+    // to fill.
+    if (c.action.type !== 'event' || c.action.name !== name || !c.action.detail) {
+      c.action = { type: 'event', name, detail: {} };
+    }
+    return (c.action as Extract<InteractionAction, { type: 'event' }>).detail!;
+  };
 
   useFrame((_state, rawDelta) => {
     const delta = clampFrameDelta(rawDelta);
@@ -185,72 +272,87 @@ export function InteractionPromptTracker({ scope = 'island' }: {
     // island's candidates through the interior's camera.
     const activeView = scope === 'interior' ? View.BUILDING_INTERIOR : View.HOME;
     const otherView = scope === 'interior' ? View.HOME : View.BUILDING_INTERIOR;
-    if (currentView !== activeView || isWorkoutActive || !playerPos) {
-      // The idle tracker must NOT clear the prompt while the other one is filling it in. Both
+    // 佈置模式: the camera flies free and the avatar is frozen — nothing is acted on.
+    const buildMode = scope === 'interior' && !!playerBus.isBuildMode;
+    if (currentView !== activeView || isWorkoutActive || !playerPos || buildMode) {
+      // The idle tracker must NOT clear the target while the other one is filling it in. Both
       // Canvases stay mounted (the island keeps rendering behind the interior), so both of these
       // run every frame against one shared field — and whichever happened to run second would
       // win. Clearing only when nobody is writing removes the race instead of relying on the
       // order the two render loops happen to be in.
       const otherTrackerLive = !isWorkoutActive && currentView === otherView;
-      if (!otherTrackerLive) playerBus.interactionPrompt = null;
+      if (!otherTrackerLive || buildMode) {
+        playerBus.interactionTarget = null;
+        playerBus.interactionPrompt = null;
+      }
       if (scope === 'island') playerBus.tidyTarget = null;
       // 泡泡同理：只收自己這個場景的那一句，另一個場景的居民可能正在說話。
       if (playerBus.npcSpeech?.scope === scope) playerBus.npcSpeechPrompt = null;
-      // 開關那格只有室內這個 tracker 會寫，所以它也只由室內這個 tracker 收拾 —— 島上那個碰都
-      // 不碰，兩邊就沒有互相蓋來蓋去的問題（那正是上面那行要處理的事）。
+      // 開關那格只有室內這個 tracker 會寫，所以它也只由室內這個 tracker 收拾。
       if (scope === 'interior') {
         playerBus.lightSwitchPrompt = null;
+        playerBus.lightSwitchTarget = null;
         switchSmoothedRef.current.live = false;
       }
       smoothedRef.current.key = null;
+      previousId.current = null;
       return;
     }
 
+    // --- Obstacles for the line-of-reach test ---------------------------------------------
+    const version = getFootprintVersion();
+    const cache = propsCache.current;
+    if (cache.placements !== placements || cache.version !== version) {
+      cache.placements = placements;
+      cache.version = version;
+      cache.props = [];
+      for (const p of placements ?? []) {
+        const fp = getFootprint(p.itemId);
+        // Only what a walking body actually runs into: not rugs (no walk box), not decks the
+        // player stands on.
+        if (!fp?.walk || isStandableItem(p.itemId)) continue;
+        cache.props.push({ id: p.instanceId, box: makeObb(fp.walk, p.position[0], p.position[2], p.rotation || 0) });
+      }
+    }
+    const obs = obstacles.current;
+    obs.walls = walls ?? undefined;
+    obs.structures = homeGeometry ? [homeGeometry.solid] : undefined;
+    obs.props = cache.props;
+
     // --- Q：牆上的電燈開關 ------------------------------------------------------------------
     //
-    // 自己一格，不跟下面那些排名次。它按的是 Q 而不是 E，所以「兩個徽章搶同一個位置就是一次
-    // 玩家看不見的擲硬幣」那個理由在這裡不成立：站在沙發旁邊的牆邊，E 坐下和 Q 關燈是兩件互
-    // 不衝突的事，兩個都該出現。這也是它以前被排進名次時真正的毛病 —— 房裡只要有一件家具離
-    // 你更近，開關的徽章就永遠不會出現，而玩家會以為那面牆上根本沒有開關。
+    // 自己一格，不跟 E 排名次。它按的是 Q 而不是 E，所以「玩家只有一個動作鍵」那個理由在這裡
+    // 不成立：站在沙發旁邊的牆邊，E 坐下和 Q 關燈是兩件互不衝突的事，兩個都該出現。
     //
-    // 佈置模式排除：那個模式下鏡頭是自由的、角色是不動的，而且它一律當作燈是亮的（見
-    // Three/InteriorLighting.tsx），一個按了不會有任何事發生的提示比沒有提示更糟。
-    //
-    // 掛點是 lib/interiorLights.ts 登記時就算好的世界點，已經沿著面板的法線推離牆面 —— 開關
-    // 貼在牆上，錨點如果留在牆面上，遮蔽射線第一個打到的就是它自己所在的那面牆。
+    // 選哪一個開關，跟 E 一樣要過「中間沒有牆」這一關，選到的那一個寫在 lightSwitchTarget 上，
+    // Q 鍵轉身面向的就是它 —— 徽章指的和動作做的，是同一個開關。
+    let switchScreen: { x: number; y: number; visible: boolean } | null = null;
     if (scope === 'interior') {
-      const sw = playerBus.isBuildMode ? null : nearestLightSwitch(playerPos.x, playerPos.z);
+      const sw = nearestLightSwitch(
+        playerPos.x, playerPos.z, undefined,
+        walls ? (s) => !segmentCrossesWalls(playerPos.x, playerPos.z, s.promptX, s.promptZ, walls) : undefined,
+      );
+      playerBus.lightSwitchTarget = sw;
       if (!sw) {
         playerBus.lightSwitchPrompt = null;
         switchSmoothedRef.current.live = false;
       } else {
         const p = projectToScreen(
-          ANCHOR_SCRATCH.lightswitch.set(sw.promptX, sw.y, sw.promptZ),
+          SCRATCH_LIGHTSWITCH.set(sw.promptX, sw.y, sw.promptZ),
           camera, scene, raycaster, size.width, size.height,
         );
-        const s = switchSmoothedRef.current;
-        if (!s.live) {
-          // 第一幀就位，不要從上一個開關的位置滑過來 —— 走進隔壁房間時那會是一條橫越畫面的線。
-          s.x = p.x;
-          s.y = p.y;
-          s.live = true;
-        } else {
-          const t = 1 - Math.pow(0.001, delta || 1 / 60);
-          s.x = THREE.MathUtils.lerp(s.x, p.x, t);
-          s.y = THREE.MathUtils.lerp(s.y, p.y, t);
-        }
-        playerBus.lightSwitchPrompt = { x: s.x, y: s.y, visible: p.visible };
+        switchScreen = { x: p.x, y: p.y, visible: p.visible };
       }
     }
 
     // --- 居民說的話：泡泡的位置 ---------------------------------------------------------------
     //
-    // 不參加下面的排名 —— 泡泡不是一個「按了會做什麼」的東西，它跟提示同時存在（提示寫「繼續聊天」，
-    // 泡泡裡是她剛說的那一句）。投影規則跟提示同一個函式，所以被牆擋住時兩個一起消失。
+    // 不參加排名 —— 泡泡不是一個「按了會做什麼」的東西，它跟提示同時存在（提示寫「繼續聊天」，
+    // 泡泡裡是她剛說的那一句）。被牆擋住時藏起來。
     const speech = playerBus.npcSpeech;
     if (speech && speech.scope === scope) {
       const p = projectToScreen(
-        ANCHOR_SCRATCH.speech.copy(speech.anchor), camera, scene, raycaster, size.width, size.height,
+        SCRATCH_SPEECH.copy(speech.anchor), camera, scene, raycaster, size.width, size.height,
       );
       SPEECH_SCREEN.x = p.x;
       SPEECH_SCREEN.y = p.y;
@@ -260,154 +362,185 @@ export function InteractionPromptTracker({ scope = 'island' }: {
       playerBus.npcSpeechPrompt = null;
     }
 
-    const candidates: Candidate[] = [];
+    // --- 1. GATHER ---------------------------------------------------------------------------
+    list.current.length = 0;
 
-    // The furniture in reach. The one candidate BOTH scopes have, and the only one indoors —
-    // its anchor is a finished world point (measured off the piece's own model, see
-    // lib/furnitureInteraction.ts), so unlike every other candidate here it gets no height added.
-    const interactablePos = playerBus.nearbyInteractablePos;
-    if (interactablePos) {
-      candidates.push({
-        key: 'interactable',
-        distance: playerPos.distanceTo(interactablePos),
-        anchor: ANCHOR_SCRATCH.interactable.copy(interactablePos),
-      });
-    }
-
-    // 居民 (constants/npcSocial.ts) — the gardener outdoors, the butler indoors, so this one is in
-    // BOTH scopes. The target carries its own scope and is ignored by the other tracker: the two
-    // Canvases share one coordinate space, and the interior keeps ticking while the player is
-    // outside, so a butler in the living room would otherwise light a prompt on the island.
-    const npc = playerBus.npcTarget;
-    if (npc && npc.scope === scope) {
-      const npcDist = Math.hypot(npc.anchor.x - playerPos.x, npc.anchor.z - playerPos.z);
-      if (npcDist < npc.reach) {
-        candidates.push({
-          key: 'npc',
-          distance: npcDist,
-          anchor: ANCHOR_SCRATCH.npc.copy(npc.anchor),
-        });
+    // Furniture — every piece in reach, already described by the avatar's scan, each with its
+    // own interaction point (lib/furnitureInteraction.ts's resolveInteractionPoint).
+    const furniture = playerBus.furnitureInReach;
+    if (furniture && furniture.scope === scope) {
+      for (let i = 0; i < furniture.count; i++) {
+        const f = furniture.items[i];
+        fillFurnitureCandidate(take(furnitureCandidateId(f.target.instanceId), 'furniture'), f);
       }
     }
 
-    // Everything else there is to point at exists only on the island.
+    // 居民 (constants/npcSocial.ts) — both scopes; each entry carries its own scope, because the
+    // two Canvases share one coordinate space.
+    for (const npc of playerBus.npcTargets.values()) {
+      if (npc.scope !== scope) continue;
+      const d = Math.hypot(npc.anchor.x - playerPos.x, npc.anchor.z - playerPos.z);
+      if (d >= npc.reach) continue;
+      const c = take(`npc:${npc.npcId}`, 'npc');
+      c.point = npc.anchor;
+      c.aimX = npc.anchor.x;
+      c.aimZ = npc.anchor.z;
+      c.distance = d;
+      c.reach = npc.reach;
+      c.label = npc.label || '聊天';
+      c.icon = 'chat';
+      eventAction(c, 'npc-interact').npcId = npc.npcId;
+    }
+
     if (scope === 'island') {
-      if (nearbyBuilding && home) {
-        const doorPos = getHomeDoorPosition(home);
-        candidates.push({
-          key: 'building',
-          distance: playerPos.distanceTo(doorPos),
-          anchor: ANCHOR_SCRATCH.building.set(
-            doorPos.x,
-            doorPos.y + getHouseVisualHeight(home.style) + HOME_ANCHOR_CLEARANCE,
-            doorPos.z
-          ),
-        });
+      // The Home — its interaction point is ON the front door (getHomeInteractionPoint). Range is
+      // measured to the doormat the way it always was (HOME_ENTRY_RADIUS); the line-of-reach test
+      // against the house's own solid box is what keeps the side and back walls from offering it.
+      if (home && homeGeometry) {
+        const d = homeEntryDistance(playerPos.x, playerPos.z, home);
+        if (d < HOME_ENTRY_RADIUS) {
+          fillHomeCandidate(take(HOME_CANDIDATE_ID, 'building'), homeGeometry.point, d, `進入 ${HOME_ENTRY_TARGET.name}`);
+        }
       }
 
+      // The pet the player is standing next to (only published once it has settled).
       const dogPos = playerBus.dogPos;
-      if (dogPos) {
-        const dogDist = playerPos.distanceTo(dogPos);
-        if (dogDist < DOG_TRIGGER_DIST) {
-          candidates.push({
-            key: 'dog',
-            // Ranked by the handicapped distance, triggered by the real one - an equipped companion
-            // stands closer than anything the player ever walks up to. See playerBus.dogPromptBias.
-            distance: dogDist + (playerBus.dogPromptBias ?? 0),
-            anchor: ANCHOR_SCRATCH.dog.set(dogPos.x, dogPos.y + DOG_ANCHOR_HEIGHT, dogPos.z),
-          });
+      const petId = playerBus.petTargetId;
+      if (dogPos && petId) {
+        const d = Math.hypot(dogPos.x - playerPos.x, dogPos.z - playerPos.z);
+        if (d < PET_INTERACT_REACH) {
+          const c = take(`pet:${petId}`, 'pet');
+          c.point.x = dogPos.x;
+          c.point.y = dogPos.y + (playerBus.petPromptHeight ?? 0.75);
+          c.point.z = dogPos.z;
+          c.aimX = dogPos.x;
+          c.aimZ = dogPos.z;
+          c.distance = d;
+          c.reach = PET_INTERACT_REACH;
+          c.priority = playerBus.petPromptPriority ?? 0;
+          // 小狗 / 小貓 / 小鳥, from the species table. 餵食模式 (a food already chosen in the
+          // care panel) turns the SAME slot into the feed — one badge, one key, never two
+          // prompts for one animal.
+          const noun = petCompanionNoun(petId);
+          if (pendingPetFood) {
+            c.label = `餵${noun}吃${getItemById(pendingPetFood)?.name ?? '飼料'}`;
+            c.icon = 'cook';
+            eventAction(c, 'pet-feed').petItemId = petId;
+          } else {
+            c.label = `與${noun}互動`;
+            c.icon = 'hand';
+            eventAction(c, 'pet-interact').petItemId = petId;
+          }
         }
       }
 
-      // 旅行商人. Joins the SAME ranking as the front door and the furniture rather than getting
-      // a prompt of its own — the brief's §6 (「不要為旅行商人另外建立第二套 Interaction
-      // Event」) and the rule this whole file already applies: the player has one action key, so
-      // exactly one thing may offer itself at a time.
-      //
-      // Everything about the candidate comes off the bus, written by the component that is
-      // actually sailing the boat (Three/MerchantVisitor.tsx) — including the trigger radius,
-      // which is the dock's own (constants/merchantDocks.ts) rather than a number kept here.
-      // That matters: a second merchant mooring somewhere tighter carries its own reach, and the
-      // field being absent is ALSO how "he has not docked yet / he is casting off" arrives here,
-      // so the prompt and the action key go quiet together instead of each deciding separately.
-      const merchant = playerBus.merchantTarget;
-      if (merchant) {
-        const merchantDist = Math.hypot(
-          merchant.anchor.x - playerPos.x,
-          merchant.anchor.z - playerPos.z,
-        );
-        if (merchantDist < merchant.reach) {
-          candidates.push({
-            key: 'merchant',
-            distance: merchantDist,
-            anchor: ANCHOR_SCRATCH.merchant.copy(merchant.anchor),
-          });
-        }
+      // 旅行商人 — every merchant docked and in reach competes like anything else.
+      for (const m of playerBus.merchantTargets.values()) {
+        const d = Math.hypot(m.anchor.x - playerPos.x, m.anchor.z - playerPos.z);
+        if (d >= m.reach) continue;
+        const c = take(`merchant:${m.merchantId}`, 'merchant');
+        c.point = m.anchor;
+        c.aimX = m.anchor.x;
+        c.aimZ = m.anchor.z;
+        c.distance = d;
+        c.reach = m.reach;
+        c.label = m.label;
+        c.icon = 'shop';
+        eventAction(c, 'merchant-interact').merchantId = m.merchantId;
       }
 
-      // 整理 — the one interaction 離線回歸 adds. It joins the same ranking as everything else
-      // rather than getting a prompt of its own: the player has one action key, and a second badge
-      // competing for the same corner of the screen is how a cosy chore turns into clutter.
-      //
-      // Deliberately NOT handicapped like the companion is. Overgrowth is something the player walks
-      // over to, so being the nearest thing genuinely means they are standing in it — and when they
-      // are at their own front door with weeds around it, the door is closer to its own anchor than
-      // the weeds are to theirs, so 進入我的家 still wins.
+      // 整理 — the nearest patch of overgrowth, or the vines on the wall the player is at.
       const sprouts = profile?.islandState?.sprouts;
       const tidy =
         sprouts && sprouts.length > 0 ? findTidyTarget(sprouts, playerPos.x, playerPos.z, home) : null;
       playerBus.tidyTarget = tidy;
       if (tidy) {
         const islandScale = 1 + ((profile?.territoryLevel ?? 1) - 1) * 0.4;
-        const groundY = getIslandSurfaceY(tidy.x, tidy.z, islandScale);
-        candidates.push({
-          key: 'tidy',
-          distance: Math.hypot(tidy.x - playerPos.x, tidy.z - playerPos.z),
-          anchor: ANCHOR_SCRATCH.tidy.set(
-            tidy.x,
-            groundY + (tidy.wall ? TIDY_WALL_ANCHOR_HEIGHT : TIDY_ANCHOR_HEIGHT),
-            tidy.z,
-          ),
-        });
+        const c = take('tidy', 'tidy');
+        c.point.x = tidy.x;
+        c.point.y = getIslandSurfaceY(tidy.x, tidy.z, islandScale)
+          + (tidy.wall ? TIDY_WALL_POINT_HEIGHT : TIDY_POINT_HEIGHT);
+        c.point.z = tidy.z;
+        c.aimX = tidy.x;
+        c.aimZ = tidy.z;
+        c.distance = Math.hypot(tidy.x - playerPos.x, tidy.z - playerPos.z);
+        c.reach = tidy.wall ? TIDY_HOME_RADIUS : TIDY_RADIUS;
+        c.label = `整理這裡 ×${tidy.count}`;
+        c.icon = 'sprout';
+        const detail = eventAction(c, 'island-tidy');
+        detail.x = tidy.x;
+        detail.z = tidy.z;
       }
     }
 
-    if (candidates.length === 0) {
+    // Forget records nothing gathered this frame, so a pooled object never outlives its source.
+    if (pool.current.size > list.current.length) {
+      for (const id of pool.current.keys()) {
+        if (!list.current.some((c) => c.id === id)) pool.current.delete(id);
+      }
+    }
+
+    // --- 2. SELECT ---------------------------------------------------------------------------
+    const target = selectInteractionTarget(
+      list.current,
+      {
+        x: playerPos.x,
+        z: playerPos.z,
+        yaw: playerBus.playerRotation ?? 0,
+        cameraYaw: playerBus.cameraYaw ?? null,
+      },
+      obs,
+      previousId.current,
+    );
+    previousId.current = target?.id ?? null;
+
+    // --- 3. PUBLISH --------------------------------------------------------------------------
+    playerBus.interactionTarget = target;
+    if (!target) {
       playerBus.interactionPrompt = null;
       smoothedRef.current.key = null;
-      return;
-    }
-
-    // Only the single nearest candidate is ever shown - see the module doc comment.
-    candidates.sort((a, b) => a.distance - b.distance);
-    const target = candidates[0];
-
-    // 視錐 + 遮蔽 + 螢幕座標，跟上面那格開關走同一個函式（見 projectToScreen）。
-    const { x: px, y: py, visible } = projectToScreen(
-      target.anchor, camera, scene, raycaster, size.width, size.height,
-    );
-
-    if (smoothedRef.current.key !== target.key) {
-      // Switched to a different nearest target this frame - snap instead of easing from the
-      // previous target's old screen position.
-      smoothedRef.current.x = px;
-      smoothedRef.current.y = py;
-      smoothedRef.current.key = target.key;
     } else {
-      // Frame-rate independent exponential smoothing (same shape as elsewhere in this codebase,
-      // e.g. Avatar.tsx's smoothedZoomOpacityRef) so the badge eases toward the object's current
-      // projected position instead of jittering with it frame to frame.
-      const t = 1 - Math.pow(0.001, delta || 1 / 60);
-      smoothedRef.current.x = THREE.MathUtils.lerp(smoothedRef.current.x, px, t);
-      smoothedRef.current.y = THREE.MathUtils.lerp(smoothedRef.current.y, py, t);
+      const p = projectPinned(
+        SCRATCH_POINT.set(target.point.x, target.point.y, target.point.z), camera, size.width, size.height,
+      );
+      const s = smoothedRef.current;
+      if (s.key !== target.id) {
+        // A different target — snap rather than slide across the screen from the last one.
+        s.x = p.x;
+        s.y = p.y;
+        s.key = target.id;
+      } else {
+        // Frame-rate independent exponential smoothing so the badge eases with the object
+        // instead of jittering with it frame to frame.
+        const t = 1 - Math.pow(0.001, delta || 1 / 60);
+        s.x = THREE.MathUtils.lerp(s.x, p.x, t);
+        s.y = THREE.MathUtils.lerp(s.y, p.y, t);
+      }
+      playerBus.interactionPrompt = { key: target.id, x: s.x, y: s.y };
     }
 
-    playerBus.interactionPrompt = {
-      key: target.key,
-      x: smoothedRef.current.x,
-      y: smoothedRef.current.y,
-      visible,
-    };
+    // The Q badge last, so it can step out of the E badge's way: two cards drawn over the same
+    // spot is two prompts neither of which can be read.
+    if (switchScreen) {
+      const e = playerBus.interactionPrompt;
+      if (e && switchScreen.visible
+        && Math.abs(switchScreen.x - e.x) < PROMPT_BADGE_STACK.halfSpan
+        && Math.abs(switchScreen.y - e.y) < PROMPT_BADGE_STACK.height) {
+        switchScreen.y = e.y - PROMPT_BADGE_STACK.height;
+      }
+      const s = switchSmoothedRef.current;
+      if (!s.live) {
+        // 第一幀就位，不要從上一個開關的位置滑過來 —— 走進隔壁房間時那會是一條橫越畫面的線。
+        s.x = switchScreen.x;
+        s.y = switchScreen.y;
+        s.live = true;
+      } else {
+        const t = 1 - Math.pow(0.001, delta || 1 / 60);
+        s.x = THREE.MathUtils.lerp(s.x, switchScreen.x, t);
+        s.y = THREE.MathUtils.lerp(s.y, switchScreen.y, t);
+      }
+      playerBus.lightSwitchPrompt = { x: s.x, y: s.y, visible: switchScreen.visible };
+    }
   });
 
   return null;

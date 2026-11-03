@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { useApp } from '../../context/AppContext';
+import { useAppPick } from '../../context/AppContext';
 import { View, CameraMode } from '../../types';
 import { parseUnlockedRooms, ROOM_GRID_SIZE, ROOM_HALF_SIZE } from '../../constants/rooms';
 import { FIRST_PERSON_ZOOM } from '../../constants/cameraZoom';
@@ -25,9 +25,11 @@ export function CameraRig({
   maxPolarAngle = Math.PI / 2.1,
   isBuildMode = false
 }: CameraRigProps) {
-  const { camera, scene, gl } = useThree();
+  const camera = useThree((s) => s.camera);
+  const scene = useThree((s) => s.scene);
+  const gl = useThree((s) => s.gl);
   const controlsRef = useRef<any>(null);
-  const { joystickData, orbitJoystickData, uiScale, setUiScale, currentView, cameraMode, profile } = useApp();
+  const { joystickData, orbitJoystickData, uiScale, setUiScale, currentView, cameraMode, profile } = useAppPick('joystickData', 'orbitJoystickData', 'uiScale', 'setUiScale', 'currentView', 'cameraMode', 'profile');
   const raycaster = useRef(new THREE.Raycaster());
   const prevBuildMode = React.useRef(isBuildMode);
   const idealCamPosRef = React.useRef<THREE.Vector3 | null>(null);

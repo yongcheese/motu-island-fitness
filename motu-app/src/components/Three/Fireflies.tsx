@@ -6,7 +6,7 @@
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { useApp } from '../../context/AppContext';
+import { useAppPick } from '../../context/AppContext';
 import { WeatherType } from '../../types';
 import { ISLAND_SURFACE_Y } from '../../constants/terrain';
 
@@ -164,7 +164,7 @@ function createFireflyMaterial() {
 }
 
 export function Fireflies({ count = 20 }: { count?: number }) {
-  const { weather, profile } = useApp();
+  const { weather, profile } = useAppPick('weather', 'profile');
   const pointsRef = useRef<THREE.Points>(null);
   const nightRef = useRef(0);
 

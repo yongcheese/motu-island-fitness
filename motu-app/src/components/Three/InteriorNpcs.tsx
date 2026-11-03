@@ -5,7 +5,7 @@
 
 import React, { useMemo, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
-import { useApp } from '../../context/AppContext';
+import { useAppPick } from '../../context/AppContext';
 import { INTERIOR_NPCS } from '../../constants/npcs';
 import {
   ROOM_INNER_HALF_SIZE,
@@ -63,7 +63,7 @@ function inRect(rect: WalkRect, x: number, z: number): boolean {
 }
 
 export const InteriorNpcs = React.memo(function InteriorNpcs({ isBuildMode }: { isBuildMode: boolean }) {
-  const { profile } = useApp();
+  const { profile } = useAppPick('profile');
   const interior = profile?.interiorData;
   const camera = useThree((s) => s.camera);
 

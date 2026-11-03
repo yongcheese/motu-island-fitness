@@ -5,7 +5,7 @@
 
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { useApp } from '../../context/AppContext';
+import { useAppPick } from '../../context/AppContext';
 import { ISLAND_NPCS } from '../../constants/npcs';
 import { SHORELINE_RADIUS } from '../../constants/terrain';
 import { getSurfaceAt } from '../../lib/placementSurfaces';
@@ -44,7 +44,7 @@ const DIG_CLEARANCE = 0.3;
 const DIG_MAX_SLOPE = 0.12;
 
 export const IslandNpcs = React.memo(function IslandNpcs() {
-  const { profile } = useApp();
+  const { profile } = useAppPick('profile');
   const home = usePlayerHome(profile);
   const islandScale = 1 + ((profile?.territoryLevel || 1) - 1) * 0.4;
   const placements = profile?.islandPlacements;

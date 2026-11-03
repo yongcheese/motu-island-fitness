@@ -29,11 +29,10 @@ import type { CharacterRig } from './src/components/Three/character/types';
 import { resolveCharacterOutfit } from './src/components/Three/character/outfit';
 import { CHARACTER_ROOT_SCALE, LEGACY_SKELETON, toWorld } from './src/constants/characterRig';
 import { getItemById } from './src/constants/items';
-import { getPrimaryInteraction, interactionPosture, liePitch } from './src/constants/furnitureInteractions';
+import { getPrimaryInteraction, interactionPosture } from './src/constants/furnitureInteractions';
 import { getPosture } from './src/constants/interactionPostures';
-import {
-  resolveActionFrame, resolveOccupancyFrame, settleFrom, solveLegSwing,
-} from './src/lib/interactionPosture';
+import { resolveActionFrame } from './src/lib/interactionPosture';
+import { resolveOccupantPose } from './src/lib/occupantFit';
 import { resolveInteractionSpot } from './src/lib/furnitureInteraction';
 import { registerFootprint } from './src/lib/furniturePlacement';
 import { ItemCategory, type PlacedItem } from './src/types';
@@ -120,30 +119,17 @@ function Scene() {
       leftLeg: leftLegRef, rightLeg: rightLegRef,
     };
 
-    if (posture.occupies) {
-      // Ease the mount in over the first second, then hold — or freeze wherever ?t asked.
+    if (posture.occupies && spot.fit) {
+      // Ease the mount in over the first second, then hold — or freeze wherever ?t asked. The body
+      // is posed by the SAME function the controller calls (lib/occupantFit.ts).
       const p = FROZEN ?? Math.min(1, t / 1.2);
-      const settle = settleFrom(p);
-      const legSwing = solveLegSwing(posture.legs, {
-        legLength: toWorld(LEGACY_SKELETON.hip.y - LEGACY_SKELETON.soleY),
-        // The floor the player walked in from, which for an indoor piece is 0.
-        hipDrop: spot.y + toWorld(LEGACY_SKELETON.hip.y),
-        reachAhead: spot.reachAhead,
-        lean: posture.lean ?? 0,
+      const pose = resolveOccupantPose({
+        posture: postureId, skeleton: LEGACY_SKELETON, fit: spot.fit,
+        spotX: spot.x, spotZ: spot.z, progress: p, time: t, groundY: 0, motion: null,
       });
-      const frame = resolveOccupancyFrame(postureId, { progress: p, settle, time: t, legSwing });
-      rootRef.current.position.set(spot.x, THREE.MathUtils.lerp(0, spot.y, settle) + frame.rootRise, spot.z);
-      // THE RECLINE, which this harness used to leave out — and leaving it out is not a small
-      // inaccuracy, it is the entire lie pose. `lie` declares no `lean` on purpose: how far a
-      // body is tipped off flat is derived from the rig (`liePitch`, the angle that keeps an
-      // oversized chibi skull out of the mattress), and Avatar.tsx adds it on top of the frame's
-      // own pitch. Without it every bed and hammock in here showed a character STANDING on the
-      // mattress, which is a picture of the harness rather than of the game.
-      const reclinePitch = posture.anchoring === 'side' ? liePitch(LEGACY_SKELETON) * settle : 0;
-      rootRef.current.quaternion.setFromEuler(
-        new THREE.Euler(reclinePitch + frame.rootPitch, spot.yaw, 0, 'YXZ'),
-      );
-      write(joints, frame.joints);
+      rootRef.current.position.set(spot.x + pose.offsetX, pose.baseY + pose.rise, spot.z + pose.offsetZ);
+      rootRef.current.quaternion.copy(pose.quaternion);
+      write(joints, pose.joints);
     } else {
       const duration = posture.duration ?? 1;
       // Loop the action with a beat of rest between takes — or hold it at ?t of the way through,

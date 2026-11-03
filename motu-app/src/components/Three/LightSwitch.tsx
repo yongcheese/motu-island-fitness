@@ -111,7 +111,7 @@ export function LightSwitch({
     return registerLightSwitch({
       x: worldX,
       // 登記的是徽章要掛的高度，不是面板的高度。誰都不需要面板的 y —— 走過去按它是一個水平
-      // 的判定，而 tracker 拿到的是一個已經算完的世界點（跟家具的 promptAnchor 同一個約定）。
+      // 的判定，而 tracker 拿到的是一個已經算完的世界點（跟家具的 interactionPoint 同一個約定）。
       y: y + PROMPT_RISE,
       z: worldZ,
       promptX: worldX + Math.sin(facing) * PROMPT_STANDOFF,

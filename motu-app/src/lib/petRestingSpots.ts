@@ -72,7 +72,7 @@ export interface PetRestingSpot {
    * How the animal is off its feet here — `lie` for a bed, `perch` for anything a bird grips.
    *
    * Carried on the RESOLVED spot rather than looked up again by each mover, for the same reason
-   * `nearbyInteraction` carries its verb (lib/playerBus.ts): the thing that found the spot already
+   * an interaction target carries its verb (lib/interactionTargeting.ts): the thing that found it already
    * knows, and two lookups are two chances to disagree.
    */
   posture: PetRestPosture;

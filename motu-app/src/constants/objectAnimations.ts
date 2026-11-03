@@ -891,7 +891,10 @@ export const OBJECT_ANIMATIONS: Partial<Record<FurnitureModelId, ObjectAnimation
     sound: CUSHION,
     parts: {
       canvas: { motion: 'slide', axis: 'y', travel: -0.030 },
-      canvasBack: { motion: 'hinge', axis: 'z', travel: -0.05 },
+      // The backrest rests at z −0.85 (it rises toward −X, see FurnitureItem's backrestPoint), so
+      // giving under a body's weight — lying back a little flatter — is a step toward 0: POSITIVE.
+      // It was −0.05 while the backrest was modelled mirrored at +0.85; the give is unchanged.
+      canvasBack: { motion: 'hinge', axis: 'z', travel: 0.05 },
     },
   },
   /** 野餐墊 —— the cloth presses flat under whoever is on it and its loose corner keeps flapping. */

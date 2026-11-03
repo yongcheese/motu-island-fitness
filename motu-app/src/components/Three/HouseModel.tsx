@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { memo } from 'react';
 import * as THREE from 'three';
 import {
   GlazingKind,
@@ -128,12 +129,45 @@ export const HOUSE_WALL_TOP_Y = PLINTH_HEIGHT + HOUSE_FOOTPRINT.height * WALL_HE
 /**
  * Total world height of a Home including its roof — the top of the visible silhouette.
  *
- * Exported because the entry prompt anchors relative to it (InteractionPromptTracker). Deriving
- * it here, next to the geometry, is what stops the anchor from drifting inside the mesh when a
- * style with a taller roof is selected.
+ * Exported for the camera's containment volume (CameraController). Deriving it here, next to the
+ * geometry, is what keeps that volume in step with a style with a taller roof. (The entry prompt
+ * used to anchor over this roofline too; it is on the door now — see getHouseDoorFrame.)
  */
 export function getHouseVisualHeight(style: HouseStyleDefinition): number {
   return HOUSE_WALL_TOP_Y + getRoofRise(style.roof);
+}
+
+/** The door leaf's height as a fraction of the wall height — see {@link Doorway}. */
+const DOOR_HEIGHT_RATIO = 0.72;
+/** The door leaf's width as a multiple of the footprint's door lane. */
+const DOOR_WIDTH_RATIO = 1.9;
+/** Where the leaf's bottom edge sits above the house's own origin. */
+const DOOR_SILL_Y = 0.05;
+
+/**
+ * The front door AS BUILT, in the house's own frame (+Z is the front): the plane its leaf stands
+ * in, and the leaf's vertical extent and width.
+ *
+ * Exported because the Home's interaction point is ON this door (hooks/usePlayerHome.ts's
+ * getHomeInteractionPoint) — the prompt used to float over the roofline instead, 4–5 m up, which
+ * told a first-time player there was something to do with "the house" and nothing about going
+ * to its door. {@link Doorway} draws from the same numbers, so the point cannot drift off the
+ * door when a wall treatment stands the frame further proud.
+ */
+export function getHouseDoorFrame(style: HouseStyleDefinition): {
+  faceZ: number;
+  bottomY: number;
+  height: number;
+  width: number;
+} {
+  const wallH = HOUSE_FOOTPRINT.height * WALL_HEIGHT_RATIO;
+  const bodyD = HOUSE_FOOTPRINT.halfDepth * 2 - 0.1;
+  return {
+    faceZ: bodyD / 2 + WALL_STANDOFF[style.wall],
+    bottomY: DOOR_SILL_Y,
+    height: wallH * DOOR_HEIGHT_RATIO,
+    width: HOUSE_FOOTPRINT.doorLaneWidth * DOOR_WIDTH_RATIO,
+  };
 }
 
 /**
@@ -277,7 +311,13 @@ interface HouseModelProps {
   style: HouseStyleDefinition;
 }
 
-export function HouseModel({ style }: HouseModelProps) {
+/**
+ * Memoised on `style`, which is a shared entry from constants/houseStyles.ts's table and therefore
+ * only changes identity when the player actually swaps styles. Without it, every re-render of the
+ * view that places the house (it re-renders whenever the profile does — a coin, a quest tick)
+ * rebuilt all ~70 of these elements: measured at ~8 ms of render per pass in dev.
+ */
+export const HouseModel = memo(function HouseModel({ style }: HouseModelProps) {
   const { palette: c, features = {} } = style;
   const fp = HOUSE_FOOTPRINT;
 
@@ -409,7 +449,7 @@ export function HouseModel({ style }: HouseModelProps) {
       <pointLight position={[0, 1.0, frontZ - 0.3]} intensity={2} distance={5} color={c.glass} />
     </group>
   );
-}
+});
 
 /* --- Wall treatments ------------------------------------------------------------------ */
 
@@ -1900,12 +1940,12 @@ function Doorway({
   frontZ: number; laneWidth: number; wallH: number;
   door: string; frame: string; trim: string; plinth: string;
 }) {
-  const doorW = laneWidth * 1.9;
+  const doorW = laneWidth * DOOR_WIDTH_RATIO;
   // The door keeps its own 1:1.5 proportions and grows with the *plan* (both dimensions derive
   // from the footprint), while the height added in the taller-house pass goes into wall above the
   // lintel. That is what reads as "more storeys" rather than "everything zoomed in": a door
   // scaled by the full height increase would just make the whole building look nearer the camera.
-  const doorH = wallH * 0.72;
+  const doorH = wallH * DOOR_HEIGHT_RATIO;
   const jambX = doorW / 2 + 0.06;
 
   return (
@@ -1938,13 +1978,13 @@ function Doorway({
       </mesh>
       {/* Jambs */}
       {[-jambX, jambX].map((dx, i) => (
-        <mesh key={`jamb-${i}`} position={[dx, doorH / 2 + 0.05, frontZ + 0.03]}>
+        <mesh key={`jamb-${i}`} position={[dx, DOOR_SILL_Y + doorH / 2, frontZ + 0.03]}>
           <boxGeometry args={[0.12, doorH + 0.1, 0.16]} />
           <meshStandardMaterial color={frame} roughness={0.8} />
         </mesh>
       ))}
       {/* Door leaf */}
-      <mesh position={[0, doorH / 2 + 0.05, frontZ]}>
+      <mesh position={[0, DOOR_SILL_Y + doorH / 2, frontZ]}>
         <boxGeometry args={[doorW, doorH, 0.05]} />
         <meshStandardMaterial color={door} roughness={0.7} />
       </mesh>
@@ -1952,7 +1992,7 @@ function Doorway({
           house a player stands right in front of (the entry prompt puts them 0.55 away), so a flat
           coloured rectangle there is the detail that gets noticed. */}
       {[-1, 0, 1].map((i) => (
-        <mesh key={`plank-${i}`} position={[i * doorW * 0.3, doorH / 2 + 0.05, frontZ + 0.03]}>
+        <mesh key={`plank-${i}`} position={[i * doorW * 0.3, DOOR_SILL_Y + doorH / 2, frontZ + 0.03]}>
           <boxGeometry args={[doorW * 0.26, doorH - 0.08, 0.02]} />
           <meshStandardMaterial color={frame} roughness={0.75} />
         </mesh>

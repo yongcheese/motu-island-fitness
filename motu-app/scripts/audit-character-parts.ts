@@ -309,6 +309,76 @@ expect(
   }
 }
 
+// --- Is every part inside the body volume the rig declares for it? --------
+//
+// `AUTHORED_SKELETON.volumes` is what every seat, bed, bath and swing in the game fits the body
+// against (lib/occupantFit.ts), and what `npm run audit:interactions` samples to prove nothing
+// goes through the furniture. That proof is only as good as the volumes: a part that pokes out of
+// its declared volume is a part the fit cannot see. So each shipped part is measured against its
+// own volume here — bare, since the volumes are drawn to enclose the clothes as well.
+{
+  const v = s.volumes;
+  const VOLUME_SLACK = 0.004;
+  // In the part's own JOINT space: the assembly check above has already hung each part off a joint
+  // group, so the joint's position comes back off.
+  const jointAt: Partial<Record<PartId, THREE.Vector3>> = {
+    head: new THREE.Vector3(0, s.head.y, 0),
+    torso: new THREE.Vector3(0, s.torso.y, 0),
+    leftLeg: new THREE.Vector3(-s.hip.x, s.hip.y, 0),
+  };
+  const vertsOf = (id: PartId) => {
+    const out: THREE.Vector3[] = [];
+    parts[id].updateWorldMatrix(true, true);
+    parts[id].traverse((node) => {
+      const mesh = node as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const position = mesh.geometry.getAttribute('position');
+      for (let i = 0; i < position.count; i += 1) {
+        out.push(new THREE.Vector3().fromBufferAttribute(position as THREE.BufferAttribute, i)
+          .applyMatrix4(mesh.matrixWorld).sub(jointAt[id] ?? new THREE.Vector3()));
+      }
+    });
+    return out;
+  };
+  const worstOutside = (verts: THREE.Vector3[], inside: (p: THREE.Vector3) => number) =>
+    verts.reduce((w, p) => Math.max(w, inside(p)), -Infinity);
+
+  // Head: a sphere hung `volumes.head.y` below the neck joint — the SKULL, i.e. the part's largest
+  // mesh. The eyes stand 2.5 cm proud of it on the face, which no seated or lying pose can put
+  // against furniture (a lying body is face-up) and which a sphere could only enclose by
+  // overshooting the crown the rig's envelope pins down.
+  const headMeshes: THREE.Mesh[] = [];
+  parts.head.traverse((node) => { if ((node as THREE.Mesh).isMesh) headMeshes.push(node as THREE.Mesh); });
+  const skull = headMeshes.reduce((a, b) =>
+    (b.geometry.getAttribute('position').count > a.geometry.getAttribute('position').count ? b : a));
+  const skullVerts: THREE.Vector3[] = [];
+  const skullPosition = skull.geometry.getAttribute('position');
+  for (let i = 0; i < skullPosition.count; i += 1) {
+    skullVerts.push(new THREE.Vector3().fromBufferAttribute(skullPosition as THREE.BufferAttribute, i)
+      .applyMatrix4(skull.matrixWorld).sub(jointAt.head!));
+  }
+  const head = worstOutside(skullVerts, (p) => Math.hypot(p.x, p.y - v.head.y, p.z) - v.head.radius);
+  // Torso: a capsule along y, rounded with its depth, `radius` across.
+  const torso = worstOutside(vertsOf('torso'), (p) => {
+    const y = THREE.MathUtils.clamp(p.y, -v.torso.halfLength, v.torso.halfLength);
+    return Math.hypot(p.x * (v.torso.depth / v.torso.radius), p.y - y, p.z) - v.torso.depth;
+  });
+  // Leg: a tapered capsule on the hip's axis, `top` above the joint to `bottom` below it.
+  const leg = worstOutside(vertsOf('leftLeg'), (p) => {
+    const y = THREE.MathUtils.clamp(p.y, v.leg.bottom, v.leg.top);
+    const t = (v.leg.top - y) / (v.leg.top - v.leg.bottom);
+    return Math.hypot(p.x, p.y - y, p.z) - (v.leg.radius + (v.leg.footRadius - v.leg.radius) * t);
+  });
+  for (const [label, worst] of [['head', head], ['torso', torso], ['leg', leg]] as const) {
+    if (worst > VOLUME_SLACK) {
+      fail(`the ${label} pokes ${toWorld(worst).toFixed(4)} world units out of volumes.${label} — the seat and bed fits `
+        + 'cannot see that part of the body. Re-measure the volume in characterRig.ts.');
+    } else {
+      note(`${label} is inside its declared body volume (${toWorld(-worst).toFixed(4)} world to spare)`);
+    }
+  }
+}
+
 // --- Does the buried part of the leg STAY buried while walking? ------------
 //
 // A leg's mesh runs up inside the torso so the thigh has something to pivot from without

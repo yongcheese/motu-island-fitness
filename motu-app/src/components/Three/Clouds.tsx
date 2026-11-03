@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useApp } from '../../context/AppContext';
+import { useAppPick } from '../../context/AppContext';
 import { WeatherType } from '../../types';
 import { useLightningFlicker } from '../../hooks/useLightningFlicker';
 
@@ -87,7 +87,7 @@ const displayColor = new THREE.Color();
 const dummy = new THREE.Object3D();
 
 export function Clouds() {
-  const { weather } = useApp();
+  const { weather } = useAppPick('weather');
   const meshRef = useRef<THREE.InstancedMesh>(null);
 
   const clouds = useMemo(

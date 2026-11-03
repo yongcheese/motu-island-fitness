@@ -81,6 +81,12 @@ export function nearestLightSwitch(
   x: number,
   z: number,
   reach = LIGHT_SWITCH_REACH,
+  /**
+   * 額外的「搆得到嗎」判定 —— InteractionPromptTracker 傳進來的是牆的視線檢查（跟 E 那格同一條
+   * 規則，見 lib/interactionTargeting.ts）。開關的伸手範圍 2.3 比牆厚得多，少了它，隔壁房間
+   * 貼在同一面牆另一側的開關會比這一側的更近，徽章就指到牆的另一邊去。
+   */
+  reachable?: (s: LightSwitchAnchor) => boolean,
 ): LightSwitchAnchor | null {
   let best: LightSwitchAnchor | null = null;
   let bestSq = reach * reach;
@@ -88,7 +94,7 @@ export function nearestLightSwitch(
     const dx = s.x - x;
     const dz = s.z - z;
     const d = dx * dx + dz * dz;
-    if (d <= bestSq) {
+    if (d <= bestSq && (!reachable || reachable(s))) {
       bestSq = d;
       best = s;
     }

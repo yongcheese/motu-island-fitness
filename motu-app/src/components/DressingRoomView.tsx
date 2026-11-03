@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useApp } from '../context/AppContext';
+import { useAppPick } from '../context/AppContext';
 import { View } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -67,7 +67,7 @@ const RACKS = [...getCategoriesFor('PERSON'), PET_RACK, PET_GEAR_RACK].filter(
 const isPetAnimal = (itemId: string) => !!getPetSpecies(itemId);
 
 export function DressingRoomView() {
-  const { profile, setCurrentView, setActivePlacementItem, updateProfile } = useApp();
+  const { profile, setCurrentView, setActivePlacementItem, updateProfile } = useAppPick('profile', 'setCurrentView', 'setActivePlacementItem', 'updateProfile');
   // The remembered category is shared with the shop, so it can point at a housing category this
   // screen doesn't show — and at one that no longer exists at all after a catalog change.
   // Narrow it to a wearable category before using it.

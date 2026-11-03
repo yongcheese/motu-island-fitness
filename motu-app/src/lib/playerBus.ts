@@ -4,6 +4,46 @@
  */
 
 import * as THREE from 'three';
+import type { InteractionTarget } from './furnitureInteraction';
+import type { InteractionCandidate, InteractionScope } from './interactionTargeting';
+import type { LightSwitchAnchor } from './interiorLights';
+
+/**
+ * One piece of furniture in reach, as Three/Avatar.tsx's proximity scan publishes it for the
+ * targeting pass. The DESCRIPTION (`target`) is built once when the piece comes into reach and
+ * reused; `distance`/`aim*` are rewritten every frame.
+ */
+export interface FurnitureInReach {
+  target: InteractionTarget;
+  distance: number;
+  reach: number;
+  aimX: number;
+  aimZ: number;
+  /** The player is ON this piece — it is the only candidate, and its action is 起身. */
+  occupied: boolean;
+}
+
+/** A resident the player can talk to right now — see {@link PlayerBusState.npcTargets}. */
+export interface NpcInteractionTarget {
+  npcId: string;
+  scope: InteractionScope;
+  anchor: THREE.Vector3;
+  reach: number;
+  label: string;
+  /** 聊天已經在進行 —— 按下去是「下一句」，玩家的身體語言也跟著換（見 Avatar 的 `chat`）。 */
+  talking: boolean;
+}
+
+/** A merchant the player can trade with right now — see {@link PlayerBusState.merchantTargets}. */
+export interface MerchantInteractionTarget {
+  merchantId: string;
+  /** 提示浮在哪裡——商人頭頂上方的世界座標。距離也是拿它的 XZ 量的。 */
+  anchor: THREE.Vector3;
+  /** 玩家要多近才談得到，世界單位（水平距離）。來自停靠點的設定。 */
+  reach: number;
+  /** 「與旅行商人交易」。跟寵物的名詞一樣，話是資料給的，不是畫面猜的。 */
+  label: string;
+}
 
 /**
  * Cross-component per-frame state shared outside React between the 3D layer
@@ -72,26 +112,37 @@ export interface PlayerBusState {
    */
   dogIsMoving?: boolean;
   /**
-   * Added to the pet's distance when InteractionPromptTracker ranks what to prompt for — a
-   * priority handicap, not a real distance (the trigger radius still uses the true one).
+   * The pet's targeting TIER (lib/interactionTargeting.ts's `priority`) — not a distance, and not
+   * a score: a lower tier is only offered when nothing in a higher one is eligible.
    *
-   * Anything that wanders on its own leaves 0 here, so being the nearest thing genuinely means
-   * the player walked over to it. The EQUIPPED companion
-   * (Three/IslandPet.tsx) is at the owner's heel by construction and would otherwise win every
-   * ranking it entered — including standing in front of the "進入我的家" prompt at the player's own
-   * front door. It sets {@link COMPANION_PROMPT_BIAS}, which puts it behind anything else in range.
+   * Anything that wanders on its own leaves 0 here, so it competes on proximity and facing like
+   * everything else. The EQUIPPED companion (Three/IslandPet.tsx) is at the owner's heel by
+   * construction — nearer than anything they ever walk up to, and often in front of them — so it
+   * sets {@link COMPANION_PROMPT_PRIORITY} and is offered only when nothing else is: standing at
+   * the front door with the dog at your feet still offers 進入我的家.
+   *
+   * (This was `dogPromptBias`, +1000 added to the pet's distance. Same intent; a tier says it
+   * without a magic distance, and keeps working now that distance is no longer the only term.)
    */
-  dogPromptBias?: number;
+  petPromptPriority?: number;
+  /**
+   * How far above {@link PlayerBusState.dogPos} the pet's interaction point is — the top of that
+   * animal plus a little clearance, from its own size. A bird and a big dog are not the same
+   * height, and a fixed 0.75 floated the badge well clear of a budgie.
+   */
+  petPromptHeight?: number;
   // `dogIsHappy` and `petEating` used to live here: a boolean flipped by a timer and a bare
   // timestamp, each saying half of what an animal was doing with its owner. Both are
   // lib/petActivity.ts now — one record per animal, with a lifecycle that ends on its own clock.
   /**
-   * World position of the currently-nearby interactable (e.g. a hammock), written by
-   * Avatar.tsx whenever its own nearbyHammock detection changes - see nearbyInteractable in
-   * AppContext, which only carries a display string, not a position. InteractionPromptTracker.tsx
-   * reads this to anchor the floating prompt above the object instead of at screen center.
+   * Every piece of furniture in reach this frame, written by the active Three/Avatar.tsx's
+   * proximity scan and read by the tracker of the same `scope` (the two avatars share this bus,
+   * and only one is live, but a frame of the other world's list must never be ranked here).
+   *
+   * ALL of them, not the nearest: choosing among them needs the player's facing, and that is the
+   * targeting pass's job (lib/interactionTargeting.ts). The array and its entries are reused.
    */
-  nearbyInteractablePos?: THREE.Vector3;
+  furnitureInReach?: { scope: InteractionScope; items: FurnitureInReach[]; count: number } | null;
   /**
    * 關燈之後角色手上那根蠟燭，火焰的世界座標 —— 由 Three/CandleInHand.tsx 每幀就地改寫。
    *
@@ -107,35 +158,29 @@ export interface PlayerBusState {
    */
   candlePos?: THREE.Vector3;
   /**
-   * What the 「E …」 badge should say about the piece of furniture in reach, and whether the
-   * player is currently ON it (in which case the verb is 起身 rather than 坐下).
+   * THE SELECTED INTERACTION TARGET — the one thing the action key acts on right now, or null.
    *
-   * Resolved once, by the proximity scan that found the piece (Three/Avatar.tsx), rather than
-   * re-derived by the badge: the key and the label must never be able to disagree about what
-   * they are pointing at, which is the same rule `tidyTarget` below exists to enforce.
+   * Written once a frame by the tracker of the view the player is in
+   * (Three/InteractionPromptTracker.tsx, via lib/interactionTargeting.ts's selection). Everything
+   * that concerns "the interaction" reads THIS object and nothing else:
    *
-   * On this bus rather than in AppContext because it changes at walking speed and exactly one
-   * component reads it — one that is already polling this object every animation frame.
+   *   the badge's text and icon         `label`, `icon`             (UI/InteractionPrompt.tsx)
+   *   where the badge points            `point` → {@link interactionPrompt}
+   *   what E / the tap executes         `action`                    (Three/Avatar.tsx handleAction)
+   *
+   * So the prompt can never read 「E 進入屋內」 while the key does something to the chair beside
+   * the door: there is no second search for either of them to disagree with.
    */
-  nearbyInteraction?: {
-    instanceId: string;
-    itemName: string;
-    /** 坐下 / 躺下 / 使用 / 起身 — see constants/furnitureInteractions.ts. */
-    verb: string;
-    /** Which icon the touch button shows: 'sit' | 'lie' | 'hand' | 'book' | 'sparkle'. */
-    icon: string;
-    occupied: boolean;
-  } | null;
+  interactionTarget?: InteractionCandidate | null;
   /**
-   * Screen-space result of InteractionPromptTracker.tsx's per-frame projection of the single
-   * nearest interactable (building door / nearbyInteractablePos / dog) onto the camera's view -
-   * x/y are already smoothed and in CSS pixels. `visible` is false when the target is occluded,
-   * off-screen, or out of its own trigger radius (in which case there simply is no candidate and
-   * this whole field is null). InteractionPrompt.tsx (the HTML overlay, outside the Canvas) polls
-   * this every animation frame instead of re-deriving it, since only code inside the Canvas has
-   * the camera/scene needed to project and raycast.
+   * Where {@link interactionTarget}'s point lands on screen, in CSS pixels, smoothed. `key` is the
+   * target's id, so the overlay can tell a new target (animate in) from the same one moving.
+   *
+   * Always present while there is a target: a point that projects off screen is pinned to the
+   * nearest edge rather than hidden, because "you can press E but nothing says so" is the one
+   * state the prompt exists to prevent.
    */
-  interactionPrompt?: { key: string; x: number; y: number; visible: boolean } | null;
+  interactionPrompt?: { key: string; x: number; y: number } | null;
   /**
    * 牆上電燈開關的徽章，跟 {@link interactionPrompt} 同樣的螢幕座標，但是自己一格。
    *
@@ -148,6 +193,13 @@ export interface PlayerBusState {
    */
   lightSwitchPrompt?: { x: number; y: number; visible: boolean } | null;
   /**
+   * WHICH switch that badge is on — the Q slot's own selected target, written by the same tracker
+   * pass. Q turns the body toward THIS one (Three/Avatar.tsx's flipLightSwitch) rather than
+   * searching again, and it is chosen with the same line-of-reach rule as the E slot, so a switch
+   * on the far side of a wall is neither shown nor turned to.
+   */
+  lightSwitchTarget?: LightSwitchAnchor | null;
+  /**
    * Which patch of 離線環境變化 the 整理 prompt is currently pointing at, or null when there is
    * none in reach. Written by InteractionPromptTracker in the same pass that ranks the prompt, so
    * the badge and the action it fires can never be aimed at different patches.
@@ -158,25 +210,18 @@ export interface PlayerBusState {
    */
   tidyTarget?: { x: number; z: number; count: number; wall: boolean } | null;
   /**
-   * 島上那位旅行商人，如果他此刻**談得到**的話（constants/merchants.ts）。
+   * 島上**談得到**的旅行商人（constants/merchants.ts），以商人 id 為鍵。
    *
-   * 由畫他的那個元件（Three/MerchantVisitor.tsx）每幀寫入，因為只有它知道那艘船這一幀漂
-   * 到哪裡、靠好了沒。它同時是「可不可以互動」的閘門：船還在進場、正在離開、或這一檔根本
-   * 沒有商人時，這裡就是 `null`，於是提示不會出現、動作鍵也沒有東西可按——**一個**旗標同時
-   * 關掉兩者，而不是提示與按鍵各自判斷一次然後在某個邊界上不同意。
+   * 由畫他的那個元件（Three/MerchantVisitor.tsx）每幀寫入自己那一格，因為只有它知道那艘船這
+   * 一幀漂到哪裡、靠好了沒。它同時是「可不可以互動」的閘門：船還在進場、正在離開、或這一檔
+   * 根本沒有商人時，那一格就不存在，於是提示不會出現、動作鍵也沒有東西可按。
    *
-   * 放在 bus 上而不是 AppContext，跟 `tidyTarget` 同一個理由：它跟著船每幀移動，而讀它的
-   * 是兩個本來就在每個動畫幀取樣這個物件的地方（互動提示與動作鍵）。
+   * 為什麼是一張表而不是一格：一格只有一個寫入者。兩位商人同時靠岸時（`MERCHANTS` 多一列就
+   * 會發生），每幀最後跑到的那一位會蓋掉另一位 —— 玩家站在誰面前不重要，幀的順序才重要。那正
+   * 是「A、B 太靠近時選錯目標」的同一種錯。每位商人只寫、只刪自己那一格，由 targeting 在所有
+   * 談得到的人裡面選。
    */
-  merchantTarget?: {
-    merchantId: string;
-    /** 提示浮在哪裡——商人頭頂上方的世界座標。距離也是拿它的 XZ 量的。 */
-    anchor: THREE.Vector3;
-    /** 玩家要多近才談得到，世界單位（水平距離）。來自停靠點的設定。 */
-    reach: number;
-    /** 「與旅行商人交易」。跟寵物的名詞一樣，話是資料給的，不是畫面猜的。 */
-    label: string;
-  } | null;
+  merchantTargets: Map<string, MerchantInteractionTarget>;
   /**
    * 最後一筆**成交**的限時商店買賣（§11）。
    *
@@ -199,24 +244,17 @@ export interface PlayerBusState {
     amount: number;
   };
   /**
-   * 島上或屋裡那位居民，如果玩家此刻**聊得到**她的話（constants/npcSocial.ts）。
+   * 島上或屋裡**聊得到**的居民（constants/npcSocial.ts），以居民 id 為鍵。
    *
-   * 跟 {@link merchantTarget} 同一個形狀、同一個理由：由畫她的那個元件（Three/NpcWalker.tsx）每幀
-   * 寫入，因為只有它知道她這一幀走到哪裡；它同時是提示與動作鍵的閘門。
+   * 跟 {@link merchantTargets} 同一個形狀、同一個理由：由畫她的那個元件（Three/NpcWalker.tsx）每幀
+   * 寫入、刪除自己那一格；它同時是提示與動作鍵的閘門。兩位居民同時在伸手範圍內時，選哪一位是
+   * targeting 的事（看玩家面向誰），不是幀順序的事。
    *
    * `scope` 是它跟商人不一樣的地方，而且非有不可：島嶼和室內是兩個 Canvas，**座標是同一個數字
    * 空間**（島心與客廳中心都是 0,0），而室內那條 Canvas 在玩家站在屋外時仍然會稀疏地跑幀。少了
    * 這一格，一位站在客廳原點的管家會讓島上的提示亮起來。每一個讀它的地方都先比對自己的 scope。
    */
-  npcTarget?: {
-    npcId: string;
-    scope: 'island' | 'interior';
-    anchor: THREE.Vector3;
-    reach: number;
-    label: string;
-    /** 聊天已經在進行 —— 按下去是「下一句」，玩家的身體語言也跟著換（見 Avatar 的 `chat`）。 */
-    talking: boolean;
-  } | null;
+  npcTargets: Map<string, NpcInteractionTarget>;
   /**
    * 居民此刻說的那一句話（泡泡裡的字），或 null。
    *
@@ -320,14 +358,16 @@ export interface LoginBonus {
 
 export const playerBus: PlayerBusState = {
   isDraggingPlacement: false,
+  npcTargets: new Map(),
+  merchantTargets: new Map(),
 };
 
 /**
- * The handicap an always-at-your-heel companion carries in the prompt ranking - see
- * {@link PlayerBusState.dogPromptBias}. Larger than any trigger radius in the tracker, so it is
- * simply "last", with no tuning against the individual radii to keep in sync.
+ * The tier an always-at-your-heel companion is offered at — see
+ * {@link PlayerBusState.petPromptPriority}. One below everything else: "only when nothing else is
+ * in reach", with no number to keep in step with anyone's radius.
  */
-export const COMPANION_PROMPT_BIAS = 1000;
+export const COMPANION_PROMPT_PRIORITY = -1;
 
 /**
  * 記下一筆剛剛**成交**的買賣，讓島上那位商人下次有機會做出反應。

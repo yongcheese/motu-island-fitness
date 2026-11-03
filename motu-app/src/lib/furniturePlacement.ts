@@ -21,6 +21,7 @@ import {
   signedDistanceToShape,
   simplifyConvex,
 } from './collisionShape';
+import { sharedSingleton } from './sharedRegistry';
 
 /**
  * Furniture footprints and the overlap rule that keeps two pieces from being
@@ -93,6 +94,28 @@ export type Footprint = {
    * for a flower.
    */
   standY: number | null;
+  /**
+   * A `standable` piece, part by part: what each mesh a body can meet is, and whether a foot fits
+   * on top of it. `null` for everything that is not ground, which is nearly the whole catalog.
+   *
+   * This is what a standable piece is COLLIDED against. It replaced "the whole model's outline at
+   * `standY`", which answered two questions with one polygon and got both wrong the moment a deck
+   * had anything but boards: the railings, posts and stairs of 小型觀景平台 were inside that
+   * outline, so they were floor (the player walked straight through all three rails and floated at
+   * deck height over the stairs), and nothing in it was ever a wall, so a 0.9-high deck was
+   * climbed in one frame from any side. See {@link STAND_RULES} for how parts become floor or wall.
+   */
+  standParts: StandPart[] | null;
+  /**
+   * The walking surface of a standable piece, sampled on a grid in its own frame: `[x, z, top, …]`
+   * where `top` is the height of the UPPERMOST tread at that point (a board, not the joist under
+   * it). `null` for anything that is not ground.
+   *
+   * It is what placement uses to keep a deck's boards out of the ground under them
+   * (lib/placementSurfaces.ts' resolvePlacementY) — the one question about a deck that has to be
+   * asked everywhere under it at once, rather than at the point the pointer is on.
+   */
+  standSurface: Float32Array | null;
   walk: WalkBox | null;
   /**
    * The real collider: the model's own silhouette on the XZ plane, as a convex outline rather
@@ -137,6 +160,74 @@ export type Slab = {
   shape: ConvexShape;
 };
 
+/**
+ * One mesh of a `standable` piece, as the body meets it.
+ *
+ * Every dimension is measured off the model the same way the rest of the footprint is, in the
+ * piece's own un-rotated frame, relative to the surface it stands on. Nothing here is typed in.
+ */
+export type StandPart = {
+  /** Everything the mesh occupies on the XZ plane — what a body is stopped by. */
+  outline: ConvexShape;
+  /**
+   * The mesh's own top face, when a foot fits on it (see {@link STAND_RULES.minTreadWidth}) —
+   * what a body stands on. `null` for a handrail, a post cap, a fascia strip.
+   */
+  tread: ConvexShape | null;
+  /** Local vertical extent. `y1` is the height of the tread when there is one. */
+  y0: number;
+  y1: number;
+};
+
+/**
+ * HOW A BODY GETS ONTO, WALKS ON, AND IS STOPPED BY A `standable` PIECE.
+ *
+ * The rules are the whole configuration — no deck, stair or railing appears in any of them, and
+ * a new piece of ground (a jetty, a gazebo, a stepped terrace) needs nothing but its model and
+ * `standable` in the catalog. Every number is world units, because that is the frame the footprint
+ * is measured in.
+ *
+ * ## The one rule
+ *
+ * A body standing at height `h` treats every part of a standable piece one of two ways:
+ *
+ *   - **floor**, when the part has a tread whose top is at most `h + maxStepUp` — it steps onto it;
+ *   - **wall**, when the part's top is above `h + maxStepUp` and its bottom is below head height
+ *     (`h + WALK_BAND_MAX_Y`) — it is pushed out of the part's outline like any other solid.
+ *
+ * The two cases are complementary by construction (one threshold decides both), so no part can be
+ * floor and wall at once, and stairs fall out without being recognised as stairs: each tread is
+ * one step above the last, so each is floor from the one below, and the deck they lead to is a wall
+ * from the ground and floor from the top tread.
+ */
+export const STAND_RULES = {
+  /**
+   * The highest ledge a walking body steps up onto without climbing. Above it, the ledge is a wall.
+   *
+   * Two catalog facts pin it, and the audit checks both (scripts/audit-placements.ts, part 1d):
+   *   - 木製平台 has no stairs and is meant to be walked onto from any side, so its deck (0.395
+   *     above the grass) must be one step.
+   *   - 小型觀景平台's deck is 0.90 up and reached by its stairs, so it must NOT be — otherwise the
+   *     stairs are decoration and the railings are the only thing between the grass and the boards.
+   * 0.42 is a little under half the character's leg, which is where a real step stops being a step.
+   */
+  maxStepUp: 0.42,
+  /**
+   * How far past the edge of a tread the body still stands on it — the reach of the feet, not of
+   * the whole body. It is what closes the seams between deck boards (the widest in the catalog is
+   * 92 mm, so anything over half of that works) and it is deliberately small: the torso may hang
+   * over an edge, the soles may not.
+   */
+  footRadius: 0.12,
+  /**
+   * The narrowest top face a foot can be put on. Wider than every railing, post cap and fascia strip
+   * in the catalog (≤ 0.10) and narrower than every plank and stair tread (≥ 0.39).
+   */
+  minTreadWidth: 0.2,
+  /** How close to a mesh's highest vertex a vertex must be to count as part of its top face. */
+  topFaceTolerance: 0.004,
+} as const;
+
 /** The part of a {@link Footprint} that blocks walking: an XZ box, no height. */
 export type WalkBox = {
   cx: number;
@@ -145,14 +236,25 @@ export type WalkBox = {
   halfD: number;
 };
 
-const footprints = new Map<string, Footprint>();
-
-// Bumped whenever a new item type is measured, so a view can re-run its
-// validity check the moment a footprint it was missing becomes available
-// (the first ghost of a given item mounts and measures in the same commit
-// that first asks whether it collides).
-let version = 0;
-const listeners = new Set<() => void>();
+/**
+ * The measured footprints, and the change signal views subscribe to.
+ *
+ * ONE registry per page, not one per module instance (see lib/sharedRegistry.ts). It is written by
+ * the models as they mount and read by the character controller every frame through
+ * lib/placementSurfaces.ts; when the dev server handed those two sides different instances of this
+ * file, every platform was measured into a registry the player never read, and walked through.
+ *
+ * `version` is bumped whenever a new item type is measured, so a view can re-run its validity check
+ * the moment a footprint it was missing becomes available (the first ghost of a given item mounts
+ * and measures in the same commit that first asks whether it collides).
+ */
+const registry = sharedSingleton('footprints.v1', () => ({
+  footprints: new Map<string, Footprint>(),
+  version: 0,
+  listeners: new Set<() => void>(),
+}));
+const footprints = registry.footprints;
+const listeners = registry.listeners;
 
 export function subscribeFootprints(fn: () => void): () => void {
   listeners.add(fn);
@@ -162,7 +264,7 @@ export function subscribeFootprints(fn: () => void): () => void {
 }
 
 export function getFootprintVersion(): number {
-  return version;
+  return registry.version;
 }
 
 /**
@@ -599,9 +701,12 @@ export function measureFootprint(itemId: string, object: THREE.Object3D): void {
 
   // Only pieces that ARE ground pay for the scan — everything else has nothing to stand on and
   // nothing reads the answer. Two items in the catalog declare it today.
-  const standY = isStandableItem(itemId)
+  const standable = isStandableItem(itemId);
+  const standY = standable
     ? measureStandTop(samples, minX, maxX, minZ, maxZ)
     : null;
+  const standParts = standable ? measureStandParts(samples) : null;
+  const standSurface = standParts ? sampleStandSurface(standParts, minX, maxX, minZ, maxZ) : null;
 
   // The whole-model outline, simplified exactly ONCE from the raw hull. It is what gets drawn as
   // the placement footprint and what the deck lookup asks, so it has to be the model's honest
@@ -636,6 +741,8 @@ export function measureFootprint(itemId: string, object: THREE.Object3D): void {
     minY,
     maxY: Math.max(maxY, minY + MIN_HEIGHT),
     standY,
+    standParts,
+    standSurface,
     walk: walkShape
       ? { cx: walkShape.cx, cz: walkShape.cz, halfW: walkShape.halfW, halfD: walkShape.halfD }
       : null,
@@ -645,8 +752,105 @@ export function measureFootprint(itemId: string, object: THREE.Object3D): void {
     slabs,
   });
 
-  version++;
+  registry.version++;
   listeners.forEach((fn) => fn());
+}
+
+/**
+ * Every mesh of a standable piece as a {@link StandPart}: its outline, and its top face if a foot
+ * fits there.
+ *
+ * Per MESH rather than per slab, and that is the point. A slab is one convex hull of everything at
+ * a height, and the convex hull of three railings is the whole deck — so a slab can only say "there
+ * is something at rail height over the entire deck", which is how the railings used to end up as
+ * floor. A mesh's own hull is exactly the mesh.
+ *
+ * The top face is the hull of the vertices at the mesh's top, not the hull of the whole mesh: a box
+ * and a cylinder give their real lid, a tilted plank gives one edge (no tread), a sphere gives a
+ * point (no tread). Whether a foot fits is then the face's minimum width — the rail is 5 cm across
+ * however long it runs, a stair tread is 40.
+ *
+ * Unpadded on purpose: the readability floor ({@link MIN_HALF_EXTENT}) is a placement courtesy, and
+ * applied here it would turn a 5 cm handrail into a 24 cm wall.
+ */
+function measureStandParts(
+  samples: readonly { xz: number[]; ys: number[]; minY: number; maxY: number; hull: number[] }[],
+): StandPart[] {
+  const parts: StandPart[] = [];
+  for (const s of samples) {
+    const outline = makeConvexShape(hullOf(s.hull), 0);
+    if (!outline) continue;
+
+    const top: number[] = [];
+    for (let i = 0; i < s.ys.length; i++) {
+      if (s.ys[i] >= s.maxY - STAND_RULES.topFaceTolerance) top.push(s.xz[i * 2], s.xz[i * 2 + 1]);
+    }
+    const topHull = top.length >= 6 ? convexHull2D(top) : [];
+    const tread = topHull.length >= 6 && minimumWidth(topHull) >= STAND_RULES.minTreadWidth
+      ? makeConvexShape(hullOf(topHull), 0)
+      : null;
+
+    parts.push({ outline, tread, y0: s.minY, y1: s.maxY });
+  }
+  return parts;
+}
+
+/** Grid pitch of {@link sampleStandSurface}, and the most samples it takes along one side. */
+const STAND_SURFACE_STEP = 0.15;
+const STAND_SURFACE_MAX_SIDE = 48;
+
+/**
+ * The uppermost tread at each point of a grid over the piece's own box — see
+ * {@link Footprint.standSurface}. Points no tread covers are left out: they are not surface.
+ */
+function sampleStandSurface(
+  parts: readonly StandPart[],
+  minX: number, maxX: number, minZ: number, maxZ: number,
+): Float32Array | null {
+  const treads = parts.filter((p) => p.tread);
+  if (!treads.length) return null;
+  const nx = Math.min(STAND_SURFACE_MAX_SIDE, Math.max(2, Math.ceil((maxX - minX) / STAND_SURFACE_STEP) + 1));
+  const nz = Math.min(STAND_SURFACE_MAX_SIDE, Math.max(2, Math.ceil((maxZ - minZ) / STAND_SURFACE_STEP) + 1));
+  const out: number[] = [];
+  const probe = createPlacedShape();
+  for (let i = 0; i < nx; i++) {
+    const x = minX + ((maxX - minX) * i) / (nx - 1);
+    for (let j = 0; j < nz; j++) {
+      const z = minZ + ((maxZ - minZ) * j) / (nz - 1);
+      let top = -Infinity;
+      for (const t of treads) {
+        if (t.y1 <= top) continue;
+        if (signedDistanceToShape(placeShape(t.tread!, 0, 0, 0, probe), x, z) <= 0) top = t.y1;
+      }
+      if (top > -Infinity) out.push(x, z, top);
+    }
+  }
+  return out.length ? Float32Array.from(out) : null;
+}
+
+/**
+ * The narrowest a convex outline is across, in any direction.
+ *
+ * For a convex polygon the narrowest caliper always lies flush against one of its edges, so it is
+ * the smallest, over the edges, of the farthest any vertex stands off that edge's line.
+ */
+function minimumWidth(hull: readonly number[]): number {
+  const n = hull.length >> 1;
+  let best = Infinity;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const ax = hull[i * 2], az = hull[i * 2 + 1];
+    const ex = hull[j * 2] - ax, ez = hull[j * 2 + 1] - az;
+    const len = Math.hypot(ex, ez);
+    if (len < 1e-9) continue;
+    let far = 0;
+    for (let k = 0; k < n; k++) {
+      const d = Math.abs((hull[k * 2] - ax) * ez - (hull[k * 2 + 1] - az) * ex) / len;
+      if (d > far) far = d;
+    }
+    if (far < best) best = far;
+  }
+  return best === Infinity ? 0 : best;
 }
 
 /** Hull + vertex-cap in one step — every outline in this module is built through here. */
@@ -668,7 +872,9 @@ function hullOf(points: readonly number[]): number[] {
  * construction, so unless the caller knows better, its top IS its walking surface.
  */
 export type BoxFootprintSpec =
-  Omit<Footprint, 'shape' | 'walkShape' | 'slabs' | 'reach' | 'standY'> & { standY?: number | null };
+  Omit<Footprint, 'shape' | 'walkShape' | 'slabs' | 'reach' | 'standY' | 'standParts' | 'standSurface'> & {
+    standY?: number | null;
+  };
 
 export function boxFootprint(box: BoxFootprintSpec): Footprint {
   const shape = rectangleShape(box.cx, box.cz, box.halfW, box.halfD);
@@ -676,6 +882,10 @@ export function boxFootprint(box: BoxFootprintSpec): Footprint {
     // A box is solid all the way up by construction, so its top IS its walking surface —
     // there is no railing-shaped part of a box to be fooled by.
     standY: box.standY ?? box.maxY,
+    // A declared box has no parts to tell floor from wall with; the surface lookup falls back to
+    // the box itself (its outline at `standY`), which is exact for a box.
+    standParts: null,
+    standSurface: null,
     ...box,
     reach: Math.hypot(box.cx, box.cz) + shape.radius,
     shape,
@@ -701,7 +911,7 @@ export function registerFootprint(
   footprint: Footprint | BoxFootprintSpec,
 ): void {
   footprints.set(itemId, 'shape' in footprint ? footprint : boxFootprint(footprint));
-  version++;
+  registry.version++;
   listeners.forEach((fn) => fn());
 }
 
@@ -1034,6 +1244,8 @@ const UNMEASURED_SOLID_SHAPE = rectangleShape(
  */
 function getWalkShape(itemId: string, elevation: number): ConvexShape | null {
   if (getPlacementLayer(itemId) !== 'floor') return null;
+  // Standable pieces are not one shape: they are floor or wall part by part, depending on the
+  // height of the body meeting them. See pushOutOfStandable.
   if (isStandableItem(itemId)) return null;
   // Soft planting: a body walks through leaves and flower stems. See ItemDefinition.brushPast
   // for why sizing the plants correctly is what made this necessary.
@@ -1088,11 +1300,24 @@ export function resolvePlayerAgainstFurniture(
   z: number,
   playerRadius: number,
   placed: PlacedItem[],
+  /**
+   * The height the body is standing at, when the caller tracks one — the player does.
+   *
+   * It is what lets a standable piece be a wall: a deck's side, its posts and its railings are
+   * solid to a body they are more than a step above (see {@link STAND_RULES}). Without it there is
+   * no "above", so standable pieces are left out entirely, which is how they have always behaved
+   * for the callers that do not track a height (the pet, the island NPCs, the audits).
+   */
+  footY?: number | null,
 ): { x: number; z: number } {
   PUSH.x = x;
   PUSH.z = z;
 
   for (const p of placed) {
+    if (footY != null && isStandableItem(p.itemId)) {
+      pushOutOfStandable(p, footY, playerRadius);
+      continue;
+    }
     const walk = getWalkShape(p.itemId, p.position[1] || 0);
     if (!walk) continue;
 
@@ -1109,6 +1334,82 @@ export function resolvePlayerAgainstFurniture(
 
 /** Scratch outline for the per-frame walk resolve. One placement at a time, so one buffer. */
 const WALK_SCRATCH = createPlacedShape();
+
+/**
+ * Pushes {@link PUSH} out of every part of standable placement `p` that is a WALL to a body
+ * standing at `footY` — see {@link STAND_RULES}.
+ *
+ * The complement of {@link standTreadTop}: a part whose top is within a step is floor there and
+ * skipped here; a part above that and below head height is solid here. One threshold decides both,
+ * so nothing is ever both.
+ *
+ * An unmeasured piece (its model has never mounted) contributes nothing, exactly as it contributes
+ * no floor: guessing a wall would trap the player behind something they cannot see.
+ */
+function pushOutOfStandable(p: PlacedItem, footY: number, playerRadius: number): void {
+  const fp = footprints.get(p.itemId);
+  if (!fp?.standParts) return;
+
+  const px = p.position[0];
+  const pz = p.position[2];
+  const dx = PUSH.x - px;
+  const dz = PUSH.z - pz;
+  const reach = fp.reach + playerRadius;
+  if (dx * dx + dz * dz > reach * reach) return;
+
+  const base = p.position[1] || 0;
+  const stepTop = footY + STAND_RULES.maxStepUp;
+  const headTop = footY + WALK_BAND_MAX_Y;
+  const rotation = p.rotation || 0;
+  for (const part of fp.standParts) {
+    if (base + part.y1 <= stepTop) continue;
+    if (base + part.y0 >= headTop) continue;
+    placeShape(part.outline, px, pz, rotation, WALK_SCRATCH);
+    pushCircleOutOfShape(WALK_SCRATCH, PUSH.x, PUSH.z, playerRadius, PUSH);
+  }
+}
+
+/**
+ * The highest TREAD of standable placement `p` under a foot at `(x, z)`, as a world height — or
+ * `null` when no tread is under it.
+ *
+ * `reachTop` is the highest a tread may be and still be stepped onto: `footY + maxStepUp` for a
+ * body that is walking (see {@link STAND_RULES}), `Infinity` for "whatever is on top here", which is
+ * what an object being set down and every caller without a height of its own ask.
+ *
+ * Treads, not the model's outline, is what makes a staircase a staircase and the air beside it
+ * air: the outline of 小型觀景平台 is one convex hull around deck and stairs together, and standing
+ * anywhere inside it used to put the feet at deck height.
+ */
+export function standTreadTop(
+  p: PlacedItem,
+  x: number,
+  z: number,
+  reachTop = Infinity,
+): number | null {
+  const fp = footprints.get(p.itemId);
+  if (!fp?.standParts) return null;
+
+  const px = p.position[0];
+  const pz = p.position[2];
+  const dx = x - px;
+  const dz = z - pz;
+  const reach = fp.reach + STAND_RULES.footRadius;
+  if (dx * dx + dz * dz > reach * reach) return null;
+
+  const base = p.position[1] || 0;
+  const rotation = p.rotation || 0;
+  let best: number | null = null;
+  for (const part of fp.standParts) {
+    if (!part.tread) continue;
+    const top = base + part.y1;
+    if (top > reachTop) continue;
+    if (best !== null && top <= best) continue;
+    placeShape(part.tread, px, pz, rotation, SHAPE_A);
+    if (signedDistanceToShape(SHAPE_A, x, z) <= STAND_RULES.footRadius) best = top;
+  }
+  return best;
+}
 
 /**
  * A solid box that is NOT in anybody's save file — a piece of the world that exists because

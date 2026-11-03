@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { Coins, Gem, ChevronDown } from 'lucide-react';
+import { Coins, Gem, ChevronDown, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useApp } from '../../context/AppContext';
 import { getBalance } from '../../constants/currency';
@@ -41,23 +41,24 @@ import { TOUR_TARGET, tourTag } from '../../constants/tourTargets';
  *
  * INFORMATION HIERARCHY — three rungs, and no tier drops a rung entirely:
  *
- *   Primary   頭像, 名稱, 等級, 金幣, 碎片 — visible at every tier, in every
- *             state. 金幣 AND 碎片 both: a HUD that shows one resource and
- *             hides the other is how a player concludes there is only one
- *             (DESIGN_SYSTEM.md, 貨幣).
- *   Secondary the three progress bars — how far into the level, how each
- *             balance sits against its own scale, and which activity pays it.
+ *   Primary   頭像, 名稱, 等級, 金幣, 經驗值, 碎片 — visible at every tier, in
+ *             every state. 金幣 AND 碎片 both: a HUD that shows one resource
+ *             and hides the other is how a player concludes there is only one
+ *             (DESIGN_SYSTEM.md, 貨幣). 金幣 and 經驗值 sit in their own two
+ *             tiles to the right of the card (HudTile); 碎片 stays on it.
+ *   Secondary 碎片's progress bar — how the balance sits against its own scale
+ *             and which activity pays it.
  *             Present at every tier, but foldable, and folded by default where
  *             the screen cannot spare the height.
  *   Tertiary  管理員數值調整 — inside the fold, admins only.
  *
  * ARRANGEMENT PER TIER:
  *
- *   mobile / tablet ("compact")  one line: avatar · name/LV · 金幣 · 碎片 · ⌄.
+ *   mobile / tablet ("compact")  one line: avatar · name/LV · 碎片 · ⌄.
  *                                The fold opens underneath.
  *   laptop / desktop ("full")    avatar · name/LV · ⌄ over a fixed-width
- *                                column; the fold swaps the currency chip row
- *                                for the three bars.
+ *                                column; the fold swaps the 碎片 chip row
+ *                                for its bar.
  *
  * The fold's DEFAULT is open on the two big tiers and closed on the two small
  * ones — except on a short viewport (<=800px tall, `useIsShortViewport`), where
@@ -78,22 +79,48 @@ function shortNumber(n: number): string {
   return n.toLocaleString();
 }
 
-/** 金幣 + 碎片, side by side. The primary rung, so it is never behind the fold. */
-function CurrencyChips({ coins, fragments }: { coins: number; fragments: number }) {
+/** 碎片 on the card itself. The primary rung, so it is never behind the fold. */
+function FragmentChip({ fragments }: { fragments: number }) {
   return (
-    <span className="flex items-center" style={{ gap: 'var(--hud-chip-gap)' }}>
-      <span className="flex items-center gap-1" aria-label={`金幣 ${coins}`}>
-        <Coins size={13} className="hud-icon text-island-gold" aria-hidden="true" />
-        <span className="hud-text-title font-mono font-black text-island-gold whitespace-nowrap">
-          {shortNumber(coins)}
-        </span>
+    <span className="flex items-center gap-1" aria-label={`碎片 ${fragments}`}>
+      <Gem size={13} className="hud-icon text-island-teal-dark" aria-hidden="true" />
+      <span className="hud-text-title font-mono font-black text-island-teal-dark whitespace-nowrap">
+        {shortNumber(fragments)}
       </span>
-      <span className="flex items-center gap-1" aria-label={`碎片 ${fragments}`}>
-        <Gem size={13} className="hud-icon text-island-teal-dark" aria-hidden="true" />
-        <span className="hud-text-title font-mono font-black text-island-teal-dark whitespace-nowrap">
-          {shortNumber(fragments)}
-        </span>
-      </span>
+    </span>
+  );
+}
+
+/**
+ * 金幣 / 經驗值 each get a box of their own, beside the card rather than inside it. They are the
+ * two numbers a player checks most, and inside the card XP was behind the fold and 金幣 was a
+ * small chip next to the name — players had to go looking in the corner for either. Same card
+ * language as the profile card (notch, line border, shadow on the wrapper) so the three read as
+ * one cluster.
+ */
+function HudTile({ title, className = '', children }: { title: string; className?: string; children: React.ReactNode }) {
+  return (
+    <div className={`notch-shadow-hoverable flex ${className}`} title={title}>
+      <div
+        className="flex flex-col justify-center bg-white dock-notch rounded-2xl border border-island-line text-left"
+        style={{
+          padding: 'var(--hud-card-pad)',
+          paddingRight: 'calc(var(--hud-card-pad) + 6px)', // clear of the notch
+          gap: 'var(--hud-row-gap)',
+          minWidth: 'calc(var(--hud-avatar) * 1.6)', // scales with the tier, like the card
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function TileLabel({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <span className="flex items-center gap-1 hud-text-meta font-black text-island-navy-soft tracking-wide whitespace-nowrap">
+      {icon}
+      {label}
     </span>
   );
 }
@@ -170,9 +197,6 @@ export function TopBar() {
   // stored stays a detail of constants/currency.ts. See §22 on why they are shown together.
   const coins = getBalance(profile, 'coins');
   const fragments = getBalance(profile, 'fragments');
-  // Calculate Gold tracking budget (target goal of 50,000 for visuals)
-  const goldLimit = 50000;
-  const goldProgress = Math.min(100, (coins / goldLimit) * 105);
   /**
    * 碎片's own bar, on its own scale.
    *
@@ -246,24 +270,10 @@ export function TopBar() {
       className="flex flex-col bg-island-cream-2 rounded-2xl border border-island-line"
       style={{ gap: 'var(--hud-card-gap)', padding: 'var(--hud-stat-pad)' }}
     >
-      <StatBar
-        label="經驗 XP"
-        value={`${xpProgress} / 100`}
-        valueClass="text-island-navy-soft"
-        percent={xpProgress}
-        barClass="bg-island-teal"
-      />
-      <StatBar
-        icon={<Coins size={11} strokeWidth={2.5} className="hud-icon text-island-gold" aria-hidden="true" />}
-        label="金幣・健身取得"
-        value={coins.toLocaleString()}
-        valueClass="text-island-gold"
-        percent={goldProgress}
-        barClass="bg-island-gold"
-      />
-      {/* 碎片 gets a bar of its own rather than a number tucked elsewhere: the
-          subtitle on each bar is where the two resources are actually told
-          apart — a colour says 「不同」, a source says 「為什麼不同」. */}
+      {/* 經驗 and 金幣 moved out to their own tiles (see HudTile); 金幣's
+          「健身取得」 subtitle went with it as the tile's tooltip. 碎片 keeps its
+          bar here: the subtitle is where the two currencies are told apart —
+          a colour says 「不同」, a source says 「為什麼不同」. */}
       <StatBar
         icon={<Gem size={11} strokeWidth={2.5} className="hud-icon text-island-teal-dark" aria-hidden="true" />}
         label="碎片・非健身取得"
@@ -278,93 +288,144 @@ export function TopBar() {
     </div>
   );
 
+  // Per box rather than on the row: the row's empty space under the tiles must let drags through
+  // to the camera, and a child's `pointer-events-auto` would override a `none` on the row anyway.
+  const live = showAccountPanel ? 'pointer-events-none' : 'pointer-events-auto';
+
+  const coinTile = (
+    <HudTile title="金幣・健身取得" className={live}>
+      <TileLabel
+        icon={<Coins size={11} strokeWidth={2.5} className="hud-icon text-island-gold" aria-hidden="true" />}
+        label="金幣"
+      />
+      <span
+        className="hud-text-title font-mono font-black text-island-gold whitespace-nowrap"
+        aria-label={`金幣 ${coins}`}
+      >
+        {isCompact ? shortNumber(coins) : coins.toLocaleString()}
+      </span>
+    </HudTile>
+  );
+
+  const xpTile = (
+    <HudTile title={`經驗值：LV ${level}，再 ${100 - xpProgress} 點升級`} className={live}>
+      <TileLabel
+        icon={<Sparkles size={11} strokeWidth={2.5} className="hud-icon text-island-teal" aria-hidden="true" />}
+        label="經驗值"
+      />
+      <span className="hud-text-title font-mono font-black text-island-navy-soft whitespace-nowrap">
+        {xpProgress}
+        <span className="hud-text-meta"> / 100</span>
+      </span>
+      <div
+        className="w-full bg-white rounded-full overflow-hidden border border-island-line"
+        style={{ height: 'var(--hud-bar-h)', minWidth: '3rem' }}
+      >
+        <div className="h-full rounded-full bg-island-teal transition-all duration-500" style={{ width: `${xpProgress}%` }} />
+      </div>
+    </HudTile>
+  );
+
   return (
     <>
       {/* Placed by the `left-rail` HUD region (HudFrame.tsx); `relative` keeps
           the z-hud-topbar tier for local stacking within the frame.
 
-          The card's shadow is `.notch-shadow-hoverable` on this WRAPPER, not a
-          `shadow-[...]` on the `dock-notch` element — a clip-path clips the
-          element's own box-shadow away (see index.css). */}
+          One row: the profile card, then the 金幣 and 經驗值 tiles in the empty
+          space to its right. `items-start` keeps the tiles at their own height
+          when the card's fold opens; the inner `items-stretch` keeps the two
+          tiles the same height as each other. The row itself is the tour's
+          第一站 target, so the spotlight covers all three. */}
       <div
         {...tourTag(TOUR_TARGET.account)}
-        className={`relative z-hud-topbar notch-shadow-hoverable pointer-events-auto transition-all duration-300 ease-out ${
+        className={`relative z-hud-topbar flex items-start transition-all duration-300 ease-out ${
           showAccountPanel ? 'opacity-0 scale-95 pointer-events-none' : ''
         }`}
+        style={{ gap: 'var(--hud-chip-gap)' }}
       >
-        {/* Width comes from --hud-card-w: `max-content` on the compact tiers
-            (the card is exactly as wide as its one row) and a fixed column on
-            the big ones. --hud-card-max-w is the guarantee that it can never
-            run off a narrow viewport or swallow the view, however long a
-            player's display name is. */}
-        <div
-          className="flex flex-col bg-white dock-notch rounded-2xl border border-island-line"
-          style={{
-            width: 'var(--hud-card-w)',
-            maxWidth: 'var(--hud-card-max-w)',
-            padding: 'var(--hud-card-pad)',
-            gap: 'var(--hud-card-gap)',
-          }}
-        >
-          <div className="flex items-center" style={{ gap: 'var(--hud-chip-gap)' }}>
-            {avatarButton}
-            {nameBlock}
+        {/* The card's shadow is `.notch-shadow-hoverable` on this WRAPPER, not a
+            `shadow-[...]` on the `dock-notch` element — a clip-path clips the
+            element's own box-shadow away (see index.css). */}
+        <div className={`notch-shadow-hoverable ${live}`}>
+          {/* Width comes from --hud-card-w: `max-content` on the compact tiers
+              (the card is exactly as wide as its one row) and a fixed column on
+              the big ones. --hud-card-max-w is the guarantee that it can never
+              run off a narrow viewport or swallow the view, however long a
+              player's display name is. */}
+          <div
+            className="flex flex-col bg-white dock-notch rounded-2xl border border-island-line"
+            style={{
+              width: 'var(--hud-card-w)',
+              maxWidth: 'var(--hud-card-max-w)',
+              padding: 'var(--hud-card-pad)',
+              gap: 'var(--hud-card-gap)',
+            }}
+          >
+            <div className="flex items-center" style={{ gap: 'var(--hud-chip-gap)' }}>
+              {avatarButton}
+              {nameBlock}
 
-            {isCompact ? (
-              /* Compact: the currencies and the fold control are ONE button,
-                 which is also what keeps ONE target instead of two adjacent
-                 small ones. `self-stretch` gives it the row's full height and
-                 `.hud-hit` takes it the rest of the way to 44px on touch — the
-                 row is only ~32px tall once the card is this small. */
-              <button
-                type="button"
-                onClick={toggleDetail}
-                aria-expanded={showDetail}
-                className="hud-hit flex items-center gap-1.5 ml-auto self-stretch shrink-0 pl-2 border-l border-island-line cursor-pointer"
-                title={showDetail ? '收合詳細數值' : '展開詳細數值'}
-              >
-                <CurrencyChips coins={coins} fragments={fragments} />
-                {chevron}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={toggleDetail}
-                aria-expanded={showDetail}
-                className="hud-hit ml-auto shrink-0 p-1 -mr-0.5 rounded-lg hover:bg-island-sand cursor-pointer"
-                title={showDetail ? '收合詳細數值' : '展開詳細數值'}
-                aria-label={showDetail ? '收合詳細數值' : '展開詳細數值'}
-              >
-                {chevron}
-              </button>
-            )}
-          </div>
-
-          {(showDetail || !isCompact) && <div className="rope-stitch" />}
-
-          {/* Full layout, folded: the primary numbers move out of the fold and
-              onto their own line, so collapsing the card hides the SECONDARY
-              rung only. Nothing a player needs at a glance is ever behind a
-              tap. */}
-          {!isCompact && !showDetail && (
-            <div className="flex justify-center py-0.5">
-              <CurrencyChips coins={coins} fragments={fragments} />
+              {isCompact ? (
+                /* Compact: 碎片 and the fold control are ONE button,
+                   which is also what keeps ONE target instead of two adjacent
+                   small ones. `self-stretch` gives it the row's full height and
+                   `.hud-hit` takes it the rest of the way to 44px on touch — the
+                   row is only ~32px tall once the card is this small. */
+                <button
+                  type="button"
+                  onClick={toggleDetail}
+                  aria-expanded={showDetail}
+                  className="hud-hit flex items-center gap-1.5 ml-auto self-stretch shrink-0 pl-2 border-l border-island-line cursor-pointer"
+                  title={showDetail ? '收合詳細數值' : '展開詳細數值'}
+                >
+                  <FragmentChip fragments={fragments} />
+                  {chevron}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={toggleDetail}
+                  aria-expanded={showDetail}
+                  className="hud-hit ml-auto shrink-0 p-1 -mr-0.5 rounded-lg hover:bg-island-sand cursor-pointer"
+                  title={showDetail ? '收合詳細數值' : '展開詳細數值'}
+                  aria-label={showDetail ? '收合詳細數值' : '展開詳細數值'}
+                >
+                  {chevron}
+                </button>
+              )}
             </div>
-          )}
 
-          <AnimatePresence initial={false}>
-            {showDetail && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2, ease: 'easeInOut' }}
-                className="overflow-hidden"
-              >
-                {detailPanel}
-              </motion.div>
+            {(showDetail || !isCompact) && <div className="rope-stitch" />}
+
+            {/* Full layout, folded: 碎片 moves out of the fold and
+                onto their own line, so collapsing the card hides the SECONDARY
+                rung only. Nothing a player needs at a glance is ever behind a
+                tap. */}
+            {!isCompact && !showDetail && (
+              <div className="flex justify-center py-0.5">
+                <FragmentChip fragments={fragments} />
+              </div>
             )}
-          </AnimatePresence>
+
+            <AnimatePresence initial={false}>
+              {showDetail && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2, ease: 'easeInOut' }}
+                  className="overflow-hidden"
+                >
+                  {detailPanel}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        <div className="flex items-stretch" style={{ gap: 'var(--hud-chip-gap)' }}>
+          {coinTile}
+          {xpTile}
         </div>
       </div>
 

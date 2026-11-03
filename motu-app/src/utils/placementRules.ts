@@ -132,11 +132,18 @@ export function isValidTerrainPosition(x: number, z: number, islandScale: number
 /**
  * Draws a uniformly-distributed random point within the circular Grass Terrain area
  * (not a bounding square), so every candidate starts out on valid island ground.
+ *
+ * `rng` defaults to Math.random. A caller whose layout has to come back the same after a reload
+ * (the island's wildflowers and rocks) passes a seeded one instead.
  */
-export function getRandomGrassTerrainPoint(islandScale: number = 1.0, margin: number = 0.4): [number, number] {
+export function getRandomGrassTerrainPoint(
+  islandScale: number = 1.0,
+  margin: number = 0.4,
+  rng: () => number = Math.random,
+): [number, number] {
   const radius = Math.max(0, getGrassTerrainRadius(islandScale) - margin);
-  const r = Math.sqrt(Math.random()) * radius;
-  const theta = Math.random() * Math.PI * 2;
+  const r = Math.sqrt(rng()) * radius;
+  const theta = rng() * Math.PI * 2;
   return [r * Math.cos(theta), r * Math.sin(theta)];
 }
 
@@ -200,10 +207,12 @@ export function findRandomValidPlacement(
   islandScale: number = 1.0,
   otherObjects: Array<[number, number, number]> = [],
   y: number = 0.35,
-  maxAttempts: number = 40
+  maxAttempts: number = 40,
+  /** Where the candidates come from — see getRandomGrassTerrainPoint. */
+  rng: () => number = Math.random
 ): [number, number, number] {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const [x, z] = getRandomGrassTerrainPoint(islandScale);
+    const [x, z] = getRandomGrassTerrainPoint(islandScale, 0.4, rng);
     const resolved = findNearestValidPlacement(
       name,
       [x, y, z],

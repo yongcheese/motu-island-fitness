@@ -30,7 +30,7 @@ export interface RoomDef {
   size: [number, number];
   price: number;
   description: string;
-  buff: string;
+  buff?: string;
   styleColor: string;
 }
 
@@ -77,7 +77,6 @@ export const ROOM_DEFS: Record<RoomKey, RoomDef> = {
     size: [ROOM_GRID_SIZE, ROOM_GRID_SIZE],
     price: 600,
     description: '揮灑汗水、突破自我的運動空間',
-    buff: '運動消耗卡路里 ＋20%',
     styleColor: '#f1f5f9'
   },
   bedroom: {

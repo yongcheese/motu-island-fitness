@@ -56,7 +56,6 @@ Here are the 12 payloads targeting common entry points. Each payload must return
   "type": "Squats",
   "duration": 60,
   "counts": 10,
-  "calories": 25.0,
   "goldEarned": 5,
   "timestamp": "2026-05-13T12:00:00Z"
 }
@@ -108,7 +107,6 @@ Here are the 12 payloads targeting common entry points. Each payload must return
   "type": "Squats",
   "duration": 60,
   "counts": 10,
-  "calories": 25.0,
   "goldEarned": 5,
   "timestamp": "2026-05-13T12:00:00Z"
 }
@@ -145,7 +143,6 @@ Here are the 12 payloads targeting common entry points. Each payload must return
   "type": "Plank",
   "duration": 30,
   "counts": 1,
-  "calories": 10.0,
   "goldEarned": 2,
   "timestamp": "2029-12-31T23:59:59Z"
 }

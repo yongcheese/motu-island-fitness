@@ -6,7 +6,7 @@
 import { useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useApp } from '../../context/AppContext';
+import { useAppPick } from '../../context/AppContext';
 import { WeatherType } from '../../types';
 import { WATER_SURFACE_Y } from '../../constants/world';
 
@@ -317,7 +317,7 @@ const FAR_SEA_EXTENT = 1100;
 const FAR_SEA_SEGMENTS = 64;
 
 export function Ocean() {
-  const { profile, weather } = useApp();
+  const { profile, weather } = useAppPick('profile', 'weather');
   const territoryLevel = profile?.territoryLevel || 1;
   const islandScale = 1 + (territoryLevel - 1) * 0.4;
 

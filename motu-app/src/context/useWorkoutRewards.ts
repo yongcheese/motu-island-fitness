@@ -114,24 +114,11 @@ interface WorkoutLogEntry {
   type: string;
   duration: number;
   counts: number;
-  calories: number;
   goldEarned: number;
   timestamp: string;
   /** 誰判定的這次運動（例如 'ai-camera'）。沒帶來源的紀錄不寫這個欄位，和改前相同。 */
   detector?: string;
 }
-
-/**
- * 卡路里, derived rather than reported.
- *
- * The prototype counted 0.8 kcal per rep as the player exercised and passed the running total into
- * the log. A real fitness API will report its own figure and a run reports no reps at all, so the
- * log cannot depend on a number only the prototype knows how to produce. Same coefficient, computed
- * from the completion — the log says the same thing it always did for a prototype session, and it
- * says something reasonable for one that arrives over an API.
- */
-const KCAL_PER_REP = 0.8;
-const KCAL_PER_MINUTE = 8;
 
 /** What the UI is handed once a grant has actually landed. Resolved, not a pointer at the profile. */
 export interface WorkoutRewardNotice {
@@ -350,7 +337,6 @@ export function useWorkoutRewards(
       // `isValidWorkoutLog`) must never be able to roll back money the player has earned. It is
       // also why `goldEarned` can be trusted — it is the figure that was actually banked, written
       // by the thing that banked it.
-      const minutes = Math.max(0, completion.durationSeconds) / 60;
       const reps = Number.isFinite(completion.repCount ?? NaN) ? Math.max(0, completion.repCount as number) : 0;
       const logId = `log-${Date.parse(completion.completedAt) || Date.now()}-${completion.workoutId.slice(-6)}`;
       const log: WorkoutLogEntry = {
@@ -359,7 +345,6 @@ export function useWorkoutRewards(
         type: completion.workoutType,
         duration: Math.round(completion.durationSeconds),
         counts: reps,
-        calories: Math.round(reps * KCAL_PER_REP + minutes * KCAL_PER_MINUTE),
         goldEarned: coins,
         timestamp: completion.completedAt,
         ...workoutLogDetectorFields(completion),

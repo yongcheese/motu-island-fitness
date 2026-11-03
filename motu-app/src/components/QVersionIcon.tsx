@@ -5803,33 +5803,38 @@ export function QVersionIconInner({ itemId, categoryId, size = 32, className = "
       );
     case 'deco-hanging-chair':
       /*
-        舊圖畫的是一個**開口朝上的淺盤**掛在彎桿上 —— 讀起來是一盞落地燈或一個鳥浴盆。模型
-        （HangingChairModel）是一顆**封閉的藤編蛋**：一顆被切掉正面一塊的球，有外殼、有開口的邊、
-        有看得見的深色內襯，還有一塊米色坐墊。差的不是細節，是「那是什麼」。
+        模型（HangingChairModel）是一個**正面開口的藤編吊籃**：C 形立架（配重底座、立柱、外伸的
+        曲臂）、掛環、一根撐桿把兩條繩撐到籃子兩側，籃子裡一塊米色坐墊。
 
-        現在畫的就是那顆蛋：C 形立架（配重底座、立柱、外伸的曲臂）、掛環、四條收在藤箍上的吊繩，
-        以及蛋殼與它正面的開口。
+        以前的模型是一顆封閉的蛋、四條繩往中間收 —— 那顆蛋比坐進去的角色的頭還小，繩子穿過臉。
+        模型按坐姿身體的尺寸重新比例之後，這張圖跟著改：籃子頂端是開的（有一圈籃緣），繩子接在
+        兩側而不是收到頂上一點。
       */
       return (
         <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-          {/* 配重底座 */}
-          <ellipse cx="21" cy="53.5" rx="11" ry="3.6" fill="#573818" stroke={strokeColor} strokeWidth="1.8" />
-          {/* 立柱與頂端外伸的曲臂 */}
-          <path d="M21 52.5V18" stroke="#7A5228" strokeWidth="4.6" strokeLinecap="round" />
-          <path d="M21 18C21 9.5 30 8 38 12.5" stroke="#7A5228" strokeWidth="4.6" strokeLinecap="round" fill="none" />
-          {/* 掛環 */}
-          <circle cx="38.4" cy="13.6" r="2.6" fill="#8A6A2A" stroke={strokeColor} strokeWidth="1.4" />
-          {/* 吊繩（側視看得到兩條），收在藤箍上 */}
-          <path d="M38.4 16.2L32.5 24.5M38.4 16.2L44.3 24.5" stroke="#B08A4A" strokeWidth="1.9" strokeLinecap="round" />
-          <ellipse cx="38.4" cy="25.4" rx="7" ry="2.3" fill="#7A5228" stroke={strokeColor} strokeWidth="1.6" />
-          {/* 蛋殼本體 —— 封閉的殼，不是一個淺盤 */}
-          <path d="M38.4 24.6C48 24.6 49.8 31.4 49.8 37.8C49.8 45.2 44.8 50.4 38.4 50.4C32 50.4 27 45.2 27 37.8C27 31.4 28.8 24.6 38.4 24.6Z" fill="#B08A4A" stroke={strokeColor} strokeWidth={strokeWidth} strokeLinejoin="round" />
+          {/* 配重底座，與伸到籃子下方的木腳 */}
+          <ellipse cx="18" cy="53.5" rx="9.5" ry="3.4" fill="#573818" stroke={strokeColor} strokeWidth="1.8" />
+          <path d="M18 54H40" stroke="#573818" strokeWidth="3.2" strokeLinecap="round" />
+          {/* 立柱與頂端橫伸的曲臂 */}
+          <path d="M18 52.5V11" stroke="#7A5228" strokeWidth="4.4" strokeLinecap="round" />
+          <path d="M18 9.5H40.5" stroke="#7A5228" strokeWidth="4.4" strokeLinecap="round" />
+          {/* 吊鉤與掛環 */}
+          <path d="M40.5 11V13.5" stroke="#5B5B5B" strokeWidth="1.6" strokeLinecap="round" />
+          <circle cx="40.5" cy="15.2" r="2" fill="#8A6A2A" stroke={strokeColor} strokeWidth="1.3" />
+          {/* 撐桿 */}
+          <path d="M29 18.5H52" stroke="#B08A4A" strokeWidth="2.6" strokeLinecap="round" />
+          {/* 兩條繩，從撐桿兩端接到籃緣兩側 */}
+          <path d="M29.6 18.5L31 31M51.4 18.5L50 31" stroke="#B08A4A" strokeWidth="1.8" strokeLinecap="round" />
+          {/* 吊籃本體 —— 頂端開口，下半是圓的籃子 */}
+          <path d="M28.6 31C28.6 42.5 33.6 50.4 40.5 50.4C47.4 50.4 52.4 42.5 52.4 31Z" fill="#B08A4A" stroke={strokeColor} strokeWidth={strokeWidth} strokeLinejoin="round" />
           {/* 正面的開口，看得進去的深色內襯 */}
-          <ellipse cx="38.4" cy="34.6" rx="7.4" ry="7.8" fill="#7A5228" stroke={strokeColor} strokeWidth="1.6" />
+          <path d="M33.6 31C33.6 39.5 36.4 45.8 40.5 45.8C44.6 45.8 47.4 39.5 47.4 31Z" fill="#7A5228" />
+          {/* 籃緣 */}
+          <ellipse cx="40.5" cy="31" rx="11.9" ry="2.6" fill="none" stroke="#7A5228" strokeWidth="2.2" />
           {/* 坐墊 */}
-          <ellipse cx="38.4" cy="40" rx="6.8" ry="2.9" fill="#EFE3CB" stroke={strokeColor} strokeWidth="1.5" />
+          <ellipse cx="40.5" cy="37.8" rx="7" ry="2.7" fill="#EFE3CB" stroke={strokeColor} strokeWidth="1.5" />
           {/* 殼上的藤條肋 */}
-          <path d="M29.6 30.5C28.5 37 29 42.4 31.2 46.4M47.2 30.5C48.3 37 47.8 42.4 45.6 46.4" stroke="#7A5228" strokeWidth="1.6" fill="none" strokeLinecap="round" />
+          <path d="M31 34C31.4 40 33 44.5 35.5 47.4M50 34C49.6 40 48 44.5 45.5 47.4" stroke="#7A5228" strokeWidth="1.5" fill="none" strokeLinecap="round" />
         </svg>
       );
     case 'deco-picnic-blanket':

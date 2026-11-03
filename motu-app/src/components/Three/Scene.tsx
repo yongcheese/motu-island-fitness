@@ -40,7 +40,7 @@ import {
   type IslandAmbience,
 } from '../../constants/islandReturn';
 
-import { useApp } from '../../context/AppContext';
+import { useAppPick } from '../../context/AppContext';
 import { getSurfaceAt } from '../../lib/placementSurfaces';
 import { View, WeatherType } from '../../types';
 import { useLightningFlicker } from '../../hooks/useLightningFlicker';
@@ -159,7 +159,7 @@ function gradeLightColor(base: THREE.Color, ambience: IslandAmbience): THREE.Col
 
 // Performance-optimized lighting sub-component to interactively lerp lights on frame
 function SceneLighting() {
-  const { weather, profile } = useApp();
+  const { weather, profile } = useAppPick('weather', 'profile');
   const gl = useThree((state) => state.gl);
   const ambientRef = useRef<THREE.AmbientLight>(null);
   const hemiRef = useRef<THREE.HemisphereLight>(null);
@@ -323,7 +323,8 @@ function SceneLighting() {
  * reconciled against state almost none of them read.
  *
  * Nothing is lost. The pieces that DO depend on context - SceneLighting, Avatar, Island, and the
- * rest - call useApp() themselves and re-render on their own, which is where that work belongs.
+ * rest - subscribe themselves, and only to the fields they read (useAppPick; useAppReader for the
+ * ones read only inside a frame loop), so each re-renders when ITS data changes and not otherwise.
  */
 /**
  * The cosmetic field, plus the one thing it needs that only AppContext can answer.
@@ -340,7 +341,7 @@ function SceneLighting() {
  * the top of anything is already answers for both.
  */
 function GroundedCosmeticField({ children }: { children?: React.ReactNode }) {
-  const { profile } = useApp();
+  const { profile } = useAppPick('profile');
 
   const groundAt = useMemo(() => {
     const placements = profile?.islandPlacements ?? [];
@@ -465,8 +466,11 @@ const SceneContents = React.memo(function SceneContents() {
  * Note setFrameloop resets the render clock. That is fine here precisely because it can only
  * happen while the scene is hidden, so no time-driven animation is ever seen jumping.
  */
-export function Scene() {
-  const { currentView } = useApp();
+export const Scene = React.memo(function Scene() {
+  // Memoised and picked: App re-renders on every AppContext change, and a re-render here is a
+  // re-render of <Canvas>, which re-applies its props and re-bridges every context into the 3D
+  // tree. The island only needs to hear about the one field that drives its frameloop.
+  const { currentView } = useAppPick('currentView');
   const covered = currentView !== View.HOME && currentView !== View.BUILD_MODE;
 
   /**
@@ -546,4 +550,4 @@ export function Scene() {
       <IslandColourVeil />
     </div>
   );
-}
+});

@@ -412,9 +412,10 @@ export function findTidyTarget(
   if (bestDistSq < Infinity) return { x: bestX, z: bestZ, count, wall: false };
 
   // Only wall-borne sprouts in reach. The badge goes on the OUTSIDE of the wall the player is
-  // standing at, not at the building's centre: an anchor inside the shell is occluded by the
-  // house's own mesh, and the prompt then silently never appears — the same trap the front door's
-  // anchor is offset to avoid (see HouseStyleFootprint.doorOffsetZ).
+  // standing at, not at the building's centre: a point inside the shell is on the far side of the
+  // house's own solid box from the player, and the targeting pass's line-of-reach test
+  // (lib/interactionTargeting.ts) would rightly refuse it — the same reason the front door's
+  // interaction point stands just proud of the wall (hooks/usePlayerHome.ts).
   const fp = home!.footprint;
   const standoff = Math.max(fp.halfWidth, fp.halfDepth) + 0.7;
   const dx = x - home!.position[0];

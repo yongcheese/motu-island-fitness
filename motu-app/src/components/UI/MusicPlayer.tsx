@@ -35,6 +35,13 @@ const TRACK_MOODS: Record<string, AmbientMoodId> = {
 export function MusicPlayer() {
   const { settings, isWorkoutActive } = useApp();
 
+  // `settings` is null for the length of an account switch (AppContext clears it before the next
+  // account's copy loads, and this component stays mounted throughout). The defaults below would
+  // read that gap as "not muted" and push it into the audio layer — the BGM starting up, and every
+  // click audible, for a player whose saved setting is 全部靜音. Not knowing the setting is not a
+  // setting: until it is known, nothing is pushed and the audio layer keeps what it last had.
+  const settingsKnown = settings != null;
+
   const currentTrackIndex = settings?.currentTrackIndex ?? 0;
   const isMuted = settings?.isMuted ?? false;
   const volume = settings?.bgmVolume ?? 0.5;
@@ -50,6 +57,7 @@ export function MusicPlayer() {
   // ramps a running mood rather than restarting it, so dragging the slider no
   // longer needs an effect of its own.
   useEffect(() => {
+    if (!settingsKnown) return;
     configureBackgroundMusic({
       source: youtubeMusicEnabled ? 'youtube' : 'builtin',
       builtinMood,
@@ -57,7 +65,7 @@ export function MusicPlayer() {
       muted: isMuted,
       savedYouTubeLink: savedLink,
     });
-  }, [builtinMood, volume, isMuted, youtubeMusicEnabled, savedLink]);
+  }, [settingsKnown, builtinMood, volume, isMuted, youtubeMusicEnabled, savedLink]);
 
   // The same one-way push, for the sound-effect layer. It lives here because this component is
   // already the single place persisted audio settings become audio behaviour, and because
@@ -65,13 +73,14 @@ export function MusicPlayer() {
   // able to answer "am I muted?" from inside a bare function call. See setSfxMuted's doc for why
   // only they consult it.
   useEffect(() => {
+    if (!settingsKnown) return;
     setSfxMuted(isMuted);
     // ...and the same for the continuous ambience. The surf and the swim wash used to be the
     // one part of the soundscape the mute button could not reach, which is what made the
     // button a lie: the UI said the sound was off and the sea kept rolling underneath it.
     // See THE AMBIENCE GATE in soundUtils for what "off" does to them now.
     setAmbienceMuted(isMuted);
-  }, [isMuted]);
+  }, [settingsKnown, isMuted]);
 
   useEffect(() => {
     // AudioContext autoplay policy blocks sound until a real user gesture -

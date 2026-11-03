@@ -4,6 +4,7 @@
  */
 
 import type { SolidBox } from './furniturePlacement';
+import { sharedSingleton } from './sharedRegistry';
 
 /**
  * TRANSIENT WORLD SOLIDS —— 世界裡擋得住玩家、但**不在任何人存檔裡**的東西。
@@ -41,22 +42,32 @@ import type { SolidBox } from './furniturePlacement';
  * 子時，這裡看到的就已經是新值 —— `flat` 只有在來源加入或離開時才重建，也就是一檔期兩次。
  */
 
-/** 每個來源自己那組盒子。來源每幀就地改寫它們，這裡只持有參考。 */
-const sources = new Map<string, readonly SolidBox[]>();
-
-/** 攤平後的清單。碰撞每幀讀它，所以它必須是穩定的同一顆物件。 */
-let flat: readonly SolidBox[] = [];
-
 const EMPTY: readonly SolidBox[] = [];
+
+/**
+ * 登記表本身 —— 整個頁面只有一份（見 lib/sharedRegistry.ts）。
+ *
+ * 寫入者（MerchantVisitor）跟讀取者（Avatar 的碰撞）是兩個不同的模組，各自 import 這個檔案；
+ * 開發伺服器把同一個檔案用兩個 URL 發給它們時，模組層級的 Map 就會變成兩份，船照樣畫出來、
+ * 碰撞卻讀到空的那份 —— 跟平台被量進玩家讀不到的 footprint 表是同一個問題。
+ *
+ * `sources`：每個來源自己那組盒子。來源每幀就地改寫它們，這裡只持有參考。
+ * `flat`：攤平後的清單。碰撞每幀讀它，所以它必須是穩定的同一顆物件。
+ */
+const state = sharedSingleton('worldSolids.v1', () => ({
+  sources: new Map<string, readonly SolidBox[]>(),
+  flat: EMPTY,
+}));
+const sources = state.sources;
 
 function rebuild(): void {
   if (sources.size === 0) {
-    flat = EMPTY;
+    state.flat = EMPTY;
     return;
   }
   const next: SolidBox[] = [];
   for (const boxes of sources.values()) next.push(...boxes);
-  flat = next;
+  state.flat = next;
 }
 
 /**
@@ -85,7 +96,7 @@ export function publishWorldSolids(sourceId: string, boxes: readonly SolidBox[] 
  * 列，因此「島上沒有商人」那段期間，碰撞多付的成本是一次 `for` 迴圈的零次迭代。
  */
 export function getWorldSolids(): readonly SolidBox[] {
-  return flat;
+  return state.flat;
 }
 
 /** 測試與場景卸載用。 */

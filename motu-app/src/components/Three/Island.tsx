@@ -5,7 +5,7 @@
 
 import React, { useMemo, memo } from 'react';
 import * as THREE from 'three';
-import { useApp } from '../../context/AppContext';
+import { useAppPick } from '../../context/AppContext';
 import { getResolvedRockPositions, getRockScale } from '../../utils/placementRules';
 import { usePlayerHome } from '../../hooks/usePlayerHome';
 import { useCameraBlocker } from '../../constants/layers';
@@ -21,7 +21,7 @@ import {
 } from '../../constants/terrain';
 
 export function Island() {
-  const { profile } = useApp();
+  const { profile } = useAppPick('profile');
   const territoryLevel = profile?.territoryLevel || 1;
   const islandScale = 1 + (territoryLevel - 1) * 0.4; // Increased growth to 40% per level
   const solidTerrainRef = useCameraBlocker<THREE.Group>();
@@ -232,7 +232,7 @@ function SandEdge() {
 }
 
 function RockyTerrain({ islandScale }: { islandScale: number }) {
-  const { profile } = useApp();
+  const { profile } = useAppPick('profile');
 
   // Rocks are pushed clear of the player's Home so they never poke through its walls.
   const home = usePlayerHome(profile);

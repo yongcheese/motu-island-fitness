@@ -65,6 +65,30 @@ DevTools Console。
 
 漏掉第 3 步，症狀就會和這次一模一樣：本機看起來完全正常，線上安靜地失敗。
 
+### 規則有「1000 個運算式」的上限（2026-09-27）
+
+Firestore 每次請求最多只會評估 1000 個規則運算式，超過就**直接拒絕**，而用戶端收到的
+一樣只是 `permission-denied`，看起來跟欄位沒列在白名單裡完全一樣。
+
+這件事真的發生過：`allow update` 原本在大約 20 個條件裡，每一個都各自重新算一次
+`incoming().diff(existing()).affectedKeys()`。擺放島上物件只寫 `islandPlacements`，
+只有排在最後的 fallback 白名單會放行，所以它得先把前面的條件全部試過一輪。存檔一大
+（背包好幾百件物品），就超過上限了。結果只有「擺東西」（以及會一起重設擺放位置的擴建領土）
+被拒絕，其他動作因為在前面的條件就符合，所以都正常。
+
+現在的寫法是 `isAllowedProfileUpdate(keys)`：diff 只算一次，當參數傳進去，而且
+fallback 白名單排在第一個檢查。之後修改時：
+
+- 不要再把 `incoming().diff(existing())` 寫回每一個條件裡；
+- 新增的條件接在後面就好，但如果它帶了 fallback 沒有的欄位（像 `freeWheelSpins`），
+  要確認那一類寫入仍然會在上限內被放行；
+- 部署前可以用 Rules 測試 API（`projects/<id>:test`），拿一份大的真實存檔當 `resource`
+  跑一次。錯誤訊息裡如果出現 `maximum of 1000 expressions`，就是這個問題。
+
+用戶端被拒絕時，Console 會多印一行 `[firestore] 被規則拒絕的更新，寫入的欄位：…`
+（`src/lib/firebase.ts` 的 `updateDoc`），拿那組欄位對照 `isAllowedProfileUpdate` 裡的條件，
+就知道它應該要符合哪一條。
+
 `DRAFT_firestore.rules` 是舊版的歷史檔案，已經不代表任何有效狀態，
 不要拿它當參考。
 

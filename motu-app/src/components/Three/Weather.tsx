@@ -6,7 +6,7 @@
 import React, { useRef, useMemo, useSyncExternalStore } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useApp } from '../../context/AppContext';
+import { useAppPick } from '../../context/AppContext';
 import { WeatherType } from '../../types';
 import { WATER_SURFACE_Y } from '../../constants/world';
 import { usePlayerHome } from '../../hooks/usePlayerHome';
@@ -169,7 +169,7 @@ class SplashHeightCache {
 }
 
 export function Weather() {
-  const { weather, profile } = useApp();
+  const { weather, profile } = useAppPick('weather', 'profile');
   const maxParticles = 3500;
   const particleSprite = useMemo(createParticleSprite, []);
 

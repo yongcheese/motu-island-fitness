@@ -151,15 +151,20 @@ export const SUSPENDED_MOTIONS: Record<SuspendedMotionId, SuspendedSpec> = {
 
   /**
    * 木製鞦韆. A long rope and a rider who works it up: the arc grows over about five seconds and
-   * settles at 24 degrees, which swings the seat two thirds of a metre either side of centre.
+   * settles at 24 degrees, which swings the seat about 0.8 either side of centre.
+   *
+   * `pivotY` and `length` are the model's beam and seat (Three/FurnitureItem.tsx's SWING_BEAM_Y =
+   * 2.0 and SWING_SEAT_Y = 0.4938, drawn at 1.3175): the beam was raised from 2.174 so that the
+   * seated rider's head clears it — see SWING_BEAM_Y. The longer rope is also a slightly slower
+   * swing (2.8 s rather than 2.5 s a cycle), which is the pendulum law, not a choice.
    *
    * `buildUp` is the number the brief is most specific about — 「從靜止開始，緩慢增加擺動幅度」
    * — and it is why the impulse here is SMALL. Sitting on a swing does not start it moving; the
    * rider does, and that takes a few arcs.
    */
   swing: {
-    length: 1.55,
-    pivotY: 2.174,
+    length: 1.98,
+    pivotY: 2.635,
     axis: 'x',
     impulse: 0.06,
     impulseDecay: 2.0,
@@ -174,13 +179,18 @@ export const SUSPENDED_MOTIONS: Record<SuspendedMotionId, SuspendedSpec> = {
   },
 
   /**
-   * 吊椅. Shorter rope than the swing, and nowhere near as hard a push: nobody pumps a hanging
-   * chair the way they pump a swing, so `buildUp`/`ride` are a fraction of `swing`'s and it settles
-   * into a gentle wind-driven rock rather than a rider-driven arc.
+   * 吊椅. Nowhere near as hard a push as the swing: nobody pumps a hanging chair the way they pump
+   * a swing, so `buildUp`/`ride` are a fraction of `swing`'s and it settles into a gentle
+   * wind-driven rock rather than a rider-driven arc.
+   *
+   * `pivotY` is the model's hook (Three/FurnitureItem.tsx's HANGING_CHAIR_PIVOT_Y = 1.86, drawn at
+   * 1.3175) and `length` the drop from it to the cushion (0.62). Both grew when the chair was
+   * re-proportioned around the character sitting in it — see HANGING_CHAIR_PIVOT_Y — so it now
+   * rocks at the pendulum rate of a 1.8-unit drop rather than 0.85.
    */
   hangingChair: {
-    length: 0.85,
-    pivotY: 1.95,
+    length: 1.83,
+    pivotY: 2.4506,
     axis: 'x',
     impulse: 0.10,
     impulseDecay: 2.4,
@@ -205,16 +215,20 @@ export const SUSPENDED_MOTIONS: Record<SuspendedMotionId, SuspendedSpec> = {
    *
    * `pivotY` is not a taste call either. The runner rises 0.055 model units over its 0.42 half
    * length, and a circular arc through those two numbers has R = (c² + s²) / 2s = 1.63 — so the
-   * centre sits 1.65 above the chair's base, 1.40 as drawn. The 0.995 from there down to the
-   * cushion gives a two-second rock straight out of the pendulum law, which is what a rocking
-   * chair does.
+   * centre sits 1.65 above the chair's base (Three/FurnitureItem.tsx's ROCKING_CHAIR_PIVOT_Y), and
+   * the chair is indoor furniture, drawn at 1.15: 1.8975 as drawn. It used to say 1.40, which is
+   * 1.65 at the ISLAND's 0.85 — so the chair rocked about one point and the controller carried its
+   * occupant about another half a metre below it, and at the end of every rock the sitter's legs
+   * were 3 cm inside the seat (`npm run audit:interactions` now checks the model's swinging group
+   * against this row). The 1.35 from there down to the cushion is a 2.3-second rock, straight out
+   * of the pendulum law.
    *
    * `idle` is the smallest in the table because this is the only INDOOR row: there is no wind in
    * a bedroom, and a chair that rocked by itself in a closed room would be a ghost story.
    */
   rockingChair: {
-    length: 0.995,
-    pivotY: 1.40,
+    length: 1.3455,
+    pivotY: 1.8975,
     axis: 'x',
     // Sitting down in a rocking chair genuinely does start it — you drop your weight onto a
     // curved runner — so unlike the swing the impulse here is most of the motion, and the

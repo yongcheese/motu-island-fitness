@@ -29,3 +29,19 @@ export const PROMPT_SAFE_MARGIN = {
   top: 100,    // clears the top-centre banner band
   bottom: 170, // clears the bottom NavBar dock
 } as const;
+
+/**
+ * The footprint two world-anchored badges must keep apart — the E badge
+ * (UI/InteractionPrompt.tsx) and the Q light-switch badge (UI/LightSwitchPrompt.tsx).
+ *
+ * Both are the same HintBubble (a ~50px card plus its arrow, drawn upward from
+ * its anchor), and both can be live at once: standing at the sofa under the
+ * switch, E sits and Q turns the lights off. When their anchors project within
+ * this box of each other the tracker stacks the Q badge on top of the E one
+ * instead of letting the two cards overlap. Width is the two badges'
+ * half-widths summed with a gap, for the longest labels the game shows.
+ */
+export const PROMPT_BADGE_STACK = {
+  height: 60,
+  halfSpan: 170,
+} as const;

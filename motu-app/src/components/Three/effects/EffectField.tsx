@@ -7,7 +7,7 @@ import { createContext, useContext, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useApp } from '../../../context/AppContext';
+import { useAppReader } from '../../../context/AppContext';
 import { WeatherType } from '../../../types';
 import { clampFrameDelta } from '../../../lib/playerBus';
 import { CosmeticRuntime, CREATURE_POOL_SIZE, GLOW_POOL_SIZE } from './cosmeticRuntime';
@@ -253,7 +253,10 @@ export function CosmeticEffectField({
    */
   groundAt?: (x: number, z: number) => number;
 }) {
-  const { weather } = useApp();
+  // Read in the frame loop, not subscribed to: the weather only decides `isNight` for the tick,
+  // and a subscription re-rendered every pooled creature in this field (in both Canvases) on every
+  // weather change. See useAppReader.
+  const readApp = useAppReader();
   const runtime = useMemo(() => new CosmeticRuntime(), []);
   const pools = useMemo(createShapePools, []);
 
@@ -277,8 +280,6 @@ export function CosmeticEffectField({
     for (const material of pools.materials) material.dispose();
   }, [pools]);
 
-  const isNight = weather === WeatherType.MIDNIGHT || weather === WeatherType.TWILIGHT;
-
   // Held in a ref so a new sampler identity (the island rebuilds one whenever a placement moves)
   // does not have to re-subscribe the frame loop. The loop reads whatever the latest one is.
   const groundRef = useRef(groundAt);
@@ -290,6 +291,8 @@ export function CosmeticEffectField({
     // particle straight past its lifetime and fire every emitter's backlog at once.
     const delta = clampFrameDelta(rawDelta);
     if (delta <= 0) return;
+    const { weather } = readApp();
+    const isNight = weather === WeatherType.MIDNIGHT || weather === WeatherType.TWILIGHT;
     runtime.tick(delta, {
       time: state.clock.elapsedTime,
       isNight,

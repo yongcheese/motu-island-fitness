@@ -8,7 +8,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { NpcKind, NPC_WALK } from '../../constants/npcs';
 import { getNpcSocial } from '../../constants/npcSocial';
-import { clampFrameDelta, playerBus } from '../../lib/playerBus';
+import { clampFrameDelta, playerBus, type NpcInteractionTarget } from '../../lib/playerBus';
 import { doorOpennessAt, registerDoorAgent } from '../../lib/interiorDoors';
 import { NpcSocialAnimator } from '../../lib/npcSocial';
 import { angleDelta, seedFromId } from '../../lib/npcPose';
@@ -297,7 +297,7 @@ export const NpcWalker = memo(function NpcWalker({
   }, [kind, npcId]);
 
   const headAnchor = useRef(new THREE.Vector3());
-  const target = useRef<NonNullable<typeof playerBus.npcTarget>>({
+  const target = useRef<NpcInteractionTarget>({
     npcId, scope, anchor: headAnchor.current, reach: 0, label: '', talking: false,
   });
 
@@ -311,7 +311,7 @@ export const NpcWalker = memo(function NpcWalker({
   }, [social, npcId]);
 
   useEffect(() => () => {
-    if (playerBus.npcTarget?.npcId === npcId) playerBus.npcTarget = null;
+    playerBus.npcTargets.delete(npcId);
     if (playerBus.npcSpeech?.npcId === npcId) {
       playerBus.npcSpeech = null;
       playerBus.npcSpeechPrompt = null;
@@ -587,9 +587,9 @@ export const NpcWalker = memo(function NpcWalker({
         tgt.reach = profile.talkReach;
         tgt.talking = frame.talking;
         tgt.label = frame.talking ? profile.promptContinue : profile.prompt;
-        playerBus.npcTarget = tgt;
-      } else if (playerBus.npcTarget?.npcId === npcId) {
-        playerBus.npcTarget = null;
+        playerBus.npcTargets.set(npcId, tgt);
+      } else {
+        playerBus.npcTargets.delete(npcId);
       }
 
       if (frame.lineStarted >= 0) {

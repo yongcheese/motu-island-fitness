@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { useApp } from '../../context/AppContext';
+import { useAppPick } from '../../context/AppContext';
 import { getItemById } from '../../constants/items';
 import { DECAL_DEPTH_BIAS, SURFACE_DECAL_LIFT } from '../../constants/terrain';
 import { FurnitureModel } from './FurnitureItem';
@@ -17,6 +17,7 @@ import {
   PLACEMENT_BLOCK_MESSAGE,
   PlacementVerdict,
   evaluateIslandPlacement,
+  reseatIslandPlacements,
 } from '../../lib/placementSurfaces';
 import { HouseModel } from './HouseModel';
 import { PlacedItem, View } from '../../types';
@@ -252,7 +253,7 @@ export function PlacementGhost() {
   const {
     islandDraft, profile, showIslandAlert,
     setDraftTransform, setDraftBlock, commitDraft, cancelDraft, rotateDraft,
-  } = useApp();
+  } = useAppPick('islandDraft', 'profile', 'showIslandAlert', 'setDraftTransform', 'setDraftBlock', 'commitDraft', 'cancelDraft', 'rotateDraft');
   const ghostRef = useRef<THREE.Group>(null);
 
   const item = islandDraft?.itemId ? getItemById(islandDraft.itemId) : null;
@@ -708,8 +709,42 @@ function IslandPlacementInstance({
  * player never sees the piece twice.
  */
 export function IslandPlacements() {
-  const { profile, currentView, islandDraft, selectIslandPlacement } = useApp();
+  const { profile, currentView, islandDraft, selectIslandPlacement, updateProfile } = useAppPick('profile', 'currentView', 'islandDraft', 'selectIslandPlacement', 'updateProfile');
   const placements = profile?.islandPlacements || [];
+  const territoryLevel = profile?.territoryLevel || 1;
+  const footprintVersion = useSyncExternalStore(subscribeFootprints, getFootprintVersion);
+
+  /**
+   * RE-SEAT WHAT THE GROUND HAS SWALLOWED — once, for a save written before the territory change
+   * learned to do it (context/useEconomyActions.ts' reseatForTerritory).
+   *
+   * A pier built out over the sea and then overtaken by an expansion is still in those saves with
+   * its boards below the grass: undrawn where the island covers it, and walked straight through
+   * where it pokes out past the new shoreline. This puts every such piece back on its ground by the
+   * same rule a new one is placed with. It only ever LIFTS (see reseatIslandPlacements), so on a
+   * healthy island it finds nothing and writes nothing.
+   *
+   * It waits until every piece standing here has been measured, because a prop can only be
+   * re-seated on a deck whose treads are known, and never runs under an open edit session, where
+   * the piece being moved is the session's to place.
+   *
+   * ONCE PER TERRITORY LEVEL, not once per list. It used to remember the list it had checked by
+   * identity — but its own write produces a new list, and so does every snapshot, so it re-ran
+   * after every save on the island. With a re-seat that did not settle (see
+   * reseatIslandPlacements) that was an endless save → snapshot → re-seat loop. A migration is a
+   * migration: everything placed afterwards already goes through the same height rule, and a
+   * territory change re-seats in its own write (useEconomyActions' reseatForTerritory).
+   */
+  const reseatCheckedFor = useRef<number | null>(null);
+  useEffect(() => {
+    if (islandDraft || !profile?.islandPlacements?.length) return;
+    const list = profile.islandPlacements;
+    if (reseatCheckedFor.current === territoryLevel) return;
+    if (list.some((p) => getItemById(p.itemId) && !getFootprint(p.itemId))) return;
+    reseatCheckedFor.current = territoryLevel;
+    const reseated = reseatIslandPlacements(list, 1 + (territoryLevel - 1) * 0.4);
+    if (reseated) void updateProfile({ islandPlacements: reseated });
+  }, [profile?.islandPlacements, territoryLevel, footprintVersion, islandDraft, updateProfile]);
   /**
    * Which placed objects answer the pointer at all.
    *
@@ -731,6 +766,13 @@ export function IslandPlacements() {
   // it. A camera that backs off for every piece of garden furniture is one that is permanently
   // pulled in on a well-decorated island.
   const occluderRef = useSightlineOccluder<THREE.Group>();
+  /**
+   * Keyed by the piece's own id, not by its place in the list. With the index in the key, taking
+   * one object back into the backpack shifted every object after it and React remounted all of
+   * them — each one re-measured, restarted its animation and flashed for a frame. The index is
+   * only a tiebreak for a save that somehow holds the same id twice.
+   */
+  const seenIds = new Set<string>();
 
   return (
     <group ref={occluderRef}>
@@ -738,10 +780,12 @@ export function IslandPlacements() {
         const item = getItemById(p.itemId);
         if (!item) return null;
         if (islandDraft?.instanceId === p.instanceId) return null;
+        const key = seenIds.has(p.instanceId) ? `${p.instanceId}-${index}` : p.instanceId;
+        seenIds.add(p.instanceId);
 
         return (
           <IslandPlacementInstance
-            key={`${p.instanceId}-${index}`}
+            key={key}
             item={item}
             placement={p}
             isEditable={isEditable}

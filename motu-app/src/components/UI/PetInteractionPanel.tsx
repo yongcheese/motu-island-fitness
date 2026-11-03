@@ -76,11 +76,13 @@ export function PetInteractionPanel() {
   }, []);
 
   useEffect(() => {
-    const onInteract = () => {
-      // The prompt's target first; the equipped companion as a fallback for any caller that opened
-      // this without one in reach (there is none today, and a panel that opened empty would be a
-      // dead end if one appeared).
-      const target = playerBus.petTargetId ?? equippedPetId(profile);
+    const onInteract = (event: Event) => {
+      // The animal the press was aimed at (the selected target's action names it), then the bus's
+      // current pet, then the equipped companion as a fallback for any caller that opened this
+      // without one in reach (there is none today, and a panel that opened empty would be a dead
+      // end if one appeared).
+      const aimed = (event as CustomEvent<{ petItemId?: string }>).detail?.petItemId;
+      const target = aimed ?? playerBus.petTargetId ?? equippedPetId(profile);
       if (!target) return;
       playSound(SoundEffect.CLICK);
       setPetItemId(target);

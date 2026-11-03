@@ -7,7 +7,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { useApp } from '../../context/AppContext';
+import { useAppPick } from '../../context/AppContext';
 import { WeatherType } from '../../types';
 import {
   MAX_SUBMERGED_TOP_Y,
@@ -1542,7 +1542,7 @@ const PALETTES = {
 // --- Root -------------------------------------------------------------------
 
 export function OceanDecorations() {
-  const { profile, weather } = useApp();
+  const { profile, weather } = useAppPick('profile', 'weather');
   const territoryLevel = profile?.territoryLevel || 1;
   const islandScale = 1 + (territoryLevel - 1) * 0.4;
 

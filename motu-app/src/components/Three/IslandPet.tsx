@@ -7,14 +7,14 @@ import { memo, useCallback, useEffect, useMemo, useRef, useSyncExternalStore } f
 import { FIRST_PERSON_ZOOM } from '../../constants/cameraZoom';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useApp } from '../../context/AppContext';
+import { useAppPick } from '../../context/AppContext';
 import { CameraMode, PlacedItem, View } from '../../types';
 import { PET_SPECIES_TABLE, getPetSpec, getPetSpecies, type PetSpecies } from '../../constants/pets';
 import { PetGait, PetModel } from './Pets';
 import { resolveSpecialCosmetics } from '../../constants/cosmeticEffects';
 import type { SpecialCosmeticDef } from '../../constants/cosmeticEffects';
 import { AVATAR_BASE_SCALE } from './Avatar';
-import { COMPANION_PROMPT_BIAS, clampFrameDelta, playerBus } from '../../lib/playerBus';
+import { COMPANION_PROMPT_PRIORITY, clampFrameDelta, playerBus } from '../../lib/playerBus';
 import { SHORELINE_RADIUS } from '../../constants/terrain';
 import { getSurfaceAt } from '../../lib/placementSurfaces';
 import { resolveHomeCollision } from './characterMovement';
@@ -276,11 +276,10 @@ const STRIDE_LENGTH = 0.55;
  * How long owner AND pet must both be still before the 摸摸 prompt is offered.
  *
  * A companion is within arm's reach every second of the game, so an unconditional prompt would be
- * permanently on screen and — since the tracker shows the single NEAREST candidate — would sit in
- * front of the door prompt while the player is trying to walk into their own house. Requiring both
- * to have stopped turns it into what it reads as: you crouch down to your pet when you stop, not
- * while jogging past it. {@link COMPANION_PROMPT_BIAS} handles the other half, ranking it behind
- * anything the player deliberately walked up to.
+ * permanently on screen whenever nothing else was. Requiring both to have stopped turns it into
+ * what it reads as: you crouch down to your pet when you stop, not while jogging past it.
+ * {@link COMPANION_PROMPT_PRIORITY} handles the other half, putting it in a tier below anything the
+ * player deliberately walked up to — so it can never take the key from the front door.
  */
 const PET_SETTLE_TIME = 0.45;
 
@@ -967,6 +966,9 @@ export function PetToy({ itemId }: { itemId: string }) {
   );
 }
 
+/** How far over the top of the animal the prompt's arrow lands. */
+const PET_PROMPT_CLEARANCE = 0.15;
+
 /**
  * Common per-frame bookkeeping for both branches: the petting prompt's position, and whether it is
  * offered at all (see PET_SETTLE_TIME).
@@ -979,9 +981,13 @@ function publishPromptTarget(
   delta: number,
   scratch: THREE.Vector3,
   busy: boolean,
+  size: number,
 ): void {
   stillTime.current = settled ? stillTime.current + delta : 0;
-  playerBus.dogPromptBias = COMPANION_PROMPT_BIAS;
+  playerBus.petPromptPriority = COMPANION_PROMPT_PRIORITY;
+  // The interaction point is just over this animal's own head, from its own size — see
+  // PlayerBusState.petPromptHeight.
+  playerBus.petPromptHeight = size + PET_PROMPT_CLEARANCE;
   // Not while it is eating or chasing a toy: the one thing the prompt could do then is start
   // something over, and a second bowl under a dog halfway through its first is the stacking the
   // activity store exists to prevent.
@@ -1520,6 +1526,7 @@ export const WalkingPet = memo(function WalkingPet({
       delta,
       promptScratch.current,
       d.busy,
+      size,
     );
   });
 
@@ -1710,6 +1717,7 @@ export const FlyingPet = memo(function FlyingPet({
       delta,
       promptScratch.current,
       d.busy,
+      size,
     );
   });
 
@@ -1730,7 +1738,7 @@ export const FlyingPet = memo(function FlyingPet({
  * reward is now reached only through a companion the player actually owns.
  */
 export function IslandPet() {
-  const { profile, currentView, cameraMode, uiScale, greetPet } = useApp();
+  const { profile, currentView, cameraMode, uiScale, greetPet } = useAppPick('profile', 'currentView', 'cameraMode', 'uiScale', 'greetPet');
   const itemId = profile?.equippedItems?.find(id => getPetSpec(id));
   const home = usePlayerHome(profile);
 
@@ -1862,7 +1870,7 @@ export function IslandPet() {
     return () => {
       playerBus.dogPos = undefined;
       playerBus.petTargetId = undefined;
-      playerBus.dogPromptBias = 0;
+      playerBus.petPromptPriority = 0;
       playerBus.dogIsMoving = false;
       if (itemId) endPetActivity(itemId);
     };

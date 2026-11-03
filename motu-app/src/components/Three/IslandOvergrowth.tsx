@@ -7,7 +7,7 @@ import { memo, useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { useApp } from '../../context/AppContext';
+import { useAppPick } from '../../context/AppContext';
 import { WeatherType } from '../../types';
 import { getWeatherSwayFactors } from '../../utils/weatherSway';
 import { usePlayerHome, type ResolvedHome } from '../../hooks/usePlayerHome';
@@ -726,7 +726,7 @@ export const OvergrowthField = memo(function OvergrowthField({
  * life is not affected by their being away (see Three/IslandPet.tsx).
  */
 export function IslandOvergrowth() {
-  const { profile, weather } = useApp();
+  const { profile, weather } = useAppPick('profile', 'weather');
   const home = usePlayerHome(profile);
   const islandScale = 1 + ((profile?.territoryLevel ?? 1) - 1) * 0.4;
 

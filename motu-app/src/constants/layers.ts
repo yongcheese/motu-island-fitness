@@ -13,9 +13,13 @@ import { useLayoutEffect, useRef } from 'react';
  * want different answers to "is something in the way?":
  *
  *   SIGHTLINE_OCCLUDER  Anything solid enough to hide a floating world-space badge.
- *                       InteractionPromptTracker.tsx tests this: a torch, a wishing well or the
- *                       house itself genuinely can stand in front of a prompt, so everything the
- *                       player places belongs here.
+ *                       InteractionPromptTracker.tsx tests this for the badges that are DISPLAY
+ *                       (the Q light-switch badge, a resident's speech bubble): a torch, a wishing
+ *                       well or the house itself genuinely can stand in front of one, so
+ *                       everything the player places belongs here. (The E prompt is not hidden
+ *                       this way: whether its target can be reached is decided from the player's
+ *                       own line of reach — lib/interactionTargeting.ts — and a reachable target
+ *                       always shows its prompt.)
  *
  *   CAMERA_BLOCKER      Only things the third-person camera must not pass through: outdoors, the
  *                       island's own raised terrain. lib/cameraCollision.ts tests this.
