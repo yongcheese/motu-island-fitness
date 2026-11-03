@@ -49,9 +49,10 @@ export const POINTER_BUTTON = {
  * draggable 3D object started a drag that the user never intended AND never ended, because the
  * native menu ate the `pointerup` that was supposed to finish it.
  */
-export function isDragStartButton(e: { pointerType?: string; button?: number }): boolean {
+export function isDragStartButton(e: { pointerType?: string; button?: number; ctrlKey?: boolean; altKey?: boolean }): boolean {
   if (e.pointerType && e.pointerType !== 'mouse') return true;
-  return e.button === POINTER_BUTTON.LEFT;
+  // Control-click is secondary click on macOS; Option/Alt-drag is camera look in edit mode.
+  return e.button === POINTER_BUTTON.LEFT && !e.ctrlKey && !e.altKey;
 }
 
 /** Why an in-progress pointer gesture is being ended. */
@@ -203,6 +204,13 @@ export function installGlobalInputGuards(): () => void {
     // the game's own right-button look-drag the instant it started on half the platforms.
   };
 
+  // Recover a lost release when a trackpad/mouse returns with no button held. Otherwise
+  // a stale canvas capture can keep retargeting taps intended for HUD buttons to the canvas.
+  const onPointerMove = (e: PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.buttons === 0 && activeCaptures.size > 0) {
+      emitPointerRelease('pointercancel');
+    }
+  };
   const onPointerUp = () => emitPointerRelease('pointerup');
   const onPointerCancel = () => emitPointerRelease('pointercancel');
   const onLostPointerCapture = () => emitPointerRelease('lostpointercapture');
@@ -230,22 +238,26 @@ export function installGlobalInputGuards(): () => void {
   // Capture phase throughout, so a `stopPropagation()` anywhere in the tree (R3F's own pointer
   // plumbing and several 3D handlers in this codebase call it) can never hide these from us.
   window.addEventListener('contextmenu', onContextMenu, { capture: true });
+  window.addEventListener('pointermove', onPointerMove, { capture: true });
   window.addEventListener('pointerup', onPointerUp, { capture: true });
   window.addEventListener('pointercancel', onPointerCancel, { capture: true });
   window.addEventListener('lostpointercapture', onLostPointerCapture, { capture: true });
   window.addEventListener('pointerdown', onLiveInput, { capture: true });
   window.addEventListener('keydown', onLiveInput, { capture: true });
+  window.addEventListener('wheel', onLiveInput, { capture: true, passive: true });
   window.addEventListener('blur', onBlur);
   window.addEventListener('focus', onFocus);
   document.addEventListener('visibilitychange', onVisibilityChange);
 
   uninstall = () => {
     window.removeEventListener('contextmenu', onContextMenu, { capture: true });
+    window.removeEventListener('pointermove', onPointerMove, { capture: true });
     window.removeEventListener('pointerup', onPointerUp, { capture: true });
     window.removeEventListener('pointercancel', onPointerCancel, { capture: true });
     window.removeEventListener('lostpointercapture', onLostPointerCapture, { capture: true });
     window.removeEventListener('pointerdown', onLiveInput, { capture: true });
     window.removeEventListener('keydown', onLiveInput, { capture: true });
+    window.removeEventListener('wheel', onLiveInput, { capture: true });
     window.removeEventListener('blur', onBlur);
     window.removeEventListener('focus', onFocus);
     document.removeEventListener('visibilitychange', onVisibilityChange);

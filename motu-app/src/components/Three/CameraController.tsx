@@ -17,8 +17,9 @@ import {
 } from '../../constants/interiorShell';
 import { playerBus, clampFrameDelta, markVisibilityResumed } from '../../lib/playerBus';
 import { findWheelScrollTarget } from '../../lib/wheelScroll';
-import { subscribeFocusSuspension, subscribePointerRelease, POINTER_BUTTON } from '../../lib/inputManager';
-import { WHEEL_ZOOM_STEP, FIRST_PERSON_ZOOM, FIRST_PERSON_RAMP_START, firstPersonRamp } from '../../constants/cameraZoom';
+import { capturePointerForDrag, subscribeFocusSuspension, subscribePointerRelease, POINTER_BUTTON } from '../../lib/inputManager';
+import { acceptsGameKey, movementKey, MovementKeys, cameraWheelZoomDelta } from '../../lib/gameInput';
+import { FIRST_PERSON_ZOOM, FIRST_PERSON_RAMP_START, firstPersonRamp } from '../../constants/cameraZoom';
 import { orbitFocusOffsetY } from '../../constants/cameraFocus';
 import { firstPersonEyeWorldY } from '../../constants/characterRig';
 import { useCharacterModel } from '../../constants/characterModel';
@@ -368,7 +369,7 @@ export function CameraController({
   const zoomFrameRef = useRef<number | null>(null);
   const {
     joystickData, orbitJoystickData, uiScale, setUiScale, currentView, cameraMode, profile,
-    setJoystickData, setOrbitJoystickData
+    setJoystickData, setOrbitJoystickData, islandDraft
   } = useApp();
   /**
    * The active character's joint heights - the ONLY thing this file knows about the model,
@@ -493,7 +494,7 @@ export function CameraController({
   // like alt-tabbing to another on-top window while still technically "visible").
   const isFocusSuspendedRef = React.useRef(false);
 
-  const keysRef = React.useRef({ w: false, a: false, s: false, d: false });
+  const keysRef = React.useRef(new MovementKeys());
 
   const ensurePolyfills = (controls: any) => {
     if (!controls) return;
@@ -526,7 +527,7 @@ export function CameraController({
       // instance both had this listener registered while indoors, and both passed the old
       // `currentView === HOME || BUILDING_INTERIOR` gate, so a single wheel tick silently called
       // setUiScale twice - doubling the effective zoom speed only while indoors.
-      if (!isMyDomain) {
+      if (!isMyDomain || e.defaultPrevented || playerBus.isDraggingPlacement) {
         return;
       }
 
@@ -545,10 +546,11 @@ export function CameraController({
         return;
       }
 
+      const zoomDelta = cameraWheelZoomDelta(e, gl.domElement.clientHeight);
+      if (zoomDelta === 0) return;
       e.preventDefault();
-      const zoomDir = e.deltaY < 0 ? 1 : -1;
       // Summed and applied once on the next frame - see pendingZoomRef.
-      pendingZoomRef.current += zoomDir * WHEEL_ZOOM_STEP;
+      pendingZoomRef.current += zoomDelta;
       if (zoomFrameRef.current !== null) return;
       zoomFrameRef.current = requestAnimationFrame(() => {
         zoomFrameRef.current = null;
@@ -557,9 +559,11 @@ export function CameraController({
         if (delta !== 0) setUiScale((prev: number) => prev + delta);
       });
     };
-    window.addEventListener('wheel', handleWheel, { passive: false });
+    // UI taps and scrolling panels must not also operate the camera behind them.
+    const dom = gl.domElement;
+    dom.addEventListener('wheel', handleWheel, { passive: false });
     return () => {
-      window.removeEventListener('wheel', handleWheel);
+      dom.removeEventListener('wheel', handleWheel);
       // A frame still owing when the view changes under the player: apply it rather than drop
       // it, so batching can never be the reason a wheel tick did nothing. Cancelling alone
       // would make the last few milliseconds of a spin disappear.
@@ -571,32 +575,55 @@ export function CameraController({
       pendingZoomRef.current = 0;
       if (owed !== 0) setUiScale((prev: number) => prev + owed);
     };
-  }, [currentView, setUiScale, isMyDomain]);
+  }, [currentView, setUiScale, isMyDomain, gl]);
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase();
-      if (key === 'w' || e.key === 'ArrowUp') keysRef.current.w = true;
-      if (key === 's' || e.key === 'ArrowDown') keysRef.current.s = true;
-      if (key === 'a' || e.key === 'ArrowLeft') keysRef.current.a = true;
-      if (key === 'd' || e.key === 'ArrowRight') keysRef.current.d = true;
+      if (!isMyDomain || !isBuildMode || !acceptsGameKey(e) || !movementKey(e)) return;
+      e.preventDefault();
+      keysRef.current.set(e, true);
     };
     const handleKeyUp = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase();
-      if (key === 'w' || e.key === 'ArrowUp') keysRef.current.w = false;
-      if (key === 's' || e.key === 'ArrowDown') keysRef.current.s = false;
-      if (key === 'a' || e.key === 'ArrowLeft') keysRef.current.a = false;
-      if (key === 'd' || e.key === 'ArrowRight') keysRef.current.d = false;
+      keysRef.current.set(e, false);
     };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      keysRef.current.reset();
     };
-  }, []);
+  }, [isMyDomain, isBuildMode]);
 
-  // Build mode's own look-rotation input: right mouse button drag, or single-finger touch drag
+  const primaryDragRotates = !isBuildMode && !islandDraft
+    && (currentView === View.HOME || currentView === View.BUILDING_INTERIOR);
+
+  React.useEffect(() => {
+    const dom = gl.domElement;
+    const onPointerDown = (e: PointerEvent) => {
+      // The indoor free camera handles its own drag below; modified clicks are suppressed in both modes.
+      if (isBuildMode || !isMyDomain || e.pointerType !== 'mouse' || e.button !== POINTER_BUTTON.LEFT) return;
+      const controls = controlsRef.current;
+      if (controls) {
+        // Run before OrbitControls reads the button mapping. This also gives outdoor
+        // build mode Option/Alt-look without taking the primary drag from furniture.
+        controls.mouseButtons.LEFT = primaryDragRotates || e.altKey ? THREE.MOUSE.ROTATE : undefined;
+      }
+    };
+    const onClick = (e: MouseEvent) => {
+      if (!isMyDomain || !e.altKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    dom.addEventListener('pointerdown', onPointerDown, { capture: true });
+    dom.addEventListener('click', onClick, { capture: true });
+    return () => {
+      dom.removeEventListener('pointerdown', onPointerDown, { capture: true });
+      dom.removeEventListener('click', onClick, { capture: true });
+    };
+  }, [gl, isBuildMode, isMyDomain, primaryDragRotates]);
+
+  // Build mode's own look-rotation input: right mouse button / Option-primary drag, or touch drag
   // (Pointer Events report `button === 0` for a touch contact since touch has no "button"
   // concept) - kept on the right button to match the "unified" input scheme used by every other
   // mode (see the RIGHT: THREE.MOUSE.ROTATE mapping on <OrbitControls> below): right button always
@@ -623,10 +650,19 @@ export function CameraController({
     let lastY = 0;
 
     const onPointerDown = (e: PointerEvent) => {
-      // Mouse: right button only. Touch/pen: primary contact (button 0) - there is no secondary
+      // Mouse/trackpad: right button or Option/Alt + primary. Touch/pen: primary contact - no secondary
       // "button" to hold on a touchscreen, so the single-finger drag stays as-is.
-      const isRotateInput = e.pointerType === 'mouse' ? e.button === POINTER_BUTTON.RIGHT : e.button === POINTER_BUTTON.LEFT;
-      if (!isRotateInput) return;
+      const trackpadLook = e.altKey && e.button === POINTER_BUTTON.LEFT;
+      const isRotateInput = e.pointerType === 'mouse'
+        ? e.button === POINTER_BUTTON.RIGHT || trackpadLook
+        : e.button === POINTER_BUTTON.LEFT;
+      if (!isRotateInput || !isMyDomain || isFocusSuspendedRef.current) return;
+      if (trackpadLook) {
+        // Reserve Option/Alt + primary drag for looking, before R3F can select furniture.
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      capturePointerForDrag(dom, e.pointerId);
       buildDraggingRef.current = true;
       lastX = e.clientX;
       lastY = e.clientY;
@@ -645,7 +681,7 @@ export function CameraController({
       lastY = e.clientY;
     };
 
-    dom.addEventListener('pointerdown', onPointerDown);
+    dom.addEventListener('pointerdown', onPointerDown, { capture: true });
     window.addEventListener('pointermove', onPointerMove);
     // Every way this drag can end - a real release, a cancelled pointer, lost capture, the window
     // blurring, the tab hiding - arrives through the one shared signal, so there is no release path
@@ -654,11 +690,11 @@ export function CameraController({
       buildDraggingRef.current = false;
     });
     return () => {
-      dom.removeEventListener('pointerdown', onPointerDown);
+      dom.removeEventListener('pointerdown', onPointerDown, { capture: true });
       window.removeEventListener('pointermove', onPointerMove);
       unsubscribeRelease();
     };
-  }, [isBuildMode, gl]);
+  }, [isBuildMode, isMyDomain, gl]);
 
   // Tab/window focus loss is where every rotation input source in this file can go stale at
   // once: a build-mode mouse-drag whose pointerup never arrives (released over another app), a
@@ -682,10 +718,7 @@ export function CameraController({
       buildDragDeltaRef.current.x = 0;
       buildDragDeltaRef.current.y = 0;
       buildDraggingRef.current = false;
-      keysRef.current.w = false;
-      keysRef.current.a = false;
-      keysRef.current.s = false;
-      keysRef.current.d = false;
+      keysRef.current.reset();
       setJoystickData(null);
       setOrbitJoystickData(null);
       // A placement drag whose pointerup was swallowed (native menu, app switch, cancelled
@@ -1703,14 +1736,11 @@ export function CameraController({
       enableDamping={false}
       panSpeed={0.25}
       rotateSpeed={MOUSE_ROTATE_SPEED}
-      // View rotation moves from LEFT to RIGHT mouse button so the left button stays free for
-      // future item-interaction (pick up/place/click furniture etc.) - LEFT is intentionally
-      // omitted so it triggers no camera action at all. MIDDLE keeps its original DOLLY mapping.
-      // Purely an input-binding change: sensitivity (rotateSpeed above), distance/FOV limits and
-      // first/third-person logic elsewhere in this file are untouched. Touch (mobile/tablet) is
-      // unaffected - OrbitControls' `touches` mapping is separate from `mouseButtons` and isn't
-      // set here.
+      // A laptop's primary press-and-drag can look around while walking. Editing keeps
+      // primary clicks/drags for furniture; right drag still works in every mode.
+      // The indoor free-edit camera also accepts Option/Alt + primary drag above.
       mouseButtons={{
+        LEFT: primaryDragRotates ? THREE.MOUSE.ROTATE : undefined,
         MIDDLE: THREE.MOUSE.DOLLY,
         RIGHT: THREE.MOUSE.ROTATE
       }}

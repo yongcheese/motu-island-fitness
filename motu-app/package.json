@@ -27,6 +27,7 @@
     "audit:zfighting": "node scripts/audit-zfighting.mjs",
     "audit:character": "tsx scripts/audit-character-parts.ts",
     "split:character": "node scripts/split-character-glb.mjs",
+    "test:laptop-controls": "tsx scripts/test-laptop-controls.ts",
     "test:daily-login": "tsx scripts/test-daily-login.ts",
     "test:economy": "tsx scripts/test-economy.ts",
     "test:fragment-progress": "tsx scripts/test-fragment-progress.ts",
