@@ -32,6 +32,7 @@ import {
 } from '../../lib/soundUtils';
 import { playerBus, clampFrameDelta } from '../../lib/playerBus';
 import { subscribeFocusSuspension } from '../../lib/inputManager';
+import { acceptsGameKey, movementKey, MovementKeys } from '../../lib/gameInput';
 import {
   getTerrainInfo,
   findNearbyHome,
@@ -640,7 +641,7 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
   // frame stutter, and the "sound arrives half a beat late" (Web Audio schedules at
   // ctx.currentTime when the call finally runs, so a blocked main thread delays the
   // note itself). The movement math reads keysRef.current in useFrame - see below.
-  const keysRef = useRef({ w: false, a: false, s: false, d: false });
+  const keysRef = useRef(new MovementKeys());
   const [emote, setEmote] = useState<string>('NONE');
   const [isFlipping, setIsFlipping] = useState(false);
   const flipStartTime = useRef(0);
@@ -1565,10 +1566,11 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isCorrectInstance) return;
+      if (!isCorrectInstance || isBuildMode || !acceptsGameKey(e)) return;
       const key = e.key.toLowerCase();
-      if (['w', 'a', 's', 'd'].includes(key)) {
-        keysRef.current[key as 'w' | 'a' | 's' | 'd'] = true;
+      if (movementKey(e)) {
+        e.preventDefault();
+        keysRef.current.set(e, true);
         leaveFurniture(); // Walking off a seat is a way of getting up
         // Moving cancels a GESTURE (wave, celebrate, dance) - you stop posing to walk off. It
         // must not cancel the crawl, because crawling IS a way of moving: this reset used to be
@@ -1585,6 +1587,7 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
       }
       if (key === 'e' || key === ' ') {
         if (key === ' ') {
+          e.preventDefault();
           // Just a request. Whether it becomes a jump — and whether a jump pressed in mid-air
           // is dropped or held for the landing — is decided by the state machine against the
           // physics (see jumpPose.ts's stepJump), not here against a boolean. The old guard
@@ -1629,10 +1632,7 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase();
-      if (['w', 'a', 's', 'd'].includes(key)) {
-        keysRef.current[key as 'w' | 'a' | 's' | 'd'] = false;
-      }
+      keysRef.current.set(e, false);
     };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -1646,7 +1646,11 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
     // listeners on every crawl/dance toggle for no behavioural gain. `isFlipping` is a real
     // dependency - the double-flip guard below reads it. The jump no longer needs one: it
     // writes a request ref and the per-frame state machine owns the guard.
-  }, [handleAction, leaveFurniture, abandonAction, flipLightSwitch, isCorrectInstance, isFlipping]);
+  }, [handleAction, leaveFurniture, abandonAction, flipLightSwitch, isCorrectInstance, isBuildMode, isFlipping]);
+
+  useEffect(() => {
+    keysRef.current.reset();
+  }, [isCorrectInstance, isBuildMode]);
 
   // A held movement key is only released by a `keyup` that the page actually receives - and it does
   // not receive one when focus leaves mid-press (a native context menu opening over the game, an
@@ -1660,10 +1664,7 @@ export function Avatar({ isInterior = false, isBuildMode = false, equippedOverri
   // shared focus signal (see lib/inputManager.ts) rather than each registering its own listeners.
   useEffect(() => {
     return subscribeFocusSuspension(() => {
-      keysRef.current.w = false;
-      keysRef.current.a = false;
-      keysRef.current.s = false;
-      keysRef.current.d = false;
+      keysRef.current.reset();
     });
   }, []);
 

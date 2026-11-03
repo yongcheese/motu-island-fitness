@@ -56,7 +56,9 @@ export function ControlsHint() {
               <div className="w-6 h-6 bg-island-cream-2 rounded-lg flex items-center justify-center font-mono border border-island-line shadow-[0_2px_6px_rgba(38,70,83,0.12)] text-sm text-island-navy">S</div>
               <div className="w-6 h-6 bg-island-cream-2 rounded-lg flex items-center justify-center font-mono border border-island-line shadow-[0_2px_6px_rgba(38,70,83,0.12)] text-sm text-island-navy">D</div>
             </div>
-            <span className="mt-1 font-sans text-island-navy-soft">控制移動</span>
+            <span className="mt-1 font-sans text-island-navy-soft">WASD / ↑ ↓ ← → 移動</span>
+            <span className="font-sans text-island-navy-soft">走動時按住拖曳轉向・編輯時加按 Option / Alt</span>
+            <span className="font-sans text-island-navy-soft">雙指滑動或捏合縮放</span>
           </HintBubble>
         </motion.div>
       )}
